@@ -1,79 +1,92 @@
 <template>
-  <div class="catalog-page art-full-height">
-    <header class="catalog-heading">
-      <div class="heading-icon"><ArtSvgIcon :icon="pageMeta.icon" /></div>
-      <div>
-        <span>MDM UNIFIED CATALOG</span>
-        <h1>{{ pageMeta.title }}</h1>
-        <p>{{ pageMeta.description }}</p>
-      </div>
-    </header>
-
-    <div class="catalog-toolbar">
-      <el-input
-        v-model="keyword"
-        clearable
-        class="keyword-input"
-        :placeholder="`搜索${pageMeta.searchHint}`"
-        @keyup.enter="loadRecords"
-        @clear="loadRecords"
-      >
-        <template #prefix><ArtSvgIcon icon="ri:search-line" /></template>
-      </el-input>
-      <el-button type="primary" :loading="loading" @click="loadRecords">查询</el-button>
-      <el-button :disabled="loading" @click="resetSearch">重置</el-button>
-      <span class="result-count">共 {{ records.length }} 条目录记录</span>
-    </div>
-
-    <el-alert
-      v-if="errorMessage"
-      class="state-alert"
-      type="error"
-      show-icon
-      :closable="false"
-      :title="errorMessage"
+  <div class="catalog-page business-workspace-page art-full-height">
+    <BusinessWorkspaceHeader
+      density="compact"
+      eyebrow="MDM UNIFIED CATALOG"
+      :title="pageMeta.title"
+      :description="pageMeta.description"
+      :icon="pageMeta.icon"
+      :tags="[
+        { label: '只读目录', type: 'primary' },
+        { label: '租户隔离', type: 'success' }
+      ]"
     />
 
-    <div class="table-shell">
-      <el-table v-loading="loading" :data="records" stripe height="100%">
-        <el-table-column label="主数据类型" prop="sourceLabel" width="132">
-          <template #default="{ row }">
-            <span class="source-cell">
-              <i></i>
-              {{ row.sourceLabel }}
-            </span>
-          </template>
-        </el-table-column>
-        <el-table-column label="编码" prop="code" min-width="150" show-overflow-tooltip />
-        <el-table-column label="名称" prop="name" min-width="220" show-overflow-tooltip>
-          <template #default="{ row }"
-            ><strong>{{ row.name }}</strong></template
-          >
-        </el-table-column>
-        <el-table-column label="状态" prop="status" width="112">
-          <template #default="{ row }">
-            <el-tag :type="statusType(row.status)" effect="light" round>{{ row.status }}</el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column label="最近更新" prop="updateTime" width="178">
-          <template #default="{ row }">{{ formatDateTime(row.updateTime) }}</template>
-        </el-table-column>
-        <template #empty>
-          <el-empty :description="keyword ? '没有匹配的主数据' : '当前目录暂无数据'" />
-        </template>
-      </el-table>
-    </div>
+    <ArtSectionCard
+      class="catalog-card"
+      title="目录记录"
+      :subtitle="`统一检索${pageMeta.searchHint}，当前共 ${records.length} 条记录。`"
+      preserve-content-structure
+    >
+      <div class="catalog-toolbar">
+        <el-input
+          v-model="keyword"
+          clearable
+          class="keyword-input"
+          :placeholder="`搜索${pageMeta.searchHint}`"
+          @keyup.enter="loadRecords"
+          @clear="loadRecords"
+        >
+          <template #prefix><ArtSvgIcon icon="ri:search-line" /></template>
+        </el-input>
+        <el-button type="primary" :loading="loading" @click="loadRecords">查询</el-button>
+        <el-button :disabled="loading" @click="resetSearch">重置</el-button>
+        <span class="result-count">共 {{ records.length }} 条目录记录</span>
+      </div>
 
-    <footer class="catalog-footer">
-      <ArtSvgIcon icon="ri:information-line" />
-      此页面用于跨系统查询与治理核对；主数据维护请在对应来源业务系统中完成。
-    </footer>
+      <el-alert
+        v-if="errorMessage"
+        class="state-alert"
+        type="error"
+        show-icon
+        :closable="false"
+        :title="errorMessage"
+      />
+
+      <div class="table-shell">
+        <el-table v-loading="loading" :data="records" stripe height="100%">
+          <el-table-column label="主数据类型" prop="sourceLabel" width="132">
+            <template #default="{ row }">
+              <span class="source-cell">
+                <i></i>
+                {{ row.sourceLabel }}
+              </span>
+            </template>
+          </el-table-column>
+          <el-table-column label="编码" prop="code" min-width="150" show-overflow-tooltip />
+          <el-table-column label="名称" prop="name" min-width="220" show-overflow-tooltip>
+            <template #default="{ row }"
+              ><strong>{{ row.name }}</strong></template
+            >
+          </el-table-column>
+          <el-table-column label="状态" prop="status" width="112">
+            <template #default="{ row }">
+              <el-tag :type="statusType(row.status)" effect="light" round>{{ row.status }}</el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column label="最近更新" prop="updateTime" width="178">
+            <template #default="{ row }">{{ formatDateTime(row.updateTime) }}</template>
+          </el-table-column>
+          <template #empty>
+            <el-empty :description="keyword ? '没有匹配的主数据' : '当前目录暂无数据'" />
+          </template>
+        </el-table>
+      </div>
+
+      <footer class="catalog-footer">
+        <ArtSvgIcon icon="ri:information-line" />
+        此页面用于跨系统查询与治理核对；主数据维护请在对应来源业务系统中完成。
+      </footer>
+    </ArtSectionCard>
   </div>
 </template>
 
 <script setup lang="ts">
   import { computed, onMounted, ref, watch } from 'vue'
   import { useRoute } from 'vue-router'
+  import BusinessWorkspaceHeader from '@/components/business/business-workspace-header/index.vue'
+  import ArtSectionCard from '@/components/core/surfaces/art-section-card/index.vue'
+  import ArtSvgIcon from '@/components/core/base/art-svg-icon/index.vue'
   import { fetchMdmCatalog, type MdmCatalogRecord, type MdmCatalogScope } from '@mdm/api'
 
   interface CatalogPageMeta {
@@ -194,50 +207,15 @@
     display: flex;
     flex-direction: column;
     min-height: 0;
-    padding: 24px;
     overflow: hidden;
-    background: var(--art-bg-color, #f5f7fa);
   }
 
-  .catalog-heading {
+  .catalog-card {
     display: flex;
-    gap: 14px;
-    align-items: center;
-    margin-bottom: 18px;
-
-    h1 {
-      margin: 3px 0 5px;
-      color: var(--art-text-gray-900, #172033);
-      font-size: 26px;
-      line-height: 1.2;
-    }
-
-    p,
-    span {
-      margin: 0;
-      color: var(--art-text-gray-600, #667085);
-      font-size: 13px;
-    }
-
-    span {
-      color: var(--el-color-primary);
-      font-size: 11px;
-      font-weight: 700;
-      letter-spacing: 0.12em;
-    }
-  }
-
-  .heading-icon {
-    display: grid;
-    flex: 0 0 48px;
-    width: 48px;
-    height: 48px;
-    color: var(--el-color-primary);
-    font-size: 25px;
-    background: var(--el-color-primary-light-9);
-    border: 1px solid var(--el-color-primary-light-7);
-    border-radius: 12px;
-    place-items: center;
+    flex: 1;
+    flex-direction: column;
+    min-height: 0;
+    padding: 18px;
   }
 
   .catalog-toolbar {
@@ -247,7 +225,7 @@
     padding: 14px;
     background: var(--el-bg-color);
     border: 1px solid var(--el-border-color-lighter);
-    border-radius: 10px 10px 0 0;
+    border-radius: var(--el-border-radius-base) var(--el-border-radius-base) 0 0;
   }
 
   .keyword-input {
@@ -256,8 +234,8 @@
 
   .result-count {
     margin-left: auto;
-    color: var(--art-text-gray-600, #667085);
     font-size: 13px;
+    color: var(--art-text-gray-600, #667085);
   }
 
   .state-alert {
@@ -272,7 +250,7 @@
     background: var(--el-bg-color);
     border: 1px solid var(--el-border-color-lighter);
     border-top: 0;
-    border-radius: 0 0 10px 10px;
+    border-radius: 0 0 var(--el-border-radius-base) var(--el-border-radius-base);
   }
 
   .source-cell {
@@ -293,13 +271,12 @@
     gap: 8px;
     align-items: center;
     margin-top: 12px;
-    color: var(--art-text-gray-600, #667085);
     font-size: 12px;
+    color: var(--art-text-gray-600, #667085);
   }
 
-  @media (max-width: 700px) {
+  @media (width <= 700px) {
     .catalog-page {
-      padding: 16px;
       overflow: auto;
     }
 
