@@ -25,43 +25,35 @@
         </div>
       </section>
 
-      <section class="mdm-catalog-detail__section">
-        <header>
-          <span><ArtSvgIcon icon="ri:fingerprint-line" /></span>
-          <div>
-            <h3>主档身份</h3>
-            <p>用于跨业务系统识别与核对的稳定信息。</p>
-          </div>
-        </header>
+      <ArtSectionCard
+        title="主档身份"
+        subtitle="用于跨业务系统识别与核对的稳定信息。"
+        preserve-content-structure
+      >
         <ArtDescriptions :data="record" :items="identityItems" :columns="2" :tablet-columns="2" />
-      </section>
+      </ArtSectionCard>
 
-      <section class="mdm-catalog-detail__section">
-        <header>
-          <span><ArtSvgIcon icon="ri:git-branch-line" /></span>
-          <div>
-            <h3>治理与来源</h3>
-            <p>本页展示治理投影，不改变来源系统中的业务责任。</p>
-          </div>
-        </header>
+      <ArtSectionCard
+        title="治理与来源"
+        subtitle="业务资料由来源系统维护，本页供查询与核对。"
+        preserve-content-structure
+      >
         <ArtDescriptions :data="record" :items="governanceItems" :columns="2" :tablet-columns="2" />
-      </section>
+      </ArtSectionCard>
 
-      <section v-if="visibleAttributes.length" class="mdm-catalog-detail__section">
-        <header>
-          <span><ArtSvgIcon icon="ri:list-check-3" /></span>
-          <div>
-            <h3>业务属性</h3>
-            <p>经过安全投影后可供治理核对的非敏感字段。</p>
-          </div>
-        </header>
+      <ArtSectionCard
+        v-if="visibleAttributes.length"
+        title="业务属性"
+        subtitle="与当前主档相关的业务信息。"
+        preserve-content-structure
+      >
         <dl class="mdm-catalog-detail__attributes">
           <div v-for="attribute in visibleAttributes" :key="attribute.label">
             <dt>{{ attribute.label }}</dt>
             <dd>{{ formatAttribute(attribute.value) }}</dd>
           </div>
         </dl>
-      </section>
+      </ArtSectionCard>
 
       <section
         class="mdm-catalog-detail__quality"
@@ -85,6 +77,8 @@
 </template>
 
 <script setup lang="ts">
+  import { computed, ref } from 'vue'
+  import ArtSectionCard from '@/components/core/surfaces/art-section-card/index.vue'
   import type { ArtDescriptionItem } from '@/components/core/base/art-descriptions/types'
   import ArtDescriptions from '@/components/core/base/art-descriptions/index.vue'
   import ArtDrawer from '@/components/core/drawers/art-drawer/index.vue'
@@ -120,7 +114,7 @@
     {
       key: 'status',
       label: '生命周期状态',
-      value: (data) => (data.isActive ? '有效' : '停用')
+      value: (data: MdmCatalogRecord) => (data.isActive ? '有效' : '停用')
     },
     { key: 'subtitle', label: '业务摘要', field: 'subtitle' }
   ]
@@ -130,17 +124,17 @@
     {
       key: 'sourceApp',
       label: '权威来源',
-      value: (data) => sourceAppLabel(data.sourceApp)
+      value: (data: MdmCatalogRecord) => sourceAppLabel(data.sourceApp)
     },
     {
       key: 'createTime',
       label: '创建时间',
-      value: (data) => formatDateTime(data.createTime)
+      value: (data: MdmCatalogRecord) => formatDateTime(data.createTime)
     },
     {
       key: 'updateTime',
       label: '最近更新',
-      value: (data) => formatDateTime(data.updateTime)
+      value: (data: MdmCatalogRecord) => formatDateTime(data.updateTime)
     }
   ]
 
@@ -182,7 +176,6 @@
     &__hero,
     &__identity,
     &__badges,
-    &__section > header,
     &__quality {
       display: flex;
       align-items: center;
@@ -216,6 +209,7 @@
         margin: 3px 0;
         font-size: 21px;
         color: var(--el-text-color-primary);
+        overflow-wrap: anywhere;
       }
 
       p {
@@ -227,7 +221,6 @@
     }
 
     &__source-icon,
-    &__section > header > span,
     &__quality > span {
       display: grid;
       flex: 0 0 auto;
@@ -247,31 +240,6 @@
       flex-wrap: wrap;
       gap: 8px;
       justify-content: flex-end;
-    }
-
-    &__section {
-      > header {
-        gap: 10px;
-        margin-bottom: 10px;
-      }
-
-      > header > span {
-        width: 34px;
-        height: 34px;
-        border-radius: 9px;
-      }
-
-      h3 {
-        margin: 0;
-        font-size: 15px;
-        color: var(--el-text-color-primary);
-      }
-
-      p {
-        margin: 2px 0 0;
-        font-size: 12px;
-        color: var(--el-text-color-secondary);
-      }
     }
 
     &__attributes {
@@ -347,12 +315,12 @@
   @media (width <= 700px) {
     .mdm-catalog-detail {
       &__hero {
+        flex-direction: column;
         align-items: flex-start;
       }
 
       &__badges {
-        flex-direction: column;
-        align-items: flex-end;
+        justify-content: flex-start;
       }
 
       &__attributes {

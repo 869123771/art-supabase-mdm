@@ -1,61 +1,63 @@
 <template>
-  <div class="production-workspace personnel-work-center business-workspace-page art-full-height">
-    <ProductionWorkspaceHeader
-      title="人员/工作中心配置"
-      description="为现场作业员维护常用工作中心清单，减少查找路径，让高频作业入口更快抵达。"
-      icon="ri:user-settings-line"
-      capability="现场作业偏好"
-      :metrics="workspaceMetrics"
-    >
-      <template #actions><BusinessTableWorkspaceActions :table="tableRef" /></template>
-    </ProductionWorkspaceHeader>
-
-    <div class="production-workspace__body">
-      <ArtWorkspaceSplitter
-        primary-size="256px"
-        primary-min="220px"
-        primary-max="380px"
-        :breakpoint="800"
-        stacked-primary-size="240px"
+  <ArtPermissionGuard permission="MdmPersonnelWorkCenter:View" resource-name="人员/工作中心配置">
+    <div class="production-workspace personnel-work-center business-workspace-page art-full-height">
+      <ProductionWorkspaceHeader
+        title="人员/工作中心配置"
+        description="为现场作业员维护常用工作中心清单，减少查找路径，让高频作业入口更快抵达。"
+        icon="ri:user-settings-line"
+        capability="现场作业偏好"
+        :metrics="workspaceMetrics"
       >
-        <template #primary>
-          <ProductionTree
-            class="production-workspace__tree"
-            :departments="scope.departments"
-            :selected="scope.selected"
-            :loading="scope.loading"
-            :error="scope.error"
-            @select="selectDepartment"
-            @refresh="loadDepartments"
+        <template #actions><BusinessTableWorkspaceActions :table="tableRef" /></template>
+      </ProductionWorkspaceHeader>
+
+      <div class="production-workspace__body">
+        <ArtWorkspaceSplitter
+          primary-size="256px"
+          primary-min="220px"
+          primary-max="380px"
+          :breakpoint="800"
+          stacked-primary-size="240px"
+        >
+          <template #primary>
+            <ProductionTree
+              class="production-workspace__tree"
+              :departments="scope.departments"
+              :selected="scope.selected"
+              :loading="scope.loading"
+              :error="scope.error"
+              @select="selectDepartment"
+              @refresh="loadDepartments"
+            />
+          </template>
+
+          <ArtTableQuery
+            ref="tableRef"
+            v-model="table.search"
+            :api-fn="fetchRows"
+            :search-items="searchItems"
+            :columns-factory="columns"
+            :header-actions="headerActions"
+            header-actions-placement="workspace"
+            :selection-actions="selectionActions"
+            :on-success="onSuccess"
+            :enable-cache="false"
+            focusable
+            focus-scope-selector=".production-workspace__body"
+            :table-props="{
+              rowKey: 'id',
+              tableLayout: 'fixed',
+              emptyText: '暂无匹配人员',
+              emptyDescription: '请调整员工关键词或左侧部门 / 产线范围。'
+            }"
+            :search-bar-props="{ span: 8, labelWidth: 72, showExpand: false }"
           />
-        </template>
+        </ArtWorkspaceSplitter>
+      </div>
 
-        <ArtTableQuery
-          ref="tableRef"
-          v-model="table.search"
-          :api-fn="fetchRows"
-          :search-items="searchItems"
-          :columns-factory="columns"
-          :header-actions="headerActions"
-          header-actions-placement="workspace"
-          :selection-actions="selectionActions"
-          :on-success="onSuccess"
-          :enable-cache="false"
-          focusable
-          focus-scope-selector=".production-workspace__body"
-          :table-props="{
-            rowKey: 'id',
-            tableLayout: 'fixed',
-            emptyText: '暂无匹配人员',
-            emptyDescription: '请调整员工关键词或左侧部门 / 产线范围。'
-          }"
-          :search-bar-props="{ span: 8, labelWidth: 72, showExpand: false }"
-        />
-      </ArtWorkspaceSplitter>
+      <ConfigurationDialog ref="configurationDialog" @success="refresh" />
     </div>
-
-    <ConfigurationDialog ref="configurationDialog" @success="refresh" />
-  </div>
+  </ArtPermissionGuard>
 </template>
 
 <script setup lang="tsx">
@@ -71,6 +73,7 @@
   } from '@/components/core/tables/art-table-query/index.vue'
   import type { BusinessWorkspaceMetric } from '@/components/business/business-workspace-header/index.vue'
   import ArtButtonTable from '@/components/core/forms/art-button-table/index.vue'
+  import ArtPermissionGuard from '@/components/core/feedback/art-permission-guard/index.vue'
   import ArtSvgIcon from '@/components/core/base/art-svg-icon/index.vue'
   import { useUserStore } from '@/store/modules/user'
   import { useAuth } from '@/hooks/core/useAuth'

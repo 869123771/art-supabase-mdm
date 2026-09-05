@@ -1,5 +1,4 @@
 export {
-  fetchMdmCatalog,
   fetchMdmCatalogPage,
   fetchMdmOverview,
   mdmCatalogSourceDefinitions,

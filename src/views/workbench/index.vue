@@ -1,113 +1,126 @@
 <template>
-  <div class="mdm-workbench business-workspace-page art-full-height">
-    <BusinessWorkspaceHeader
-      eyebrow="MASTER DATA GOVERNANCE"
-      title="主数据治理工作台"
-      description="把跨业务系统的标准主档汇聚为统一目录，提供一致身份、覆盖洞察与安全的只读查询。"
-      icon="ri:database-2-line"
-      :tags="[
-        { label: '统一目录', type: 'primary' },
-        { label: '租户隔离', type: 'success' },
-        { label: '只读治理', type: 'info' }
-      ]"
-      :metrics="metrics"
-      refreshable
-      refresh-label="刷新主数据概览"
-      :refresh-loading="loading"
-      @refresh="loadOverview"
-    />
+  <div class="mdm-workbench art-full-height">
+    <ElScrollbar class="mdm-workbench__scrollbar">
+      <div class="mdm-workbench__body business-workspace-page">
+        <BusinessWorkspaceHeader
+          eyebrow="MASTER DATA GOVERNANCE"
+          title="治理总览"
+          description="查看各业务域的主档规模与资料完整度，快速定位需要补充的数据。"
+          icon="ri:database-2-line"
+          :tags="[
+            { label: '统一目录', type: 'primary' },
+            { label: '租户隔离', type: 'success' },
+            { label: '只读治理', type: 'info' }
+          ]"
+          :metrics="metrics"
+          refreshable
+          refresh-label="刷新主数据概览"
+          :refresh-loading="loading"
+          @refresh="loadOverview"
+        />
 
-    <ElAlert v-if="errorMessage" type="error" show-icon :closable="false" :title="errorMessage" />
-
-    <div class="mdm-workbench__content">
-      <ArtSectionCard
-        class="mdm-workbench__directory"
-        title="治理域目录"
-        subtitle="按业务语义进入统一主档；记录维护仍在数据来源系统完成。"
-        :loading="loading && !domains.length"
-        :empty="!loading && !domains.length && !errorMessage"
-        empty-title="当前租户暂无可查看的主数据"
-        preserve-content-structure
-      >
-        <template #actions
-          ><ElTag effect="plain" round>{{ domains.length }} 个治理域</ElTag></template
-        >
-        <div class="domain-list">
-          <button
-            v-for="(domain, index) in domains"
-            :key="domain.key"
-            type="button"
-            @click="openDomain(domain.key)"
+        <div class="mdm-workbench__content">
+          <ArtSectionCard
+            class="mdm-workbench__directory"
+            title="治理域目录"
+            subtitle="按业务语义进入统一主档；记录维护仍在数据来源系统完成。"
+            :loading="loading"
+            :error="errorMessage"
+            error-title="主数据概览加载失败"
+            retryable
+            @retry="loadOverview"
+            :empty="!loading && !domains.length && !errorMessage"
+            empty-title="当前租户暂无可查看的主数据"
+            preserve-content-structure
           >
-            <span class="domain-list__index">{{ String(index + 1).padStart(2, '0') }}</span>
-            <span class="domain-list__icon"><ArtSvgIcon :icon="domain.icon" /></span>
-            <span class="domain-list__copy"
-              ><strong>{{ domain.label }}</strong
-              ><small>{{ domain.description }}</small></span
+            <template #actions
+              ><ElTag effect="plain" round>{{ domains.length }} 个治理域</ElTag></template
             >
-            <span class="domain-list__count"
-              ><strong>{{ domain.recordCount.toLocaleString() }}</strong
-              ><small>{{ domain.sourceCount }} 类主档</small></span
+            <div class="domain-list">
+              <button
+                v-for="(domain, index) in domains"
+                :key="domain.key"
+                type="button"
+                @click="openDomain(domain.key)"
+              >
+                <span class="domain-list__index">{{ String(index + 1).padStart(2, '0') }}</span>
+                <span class="domain-list__icon"><ArtSvgIcon :icon="domain.icon" /></span>
+                <span class="domain-list__copy"
+                  ><strong>{{ domain.label }}</strong
+                  ><small>{{ domain.description }}</small></span
+                >
+                <span class="domain-list__count"
+                  ><strong>{{ domain.recordCount.toLocaleString() }}</strong
+                  ><small>{{ domain.sourceCount }} 类主档</small></span
+                >
+                <ArtSvgIcon class="domain-list__arrow" icon="ri:arrow-right-line" />
+              </button>
+            </div>
+          </ArtSectionCard>
+
+          <div class="mdm-workbench__aside">
+            <ArtSectionCard
+              title="治理健康度"
+              subtitle="完整度达 90 分的记录占当前可见记录的比例。"
+              :loading="loading"
+              :error="errorMessage"
+              retryable
+              :empty="!totalRecords"
+              empty-title="暂无可评估的主数据"
+              @retry="loadOverview"
+              preserve-content-structure
             >
-            <ArtSvgIcon class="domain-list__arrow" icon="ri:arrow-right-line" />
-          </button>
+              <div class="coverage-ring" :style="{ '--coverage': `${coveragePercent}%` }">
+                <div
+                  ><strong>{{ coveragePercent }}%</strong><small>资料完整率</small></div
+                >
+              </div>
+              <div class="coverage-legend">
+                <div
+                  ><span></span><strong>{{ totalRecords - attentionCount }} 条</strong
+                  ><small>资料完整</small></div
+                >
+                <div
+                  ><span></span><strong>{{ attentionCount }} 条</strong><small>待完善</small></div
+                >
+              </div>
+            </ArtSectionCard>
+
+            <ArtSectionCard
+              title="治理边界"
+              subtitle="查询、维护与权限各有明确入口。"
+              preserve-content-structure
+            >
+              <div class="governance-rules">
+                <article
+                  ><span><ArtSvgIcon icon="ri:search-eye-line" /></span
+                  ><div
+                    ><strong>MDM 统一查询</strong><p>汇聚标准编码、名称、状态与更新时间。</p></div
+                  ></article
+                >
+                <article
+                  ><span><ArtSvgIcon icon="ri:edit-2-line" /></span
+                  ><div
+                    ><strong>来源系统维护</strong><p>新增、修改、停用由业务系统承担。</p></div
+                  ></article
+                >
+                <article
+                  ><span><ArtSvgIcon icon="ri:shield-check-line" /></span
+                  ><div
+                    ><strong>数据按权限可见</strong><p>仅展示当前账号可访问的主档资料。</p></div
+                  ></article
+                >
+              </div>
+            </ArtSectionCard>
+          </div>
         </div>
-      </ArtSectionCard>
-
-      <div class="mdm-workbench__aside">
-        <ArtSectionCard
-          title="治理健康度"
-          subtitle="当前目录的接入覆盖。"
-          preserve-content-structure
-        >
-          <div class="coverage-ring" :style="{ '--coverage': `${coveragePercent}%` }">
-            <div
-              ><strong>{{ coveragePercent }}%</strong><small>目录覆盖</small></div
-            >
-          </div>
-          <div class="coverage-legend">
-            <div
-              ><span></span><strong>{{ totalSources }} 类</strong><small>已纳入标准主档</small></div
-            >
-            <div
-              ><span></span><strong>{{ domains.length }} 个</strong><small>已定义治理域</small></div
-            >
-          </div>
-        </ArtSectionCard>
-
-        <ArtSectionCard
-          title="治理边界"
-          subtitle="单一事实来源的职责约定。"
-          preserve-content-structure
-        >
-          <div class="governance-rules">
-            <article
-              ><span><ArtSvgIcon icon="ri:search-eye-line" /></span
-              ><div
-                ><strong>MDM 统一查询</strong><p>汇聚标准编码、名称、状态与更新时间。</p></div
-              ></article
-            >
-            <article
-              ><span><ArtSvgIcon icon="ri:edit-2-line" /></span
-              ><div
-                ><strong>来源系统维护</strong><p>新增、修改、停用由业务系统承担。</p></div
-              ></article
-            >
-            <article
-              ><span><ArtSvgIcon icon="ri:shield-check-line" /></span
-              ><div
-                ><strong>平台安全约束</strong><p>租户隔离与必要字段最小化输出。</p></div
-              ></article
-            >
-          </div>
-        </ArtSectionCard>
       </div>
-    </div>
+    </ElScrollbar>
   </div>
 </template>
 
 <script setup lang="ts">
-  import { computed, onMounted, ref } from 'vue'
+  import { computed, onMounted, onBeforeUnmount, ref } from 'vue'
   import { useRouter } from 'vue-router'
   import BusinessWorkspaceHeader, {
     type BusinessWorkspaceMetric
@@ -115,15 +128,17 @@
   import ArtSectionCard from '@/components/core/surfaces/art-section-card/index.vue'
   import ArtSvgIcon from '@/components/core/base/art-svg-icon/index.vue'
   import { fetchMdmOverview, mdmDomainDefinitions, type MdmDomainSummary } from '@mdm/api'
+  import { getFriendlySupabaseErrorMessage } from '@/utils/supabase/error'
 
   defineOptions({ name: 'MdmWorkbench' })
 
   const router = useRouter()
   const domains = ref<MdmDomainSummary[]>(
-    mdmDomainDefinitions.map((domain) => ({ ...domain, recordCount: 0 }))
+    mdmDomainDefinitions.map((domain) => ({ ...domain, recordCount: 0, attentionCount: 0 }))
   )
   const loading = ref(false)
   const errorMessage = ref('')
+  let requestController: AbortController | undefined
 
   const totalRecords = computed(() =>
     domains.value.reduce((total, domain) => total + domain.recordCount, 0)
@@ -131,12 +146,19 @@
   const totalSources = computed(() =>
     domains.value.reduce((total, domain) => total + domain.sourceCount, 0)
   )
-  const coveragePercent = computed(() => Math.min(100, Math.round((totalSources.value / 14) * 100)))
+  const attentionCount = computed(() =>
+    domains.value.reduce((total, domain) => total + domain.attentionCount, 0)
+  )
+  const coveragePercent = computed(() =>
+    totalRecords.value
+      ? Math.round(((totalRecords.value - attentionCount.value) / totalRecords.value) * 100)
+      : 0
+  )
   const metrics = computed<BusinessWorkspaceMetric[]>(() => [
     {
       label: '主数据记录',
-      value: totalRecords.value.toLocaleString(),
-      description: '当前租户可见记录',
+      value: errorMessage.value ? '—' : totalRecords.value.toLocaleString(),
+      description: errorMessage.value ? '概览加载失败，请重试' : '当前租户可见记录',
       icon: 'ri:file-list-3-line',
       tone: 'primary',
       loading: loading.value
@@ -175,12 +197,17 @@
   }
 
   async function loadOverview(): Promise<void> {
+    if (loading.value) return
+    requestController = new AbortController()
+    const { signal } = requestController
     loading.value = true
     errorMessage.value = ''
     try {
-      domains.value = await fetchMdmOverview()
+      const result = await fetchMdmOverview({ signal })
+      if (!signal.aborted) domains.value = result
     } catch (error) {
-      errorMessage.value = error instanceof Error ? error.message : '主数据概览加载失败'
+      if (!signal.aborted)
+        errorMessage.value = getFriendlySupabaseErrorMessage(error, '主数据概览加载失败，请重试')
     } finally {
       loading.value = false
     }
@@ -191,33 +218,38 @@
   }
 
   onMounted(() => void loadOverview())
+  onBeforeUnmount(() => requestController?.abort())
 </script>
 
 <style scoped lang="scss">
   .mdm-workbench {
-    overflow: auto;
+    display: flex;
+    flex-direction: column;
+    height: var(--art-full-height);
+    min-height: 0;
+    overflow: hidden;
+
+    &__scrollbar {
+      flex: 1;
+      min-height: 0;
+    }
 
     &__content {
       display: grid;
-      flex: 1;
       grid-template-columns: minmax(0, 1.7fr) minmax(310px, 0.8fr);
-      gap: 12px;
+      gap: 16px;
+      align-items: start;
       min-height: 0;
     }
 
     &__directory {
-      padding: 18px;
+      min-width: 0;
     }
 
     &__aside {
       display: grid;
-      grid-template-rows: auto 1fr;
-      gap: 12px;
+      gap: 16px;
       min-width: 0;
-    }
-
-    &__aside > :deep(.art-section-card) {
-      padding: 18px;
     }
   }
 
@@ -269,8 +301,8 @@
       height: 38px;
       font-size: 18px;
       color: var(--el-color-primary);
-      background: var(--el-color-primary-light-9);
-      border-radius: 10px;
+      background: color-mix(in srgb, var(--theme-color) 10%, var(--el-bg-color));
+      border-radius: var(--el-border-radius-base);
     }
 
     &__copy,
@@ -285,11 +317,10 @@
     }
 
     &__copy small {
-      overflow: hidden;
-      text-overflow: ellipsis;
-      font-size: 11px;
+      font-size: 12px;
+      line-height: 1.6;
       color: var(--el-text-color-secondary);
-      white-space: nowrap;
+      overflow-wrap: anywhere;
     }
 
     &__count {
@@ -313,6 +344,7 @@
   }
 
   .coverage-ring {
+    position: relative;
     display: grid;
     place-items: center;
     width: 126px;
@@ -364,6 +396,10 @@
       border-left: 1px solid var(--el-border-color-lighter);
     }
 
+    div:last-child span {
+      background: var(--el-color-warning);
+    }
+
     span {
       position: absolute;
       top: 16px;
@@ -405,8 +441,8 @@
       width: 32px;
       height: 32px;
       color: var(--el-color-primary);
-      background: var(--el-color-primary-light-9);
-      border-radius: 9px;
+      background: color-mix(in srgb, var(--theme-color) 10%, var(--el-bg-color));
+      border-radius: var(--el-border-radius-base);
     }
 
     strong {
@@ -438,7 +474,9 @@
     }
 
     .domain-list button {
-      grid-template-columns: auto auto minmax(0, 1fr) auto;
+      grid-template-columns: auto minmax(0, 1fr) auto;
+      gap: 10px;
+      padding: 12px;
     }
 
     .domain-list__index {
@@ -446,7 +484,13 @@
     }
 
     .domain-list__count {
-      display: none;
+      grid-column: 2;
+      justify-items: start;
+    }
+
+    .domain-list__arrow {
+      grid-row: 1 / 3;
+      grid-column: 3;
     }
   }
 </style>

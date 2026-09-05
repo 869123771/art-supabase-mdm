@@ -2,52 +2,67 @@
   <div class="mdm-catalog-page business-workspace-page art-full-height">
     <BusinessWorkspaceHeader
       class="mdm-catalog-page__overview"
-      density="compact"
       eyebrow="MASTER DATA GOVERNANCE"
       :title="pageMeta.title"
       :description="pageMeta.description"
       :icon="pageMeta.icon"
       :tags="[
         { label: '统一治理视图', type: 'primary', effect: 'plain' },
-        { label: '租户安全隔离', type: 'success', effect: 'light' }
+        { label: '按来源分类', type: 'success', effect: 'light' }
       ]"
       :metrics="workspaceMetrics"
-    />
+    >
+      <template #actions>
+        <BusinessTableWorkspaceActions :table="tableQueryRef" />
+      </template>
+    </BusinessWorkspaceHeader>
 
-    <div class="mdm-catalog-page__notice" role="note">
-      <span aria-hidden="true"><ArtSvgIcon icon="ri:information-line" /></span>
-      <p>
-        <strong>权威来源约定</strong>
-        当前集中提供查询、质量识别与来源追溯；业务字段仍在对应来源系统维护，避免形成重复主档。
-      </p>
+    <div class="mdm-catalog-page__workspace">
+      <ArtWorkspaceSplitter
+        primary-size="252px"
+        primary-min="220px"
+        primary-max="360px"
+        :breakpoint="800"
+        stacked-primary-size="220px"
+      >
+        <template #primary
+          ><CatalogSourceNavigator
+            :sources="mdmCatalogSourceDefinitions[pageMeta.scope]"
+            :selected="searchQuery.sourceType"
+            @select="selectSource"
+        /></template>
+        <ArtTableQuery
+          ref="tableQueryRef"
+          v-model="searchQuery"
+          :search-items="searchItems"
+          :api-fn="fetchTableData"
+          :columns-factory="columnsFactory"
+          :search-bar-props="{ span: 8, labelWidth: 78, isExpand: true, showExpand: false }"
+          :table-props="tableProps"
+          :on-success="handleTableSuccess"
+          :enable-cache="false"
+          :on-error="() => (summaryUnavailable = true)"
+          focusable
+          focus-scope-selector=".mdm-catalog-page__workspace"
+        />
+      </ArtWorkspaceSplitter>
     </div>
-
-    <ArtTableQuery
-      ref="tableQueryRef"
-      v-model="searchQuery"
-      :search-items="searchItems"
-      :api-fn="fetchTableData"
-      :columns-factory="columnsFactory"
-      :search-bar-props="{ span: 6, labelWidth: 76 }"
-      :table-props="tableProps"
-      :on-success="handleTableSuccess"
-      :on-cache-hit="handleTableSuccess"
-      show-table-toolbar
-      focusable
-    />
 
     <CatalogDetailDrawer ref="detailDrawerRef" />
   </div>
 </template>
 
 <script setup lang="tsx">
-  import type { ComputedRef } from 'vue'
+  import { computed, ref, type ComputedRef } from 'vue'
+  import { useRoute } from 'vue-router'
+  import CatalogSourceNavigator from './modules/catalog-source-navigator.vue'
   import { ElProgress, ElTag } from 'element-plus'
   import ArtButtonTable from '@/components/core/forms/art-button-table/index.vue'
   import ArtSvgIcon from '@/components/core/base/art-svg-icon/index.vue'
   import BusinessWorkspaceHeader, {
     type BusinessWorkspaceMetric
   } from '@/components/business/business-workspace-header/index.vue'
+  import BusinessTableWorkspaceActions from '@/components/business/business-table-workspace-actions/index.vue'
   import type { SearchFormItem } from '@/components/core/forms/art-search-bar/index.vue'
   import type {
     ArtTableQueryExpose,
@@ -103,6 +118,8 @@
   })
   const summary = ref<MdmCatalogSummary>(emptySummary())
   const resultTotal = ref(0)
+  const summaryLoading = ref(false)
+  const summaryUnavailable = ref(false)
 
   const routeCatalog: Record<string, CatalogPageMeta> = {
     'organization-directory': {
@@ -122,7 +139,7 @@
     'employee-directory': {
       scope: 'employee',
       title: '员工身份主数据',
-      description: '以最小必要字段核对员工编号、姓名与任职状态。',
+      description: '以最小必要字段核对员工身份、任职归属与生效期间。',
       searchHint: '员工编号或姓名',
       icon: 'ri:contacts-book-3-line'
     },
@@ -136,8 +153,8 @@
     'logistics-directory': {
       scope: 'logistics',
       title: '物流基础主数据',
-      description: '集中治理站点、货物与司机等运输基础身份。',
-      searchHint: '站点、货物或司机',
+      description: '集中治理站点、客户地址、货物与司机等运输基础身份。',
+      searchHint: '站点、客户地址、货物或司机',
       icon: 'ri:route-line'
     },
     'vehicle-directory': {
@@ -163,9 +180,10 @@
     }
   }
 
-  const pageKey = computed(() => String(route.path.split('/').filter(Boolean).at(-1) ?? ''))
+  // The page shell caches each route path separately; retain this instance's catalog context.
+  const pageKey = String(route.path.split('/').filter(Boolean).at(-1) ?? '')
   const pageMeta = computed(
-    () => routeCatalog[pageKey.value] ?? routeCatalog['business-partner-directory']
+    () => routeCatalog[pageKey] ?? routeCatalog['business-partner-directory']
   )
 
   const searchQuery = ref<CatalogSearchParams>({ keyword: '' })
@@ -176,19 +194,6 @@
       key: 'keyword',
       type: 'input',
       props: { clearable: true, placeholder: pageMeta.value.searchHint }
-    },
-    {
-      label: '主档类型',
-      key: 'sourceType',
-      type: 'select',
-      props: {
-        clearable: true,
-        placeholder: '全部类型',
-        options: mdmCatalogSourceDefinitions[pageMeta.value.scope].map((source) => ({
-          label: source.label,
-          value: source.type
-        }))
-      }
     },
     {
       label: '生命周期',
@@ -204,7 +209,7 @@
       }
     },
     {
-      label: '资料质量度',
+      label: '资料质量',
       key: 'quality',
       type: 'select',
       props: {
@@ -218,41 +223,70 @@
     }
   ])
 
+  async function selectSource(sourceType: string | undefined) {
+    searchQuery.value.sourceType = sourceType
+    await tableQueryRef.value?.refreshContext()
+  }
+
   const workspaceMetrics = computed<BusinessWorkspaceMetric[]>(() => [
     {
       label: '当前结果',
-      value: resultTotal.value,
-      description: '随查询条件实时更新',
+      value: summaryUnavailable.value ? '—' : resultTotal.value,
+      loading: summaryLoading.value,
+      description: summaryUnavailable.value ? '查询失败，请重试' : '随查询条件实时更新',
       icon: 'ri:database-2-line'
     },
     {
       label: '有效主档',
-      value: summary.value.active,
-      description: `本目录另有 ${summary.value.inactive} 条停用`,
+      value: summaryUnavailable.value ? '—' : summary.value.active,
+      loading: summaryLoading.value,
+      description: summaryUnavailable.value
+        ? '统计暂不可用'
+        : `本目录另有 ${summary.value.inactive} 条停用`,
       icon: 'ri:checkbox-circle-line',
       tone: 'success'
     },
     {
       label: '平均完整度',
-      value: `${summary.value.averageScore}%`,
-      description: `${summary.value.attention} 条资料待完善`,
+      value: summaryUnavailable.value ? '—' : `${summary.value.averageScore}%`,
+      loading: summaryLoading.value,
+      description: summaryUnavailable.value
+        ? '统计暂不可用'
+        : `${summary.value.attention} 条资料待完善`,
       icon: 'ri:shield-check-line',
       tone: summary.value.attention ? 'warning' : 'success'
     }
   ])
 
   const tableProps: ArtTableQueryTableProps = {
-    rowKey: 'id',
+    rowKey: (row: MdmCatalogRecord) => `${row.sourceType}:${row.id}`,
     tableLayout: 'fixed',
     emptyText: '暂无符合条件的主数据',
     emptyDescription: '可调整关键字、主档类型、生命周期或资料完整度后重新查询。'
   }
 
-  const fetchTableData = async (params: TableParams): Promise<MdmCatalogPageResponse> => {
-    const result = await fetchMdmCatalogPage(pageMeta.value.scope, params)
-    summary.value = result.summary
-    resultTotal.value = result.total
-    return result
+  const fetchTableData = async (
+    params: TableParams,
+    options?: { signal?: AbortSignal }
+  ): Promise<MdmCatalogPageResponse> => {
+    summaryLoading.value = true
+    try {
+      const result = await fetchMdmCatalogPage(
+        pageMeta.value.scope,
+        {
+          ...params,
+          sourceType: searchQuery.value.sourceType
+        },
+        options
+      )
+      if (!options?.signal?.aborted) {
+        summary.value = result.summary
+        resultTotal.value = result.total
+      }
+      return result
+    } finally {
+      summaryLoading.value = false
+    }
   }
 
   const sourceAppLabel = (value: string): string => {
@@ -313,8 +347,8 @@
 
   const columnsFactory = (): ColumnOption<MdmCatalogRecord>[] => [
     { type: 'globalIndex', label: '序号', width: 68 },
-    { prop: 'sourceLabel', label: '主档来源', minWidth: 170, formatter: renderSource },
-    { prop: 'name', label: '主数据身份', minWidth: 260, formatter: renderIdentity },
+    { prop: 'name', label: '主数据身份', minWidth: 240, formatter: renderIdentity },
+    { prop: 'sourceLabel', label: '主档来源', minWidth: 150, formatter: renderSource },
     { prop: 'status', label: '生命周期', width: 112, formatter: renderLifecycle },
     { prop: 'qualityScore', label: '资料完整度', minWidth: 190, formatter: renderQuality },
     {
@@ -339,20 +373,10 @@
   ]
 
   const handleTableSuccess: NonNullable<ArtTableQueryProps['onSuccess']> = (_rows, response) => {
+    summaryUnavailable.value = false
     if (response.summary) summary.value = response.summary as MdmCatalogSummary
     resultTotal.value = Number(response.total ?? 0)
   }
-
-  watch(
-    () => pageMeta.value.scope,
-    async () => {
-      searchQuery.value = { keyword: '' }
-      summary.value = emptySummary()
-      resultTotal.value = 0
-      await nextTick()
-      await tableQueryRef.value?.getData()
-    }
-  )
 </script>
 
 <style scoped lang="scss">
@@ -360,35 +384,11 @@
     min-height: 0;
     overflow: hidden;
 
-    &__notice {
+    &__workspace {
       display: flex;
-      flex: 0 0 auto;
-      gap: 10px;
-      align-items: center;
-      padding: 10px 14px;
-      color: var(--el-text-color-secondary);
-      background: color-mix(in srgb, var(--theme-color) 4%, var(--el-bg-color));
-      border: 1px solid color-mix(in srgb, var(--theme-color) 15%, var(--el-border-color-lighter));
-      border-radius: 9px;
-
-      > span {
-        display: grid;
-        flex: 0 0 auto;
-        place-items: center;
-        font-size: 17px;
-        color: var(--el-color-primary);
-      }
-
-      p {
-        margin: 0;
-        font-size: 12px;
-        line-height: 1.6;
-      }
-
-      strong {
-        margin-right: 8px;
-        color: var(--el-text-color-primary);
-      }
+      flex: 1;
+      min-width: 0;
+      min-height: 0;
     }
   }
 
@@ -430,14 +430,15 @@
     height: 30px;
     color: var(--el-color-primary);
     background: color-mix(in srgb, var(--theme-color) 9%, var(--el-bg-color));
-    border-radius: 8px;
+    border-radius: var(--el-border-radius-base);
   }
 
   :deep(.mdm-identity-cell) {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-columns: minmax(0, 1fr);
     gap: 3px 12px;
     align-items: center;
+    line-height: 1.5;
 
     strong,
     span,
@@ -454,7 +455,7 @@
 
     span {
       font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
-      font-size: 11px;
+      font-size: 12px;
       color: var(--el-color-primary);
     }
 
@@ -494,17 +495,13 @@
     color: var(--el-text-color-secondary);
   }
 
-  @media (width <= 700px) {
+  @media (width <= 800px) {
     .mdm-catalog-page {
-      overflow: auto;
+      height: auto;
+      overflow: visible;
 
-      &__notice {
-        align-items: flex-start;
-      }
-
-      > :deep(.art-table-query) {
+      &__workspace {
         flex: none;
-        min-height: 620px;
       }
     }
   }

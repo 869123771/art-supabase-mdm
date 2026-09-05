@@ -82,12 +82,14 @@ export interface MdmDomainSummary {
   description: string
   icon: string
   recordCount: number
+  attentionCount: number
   sourceCount: number
 }
 
 interface MdmOverviewDomainPayload {
   key: MdmDomainSummary['key']
   recordCount: number
+  attentionCount: number
 }
 
 interface RequestOptions {
@@ -104,17 +106,21 @@ export const mdmCatalogSourceDefinitions: Record<MdmCatalogScope, MdmCatalogSour
     { type: 'job_profile', label: '职务', app: 'hr' },
     { type: 'position', label: '岗位', app: 'hr' }
   ],
-  employee: [{ type: 'employee', label: '员工', app: 'hr' }],
+  employee: [
+    { type: 'employee', label: '员工', app: 'hr' },
+    { type: 'employee_assignment', label: '员工任职', app: 'hr' }
+  ],
   partner: [
-    { type: 'business_partner', label: '往来主体', app: 'platform' },
+    { type: 'business_partner', label: '往来主体', app: 'mdm' },
     { type: 'customer', label: '客户', app: 'tms' },
     { type: 'carrier', label: '承运商', app: 'tms' },
     { type: 'supplier', label: '供应商', app: 'vms' },
     { type: 'insurance_company', label: '保险公司', app: 'vms' },
-    { type: 'external_vendor', label: '外部服务商', app: 'smis' }
+    { type: 'external_vendor', label: '外部服务商', app: 'hr' }
   ],
   logistics: [
     { type: 'station', label: '站点', app: 'tms' },
+    { type: 'customer_address', label: '客户地址', app: 'tms' },
     { type: 'cargo', label: '货物', app: 'tms' },
     { type: 'driver', label: '司机', app: 'tms' }
   ],
@@ -122,8 +128,8 @@ export const mdmCatalogSourceDefinitions: Record<MdmCatalogScope, MdmCatalogSour
   equipment: [
     { type: 'equipment_category', label: '设备分类', app: 'smis' },
     { type: 'equipment', label: '设备', app: 'smis' },
-    { type: 'part_category', label: '备件分类', app: 'smis' },
-    { type: 'part', label: '备件', app: 'smis' }
+    { type: 'part_category', label: '备件分类', app: 'vms' },
+    { type: 'part', label: '备件', app: 'vms' }
   ],
   material: [
     { type: 'material_category', label: '物料分类', app: 'smis' },
@@ -133,41 +139,45 @@ export const mdmCatalogSourceDefinitions: Record<MdmCatalogScope, MdmCatalogSour
   ]
 }
 
-export const mdmDomainDefinitions: Omit<MdmDomainSummary, 'recordCount'>[] = [
+export const mdmDomainDefinitions: Omit<MdmDomainSummary, 'recordCount' | 'attentionCount'>[] = [
   {
     key: 'organization',
     label: '组织与人员',
     description: '组织、岗位、职务与员工身份',
     icon: 'ri:organization-chart',
-    sourceCount: 6
+    sourceCount:
+      mdmCatalogSourceDefinitions.organization.length +
+      mdmCatalogSourceDefinitions.position.length +
+      mdmCatalogSourceDefinitions.employee.length
   },
   {
     key: 'partner',
     label: '往来主体',
     description: '客户、承运商、供应商等统一身份',
     icon: 'ri:building-4-line',
-    sourceCount: 6
+    sourceCount: mdmCatalogSourceDefinitions.partner.length
   },
   {
     key: 'logistics',
     label: '物流基础',
-    description: '站点、货物与司机基础资料',
+    description: '站点、客户地址、货物与司机基础资料',
     icon: 'ri:route-line',
-    sourceCount: 3
+    sourceCount: mdmCatalogSourceDefinitions.logistics.length
   },
   {
     key: 'asset',
     label: '资产设备',
     description: '车辆、设备与备件主档',
     icon: 'ri:tools-line',
-    sourceCount: 5
+    sourceCount:
+      mdmCatalogSourceDefinitions.vehicle.length + mdmCatalogSourceDefinitions.equipment.length
   },
   {
     key: 'material',
     label: '物料与场所',
     description: '物料、场所与存放位置',
     icon: 'ri:archive-stack-line',
-    sourceCount: 4
+    sourceCount: mdmCatalogSourceDefinitions.material.length
   }
 ]
 
@@ -294,32 +304,41 @@ export async function fetchMdmCatalogPage(
   }
 }
 
-export async function fetchMdmCatalog(
-  scope: MdmCatalogScope,
-  keyword = ''
-): Promise<MdmCatalogRecord[]> {
-  return (await fetchMdmCatalogPage(scope, { current: 1, size: 100, keyword })).data
-}
-
-export async function fetchMdmOverview(): Promise<MdmDomainSummary[]> {
+export async function fetchMdmOverview(options?: RequestOptions): Promise<MdmDomainSummary[]> {
+  const query = supabase.rpc('mdm_get_governance_overview_secure')
   const { data } = await responseHandle<unknown>(
-    () => supabase.rpc('mdm_get_governance_overview_secure'),
-    { breakReturn: true, showErrorMessage: true }
+    () => (options?.signal ? query.abortSignal(options.signal) : query),
+    { breakReturn: true, showErrorMessage: false }
   )
   const payload = asObject(data)
-  const overviewDomains: MdmOverviewDomainPayload[] = Array.isArray(payload.domains)
-    ? payload.domains
-        .map((value): MdmOverviewDomainPayload | null => {
-          const item = asObject(value)
-          const key = asString(item.key) as MdmDomainSummary['key']
-          if (!mdmDomainDefinitions.some((domain) => domain.key === key)) return null
-          return { key, recordCount: asNumber(item.recordCount) }
-        })
-        .filter((item): item is MdmOverviewDomainPayload => !!item)
-    : []
+  if (!Array.isArray(payload.domains)) {
+    throw new Error('主数据概览返回异常，请重试')
+  }
+  const overviewDomains = new Map<MdmDomainSummary['key'], MdmOverviewDomainPayload>()
+  for (const value of payload.domains) {
+    const item = asObject(value)
+    const definition = mdmDomainDefinitions.find((domain) => domain.key === item.key)
+    // New server domains can coexist with an older frontend during rollout.
+    if (!definition) continue
+    const { recordCount, attentionCount } = item
+    if (
+      typeof recordCount !== 'number' ||
+      !Number.isSafeInteger(recordCount) ||
+      recordCount < 0 ||
+      typeof attentionCount !== 'number' ||
+      !Number.isSafeInteger(attentionCount) ||
+      attentionCount < 0 ||
+      attentionCount > recordCount ||
+      overviewDomains.has(definition.key)
+    ) {
+      throw new Error('主数据概览统计异常，请重新加载')
+    }
+    overviewDomains.set(definition.key, { key: definition.key, recordCount, attentionCount })
+  }
 
   return mdmDomainDefinitions.map((domain) => ({
     ...domain,
-    recordCount: overviewDomains.find((item) => item.key === domain.key)?.recordCount ?? 0
+    recordCount: overviewDomains.get(domain.key)?.recordCount ?? 0,
+    attentionCount: overviewDomains.get(domain.key)?.attentionCount ?? 0
   }))
 }
