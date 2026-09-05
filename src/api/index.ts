@@ -16,3 +16,5 @@ export {
   type MdmCatalogSummary,
   type MdmDomainSummary
 } from './modules/catalog'
+export * from './modules/production'
+export * from './modules/workspaces'

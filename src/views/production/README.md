@@ -1,0 +1,17 @@
+# 生产组织、人员与工厂日历
+
+部门/产线和人员配置共用树表工作台。部门页增加组织维护区，人员操作仍校验人员页面自己的按钮权限。组织树、表单、详情和 Excel 导入导出规则集中在 `modules`；所有数据访问通过 `@mdm/api`。
+
+人员档案读取必须具有 `MdmProductionPersonnel:View`；`MdmProductionDepartment:View` 仅允许部门访问，不继承人员档案权限。共用工作台在缺少人员查看权限时不挂载人员表格、表单及操作，不发起人员查询，也不显示误导性的零人数统计。授权提示保留在部门维护区下方。数据库 RLS 同步执行该边界，工作中心继续使用独立的最小人员投影。`supabase/tests/mdm_production_personnel_read_test.sql` 验证六种生产页面查看权限及无权限场景的真实读取隔离。
+
+系统组织引用 `mdm_organization`。员工参选使用 `mdm_list_production_employees` 的租户内最小字段投影，不排除已经绑定系统账号的员工；手机号和性别沿用 HR 字段权限。选择后生成可编辑的生产身份快照，不回写花名册。花名册目前没有独立工种字段，工种在生产人员表单手动填写。
+
+工厂日历按上海日期限制只能设置明天及以后。结束时间早于开始时间表示跨午夜。休息区间按班次时间顺序填写，不可重叠、超出或占满班次。交班默认计算当前班次与下一行班次的重叠时间，最后一行衔接下一周期第一行，也允许手工指定分钟数。数据库重新计算工作、休息和自动交班分钟，避免信任浏览器的派生值。
+
+批量排班通过事务 RPC 去重、校验并覆盖；参考轮班模式只允许目标部门没有模式时执行。删除模式级联清空对应日期，修改模式立即影响引用它的日历。可视月份与近期提醒窗口分开读取，避免浏览远期月份造成数据截断。
+
+参考轮班模式要求同时具有 `MdmFactoryCalendar:View` 和 `MdmFactoryCalendar:ReferencePattern`，只允许受控复制当前租户已有模式；不能凭参考权限直接插入自定义模式。直接新增仍要求独立的 `MdmFactoryCalendar:AddPattern`。私有复制函数校验身份、权限和源/目标租户，并锁定目标部门；公开 RPC 保持原有参数。`supabase/tests/mdm_calendar_reference_permissions_test.sql` 覆盖复制、新增边界、非空目标、跨租户及不完整授权，所有测试写入回滚。
+
+日历提醒目前提供页面内覆盖缺口提示及提前天数设置，尚未连接微信公众号发送通道。
+
+验证：`tests/unit/mdm-production.test.ts` 覆盖日期、跨午夜、重叠和 JSON 边界；`supabase/tests/mdm_production_workspaces_test.sql` 在回滚事务中验证实际数据库计算、原子写入、权限和租户隔离。浏览器验证使用隔离的示例响应及已有测试会话，证据位于根目录忽略的 `.artifacts/mdm-production-workspaces`，不向业务库写入演示记录。
