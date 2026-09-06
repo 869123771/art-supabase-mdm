@@ -1,6 +1,7 @@
 import type { EmployeeIntegrationItem } from '@/api/integration/employees'
 export type ProductionTag = 'primary' | 'success' | 'warning' | 'danger' | 'info'
 export interface ProductionDepartmentInput {
+  tenantId: string
   organizationId: string | null
   parentId: string | null
   name: string
@@ -18,6 +19,7 @@ export interface ProductionDepartment extends ProductionDepartmentInput {
   tenantId: string
 }
 export interface ProductionPersonInput {
+  tenantId: string
   departmentId: string
   employeeId: string | null
   name: string

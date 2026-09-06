@@ -1,121 +1,117 @@
 <template>
-  <div class="mdm-workbench art-full-height">
-    <ElScrollbar class="mdm-workbench__scrollbar">
-      <div class="mdm-workbench__body business-workspace-page">
-        <BusinessWorkspaceHeader
-          eyebrow="MASTER DATA GOVERNANCE"
-          title="治理总览"
-          description="查看各业务域的主档规模与资料完整度，快速定位需要补充的数据。"
-          icon="ri:database-2-line"
-          :tags="[
-            { label: '统一目录', type: 'primary' },
-            { label: '租户隔离', type: 'success' },
-            { label: '只读治理', type: 'info' }
-          ]"
-          :metrics="metrics"
-          refreshable
-          refresh-label="刷新主数据概览"
-          :refresh-loading="loading"
-          @refresh="loadOverview"
-        />
+  <div class="mdm-workbench business-workspace-page">
+    <BusinessWorkspaceHeader
+      eyebrow="MASTER DATA GOVERNANCE"
+      title="治理总览"
+      description="查看各业务域的主档规模与资料完整度，快速定位需要补充的数据。"
+      icon="ri:database-2-line"
+      :tags="[
+        { label: '统一目录', type: 'primary' },
+        { label: '租户隔离', type: 'success' },
+        { label: '只读治理', type: 'info' }
+      ]"
+      :metrics="metrics"
+      refreshable
+      refresh-label="刷新主数据概览"
+      :refresh-loading="loading"
+      @refresh="loadOverview"
+    />
 
-        <div class="mdm-workbench__content">
-          <ArtSectionCard
-            class="mdm-workbench__directory"
-            title="治理域目录"
-            subtitle="按业务语义进入统一主档；记录维护仍在数据来源系统完成。"
-            :loading="loading"
-            :error="errorMessage"
-            error-title="主数据概览加载失败"
-            retryable
-            @retry="loadOverview"
-            :empty="!loading && !domains.length && !errorMessage"
-            empty-title="当前租户暂无可查看的主数据"
-            preserve-content-structure
+    <div class="mdm-workbench__content">
+      <ArtSectionCard
+        class="mdm-workbench__directory"
+        title="治理域目录"
+        subtitle="按业务语义进入统一主档；记录维护仍在数据来源系统完成。"
+        :loading="loading"
+        :error="errorMessage"
+        error-title="主数据概览加载失败"
+        retryable
+        @retry="loadOverview"
+        :empty="!loading && !domains.length && !errorMessage"
+        empty-title="当前租户暂无可查看的主数据"
+        preserve-content-structure
+      >
+        <template #actions
+          ><ElTag effect="plain" round>{{ domains.length }} 个治理域</ElTag></template
+        >
+        <div class="domain-list">
+          <button
+            v-for="(domain, index) in domains"
+            :key="domain.key"
+            type="button"
+            @click="openDomain(domain.key)"
           >
-            <template #actions
-              ><ElTag effect="plain" round>{{ domains.length }} 个治理域</ElTag></template
+            <span class="domain-list__index">{{ String(index + 1).padStart(2, '0') }}</span>
+            <span class="domain-list__icon"><ArtSvgIcon :icon="domain.icon" /></span>
+            <span class="domain-list__copy"
+              ><strong>{{ domain.label }}</strong
+              ><small>{{ domain.description }}</small></span
             >
-            <div class="domain-list">
-              <button
-                v-for="(domain, index) in domains"
-                :key="domain.key"
-                type="button"
-                @click="openDomain(domain.key)"
-              >
-                <span class="domain-list__index">{{ String(index + 1).padStart(2, '0') }}</span>
-                <span class="domain-list__icon"><ArtSvgIcon :icon="domain.icon" /></span>
-                <span class="domain-list__copy"
-                  ><strong>{{ domain.label }}</strong
-                  ><small>{{ domain.description }}</small></span
-                >
-                <span class="domain-list__count"
-                  ><strong>{{ domain.recordCount.toLocaleString() }}</strong
-                  ><small>{{ domain.sourceCount }} 类主档</small></span
-                >
-                <ArtSvgIcon class="domain-list__arrow" icon="ri:arrow-right-line" />
-              </button>
-            </div>
-          </ArtSectionCard>
-
-          <div class="mdm-workbench__aside">
-            <ArtSectionCard
-              title="治理健康度"
-              subtitle="完整度达 90 分的记录占当前可见记录的比例。"
-              :loading="loading"
-              :error="errorMessage"
-              retryable
-              :empty="!totalRecords"
-              empty-title="暂无可评估的主数据"
-              @retry="loadOverview"
-              preserve-content-structure
+            <span class="domain-list__count"
+              ><strong>{{ domain.recordCount.toLocaleString() }}</strong
+              ><small>{{ domain.sourceCount }} 类主档</small></span
             >
-              <div class="coverage-ring" :style="{ '--coverage': `${coveragePercent}%` }">
-                <div
-                  ><strong>{{ coveragePercent }}%</strong><small>资料完整率</small></div
-                >
-              </div>
-              <div class="coverage-legend">
-                <div
-                  ><span></span><strong>{{ totalRecords - attentionCount }} 条</strong
-                  ><small>资料完整</small></div
-                >
-                <div
-                  ><span></span><strong>{{ attentionCount }} 条</strong><small>待完善</small></div
-                >
-              </div>
-            </ArtSectionCard>
-
-            <ArtSectionCard
-              title="治理边界"
-              subtitle="查询、维护与权限各有明确入口。"
-              preserve-content-structure
-            >
-              <div class="governance-rules">
-                <article
-                  ><span><ArtSvgIcon icon="ri:search-eye-line" /></span
-                  ><div
-                    ><strong>MDM 统一查询</strong><p>汇聚标准编码、名称、状态与更新时间。</p></div
-                  ></article
-                >
-                <article
-                  ><span><ArtSvgIcon icon="ri:edit-2-line" /></span
-                  ><div
-                    ><strong>来源系统维护</strong><p>新增、修改、停用由业务系统承担。</p></div
-                  ></article
-                >
-                <article
-                  ><span><ArtSvgIcon icon="ri:shield-check-line" /></span
-                  ><div
-                    ><strong>数据按权限可见</strong><p>仅展示当前账号可访问的主档资料。</p></div
-                  ></article
-                >
-              </div>
-            </ArtSectionCard>
-          </div>
+            <ArtSvgIcon class="domain-list__arrow" icon="ri:arrow-right-line" />
+          </button>
         </div>
+      </ArtSectionCard>
+
+      <div class="mdm-workbench__aside">
+        <ArtSectionCard
+          title="治理健康度"
+          subtitle="完整度达 90 分的记录占当前可见记录的比例。"
+          :loading="loading"
+          :error="errorMessage"
+          retryable
+          :empty="!totalRecords"
+          empty-title="暂无可评估的主数据"
+          @retry="loadOverview"
+          preserve-content-structure
+        >
+          <div class="coverage-ring" :style="{ '--coverage': `${coveragePercent}%` }">
+            <div
+              ><strong>{{ coveragePercent }}%</strong><small>资料完整率</small></div
+            >
+          </div>
+          <div class="coverage-legend">
+            <div
+              ><span></span><strong>{{ totalRecords - attentionCount }} 条</strong
+              ><small>资料完整</small></div
+            >
+            <div
+              ><span></span><strong>{{ attentionCount }} 条</strong><small>待完善</small></div
+            >
+          </div>
+        </ArtSectionCard>
+
+        <ArtSectionCard
+          title="治理边界"
+          subtitle="查询、维护与权限各有明确入口。"
+          preserve-content-structure
+        >
+          <div class="governance-rules">
+            <article
+              ><span><ArtSvgIcon icon="ri:search-eye-line" /></span
+              ><div
+                ><strong>MDM 统一查询</strong><p>汇聚标准编码、名称、状态与更新时间。</p></div
+              ></article
+            >
+            <article
+              ><span><ArtSvgIcon icon="ri:edit-2-line" /></span
+              ><div
+                ><strong>来源系统维护</strong><p>新增、修改、停用由业务系统承担。</p></div
+              ></article
+            >
+            <article
+              ><span><ArtSvgIcon icon="ri:shield-check-line" /></span
+              ><div
+                ><strong>数据按权限可见</strong><p>仅展示当前账号可访问的主档资料。</p></div
+              ></article
+            >
+          </div>
+        </ArtSectionCard>
       </div>
-    </ElScrollbar>
+    </div>
   </div>
 </template>
 
@@ -189,11 +185,11 @@
   ])
 
   const defaultDomainPath: Record<MdmDomainSummary['key'], string> = {
-    organization: '/mdm/organization/organization-directory',
-    partner: '/mdm/partner/business-partner-directory',
-    logistics: '/mdm/logistics/logistics-directory',
-    asset: '/mdm/asset/vehicle-directory',
-    material: '/mdm/material/material-directory'
+    organization: '/mdm/governance/organization/organization-directory',
+    partner: '/mdm/governance/partner/business-partner-directory',
+    logistics: '/mdm/governance/logistics/logistics-directory',
+    asset: '/mdm/governance/asset/vehicle-directory',
+    material: '/mdm/governance/material/material-directory'
   }
 
   async function loadOverview(): Promise<void> {
@@ -223,17 +219,6 @@
 
 <style scoped lang="scss">
   .mdm-workbench {
-    display: flex;
-    flex-direction: column;
-    height: var(--art-full-height);
-    min-height: 0;
-    overflow: hidden;
-
-    &__scrollbar {
-      flex: 1;
-      min-height: 0;
-    }
-
     &__content {
       display: grid;
       grid-template-columns: minmax(0, 1.7fr) minmax(310px, 0.8fr);

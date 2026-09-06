@@ -56,9 +56,11 @@
   import { computed, ref, type ComputedRef } from 'vue'
   import { useRoute } from 'vue-router'
   import CatalogSourceNavigator from './modules/catalog-source-navigator.vue'
-  import { ElProgress, ElTag } from 'element-plus'
+  import { ElProgress } from 'element-plus'
+  import ArtDictDisplay from '@/components/core/base/art-dict-display/index.vue'
   import ArtButtonTable from '@/components/core/forms/art-button-table/index.vue'
   import ArtSvgIcon from '@/components/core/base/art-svg-icon/index.vue'
+  import { useUserStore } from '@/store/modules/user'
   import BusinessWorkspaceHeader, {
     type BusinessWorkspaceMetric
   } from '@/components/business/business-workspace-header/index.vue'
@@ -106,6 +108,8 @@
   }
 
   const route = useRoute()
+  const userStore = useUserStore()
+  const { getDictMap } = storeToRefs(userStore)
   const tableQueryRef = ref<ArtTableQueryExpose>()
   const detailDrawerRef = ref<CatalogDetailDrawerExpose>()
   const emptySummary = (): MdmCatalogSummary => ({
@@ -202,10 +206,7 @@
       props: {
         clearable: true,
         placeholder: '全部状态',
-        options: [
-          { label: '有效', value: 'active' },
-          { label: '停用', value: 'inactive' }
-        ]
+        options: getDictMap.value.mdmCatalogStatus ?? []
       }
     },
     {
@@ -215,13 +216,13 @@
       props: {
         clearable: true,
         placeholder: '全部质量',
-        options: [
-          { label: '资料完整', value: 'complete' },
-          { label: '待完善', value: 'attention' }
-        ]
+        options: getDictMap.value.mdmCatalogQuality ?? []
       }
     }
   ])
+  void Promise.all(
+    ['mdmCatalogStatus', 'mdmCatalogQuality'].map((code) => userStore.ensureDictLoaded(code))
+  )
 
   async function selectSource(sourceType: string | undefined) {
     searchQuery.value.sourceType = sourceType
@@ -327,9 +328,7 @@
   )
 
   const renderLifecycle = (row: MdmCatalogRecord) => (
-    <ElTag type={row.isActive ? 'success' : 'info'} effect="light" round>
-      {row.isActive ? '有效' : '停用'}
-    </ElTag>
+    <ArtDictDisplay dictCode="mdmCatalogStatus" value={row.isActive ? 'active' : 'inactive'} />
   )
 
   const renderQuality = (row: MdmCatalogRecord) => (

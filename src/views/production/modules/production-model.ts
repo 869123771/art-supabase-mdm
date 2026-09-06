@@ -12,15 +12,8 @@ import type {
 dayjs.extend(utc)
 export const productionToday = () => dayjs().utcOffset(480).format('YYYY-MM-DD')
 export const productionTree = new TreeUtils({ parentKey: 'parentId' })
-// Element Plus presentation presets shared with production editors.
-export const tagOptions = [
-  { label: '常规', value: 'info' },
-  { label: '主题', value: 'primary' },
-  { label: '成功', value: 'success' },
-  { label: '提醒', value: 'warning' },
-  { label: '警示', value: 'danger' }
-]
 export const createDepartment = (): ProductionDepartmentInput => ({
+  tenantId: '',
   organizationId: null,
   parentId: null,
   name: '',
@@ -34,6 +27,7 @@ export const createDepartment = (): ProductionDepartmentInput => ({
   remark: ''
 })
 export const createPerson = (): ProductionPersonInput => ({
+  tenantId: '',
   departmentId: '',
   employeeId: null,
   name: '',

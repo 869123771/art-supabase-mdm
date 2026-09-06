@@ -83,14 +83,7 @@
   const user = useUserStore()
   const form = reactive({ model: createTemplate(), readonly: false, error: '' })
   const total = computed(() => templateScore(form.model.items))
-  const defaultInputOptions = ['输入', '选择', '扫码', '确认'].map((value) => ({
-    label: value,
-    value
-  }))
-  const inputOptions = computed(() => {
-    const options = user.getDictMap.mdmCenter_inputMode ?? []
-    return options.length ? options : defaultInputOptions
-  })
+  const inputOptions = computed(() => user.getDictMap.mdmCenter_inputMode ?? [])
   const rules = { name: [{ required: true, message: '请输入作业模板名称', trigger: 'blur' }] }
   const formItems: FormItem[] = [
     { key: 'basic', label: '模板信息', type: 'divider', span: 24 },
@@ -258,6 +251,7 @@
       form.model.items.splice(index + 1, 0, cloneDeep(form.model.items[index]))
   }
   async function handleOpen(data: OpenData) {
+    await user.ensureDictLoaded('mdmCenter_inputMode')
     Object.assign(form, {
       model: data.row ? templatePayload(data.row) : createTemplate(),
       readonly: data.mode === 'view',
