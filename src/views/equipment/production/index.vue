@@ -16,96 +16,121 @@
         <template #actions><BusinessTableWorkspaceActions :table="tableRef" /></template>
       </BusinessWorkspaceHeader>
 
-      <div class="production-equipment-page__workspace">
-        <aside class="production-equipment-page__navigator art-card-xs">
-          <header>
-            <div><strong>设备范围</strong><small>按生产组织或存放位置级联筛选</small></div>
-            <ElButton text aria-label="清除设备范围" title="清除设备范围" @click="clearScope">
-              <ArtSvgIcon icon="ri:filter-off-line" />
-            </ElButton>
-          </header>
-          <ElTabs v-model="scopeMode" stretch>
-            <ElTabPane label="部门 / 产线" name="department" />
-            <ElTabPane label="存放位置" name="location" />
-          </ElTabs>
-          <div class="production-equipment-page__all" :class="{ 'is-active': !activeScopeId }">
-            <button type="button" @click="clearScope">
-              <span><ArtSvgIcon icon="ri:apps-2-line" />全部设备</span>
-              <strong>{{ overview.total }}</strong>
-            </button>
-          </div>
-          <ElTree
-            v-if="scopeMode === 'department'"
-            :data="departmentTree"
-            node-key="id"
-            :props="{ label: 'name', children: 'children' }"
-            :expand-on-click-node="false"
-            highlight-current
-            default-expand-all
-            @node-click="selectDepartment"
-          >
-            <template #default="{ data }">
-              <span class="production-equipment-page__tree-node">
-                <ArtSvgIcon
-                  :icon="data.kind === 'line' ? 'ri:git-branch-line' : 'ri:building-2-line'"
-                />
-                <span :title="data.name">{{ data.name }}</span>
-              </span>
-            </template>
-          </ElTree>
-          <ElTree
-            v-else
-            :data="locationTree"
-            node-key="id"
-            :props="{ label: 'name', children: 'children' }"
-            :expand-on-click-node="false"
-            highlight-current
-            default-expand-all
-            @node-click="selectLocation"
-          >
-            <template #default="{ data }">
-              <span class="production-equipment-page__tree-node">
-                <ArtSvgIcon icon="ri:map-pin-line" /><span :title="data.name">{{ data.name }}</span>
-              </span>
-            </template>
-          </ElTree>
-        </aside>
-
-        <div class="production-equipment-page__results">
-          <div class="production-equipment-page__scope-bar">
-            <div>
-              <span
-                ><ArtSvgIcon
-                  :icon="scopeMode === 'department' ? 'ri:node-tree' : 'ri:map-pin-range-line'"
-              /></span>
-              <div
-                ><small>当前设备范围</small><strong>{{ activeScopeLabel }}</strong></div
+      <section class="production-equipment-page__workspace">
+        <ArtWorkspaceSplitter
+          primary-size="256px"
+          primary-min="224px"
+          primary-max="360px"
+          :breakpoint="900"
+          stacked-primary-size="320px"
+        >
+          <template #primary>
+            <aside class="production-equipment-page__navigator art-card-xs" aria-label="设备范围">
+              <header>
+                <div>
+                  <span>EQUIPMENT SCOPE</span>
+                  <strong>设备范围</strong>
+                  <small>按生产组织或位置筛选</small>
+                </div>
+                <ElButton
+                  text
+                  aria-label="清除设备范围"
+                  title="清除设备范围"
+                  :disabled="!activeScopeId"
+                  @click="clearScope"
+                >
+                  <ArtSvgIcon icon="ri:filter-off-line" />
+                </ElButton>
+              </header>
+              <ElSegmented v-model="scopeMode" :options="scopeModeOptions" block />
+              <button
+                type="button"
+                class="production-equipment-page__all"
+                :class="{ 'is-active': !activeScopeId }"
+                @click="clearScope"
               >
+                <span><ArtSvgIcon icon="ri:apps-2-line" />全部设备</span>
+                <strong>{{ overview.total }}</strong>
+              </button>
+              <ArtAsyncState
+                :empty="!activeScopeTree.length"
+                :empty-text="scopeMode === 'department' ? '暂无生产组织' : '暂无存放位置'"
+                :empty-description="
+                  scopeMode === 'department'
+                    ? '建立部门或产线后，可按生产归属快速筛选设备。'
+                    : '维护存放位置后，可按现场区域快速筛选设备。'
+                "
+                :empty-image-size="68"
+                :min-height="180"
+                size="compact"
+                full-height
+                class="production-equipment-page__scope-state"
+              >
+                <ElScrollbar class="production-equipment-page__scope-scrollbar">
+                  <ElTree
+                    :data="activeScopeTree"
+                    node-key="id"
+                    :props="{ label: 'name', children: 'children' }"
+                    :current-node-key="activeScopeId || undefined"
+                    :expand-on-click-node="false"
+                    highlight-current
+                    default-expand-all
+                    @node-click="selectScope"
+                  >
+                    <template #default="{ data }">
+                      <span class="production-equipment-page__tree-node">
+                        <ArtSvgIcon :icon="scopeNodeIcon(data)" />
+                        <span :title="data.name">{{ data.name }}</span>
+                      </span>
+                    </template>
+                  </ElTree>
+                </ElScrollbar>
+              </ArtAsyncState>
+            </aside>
+          </template>
+
+          <main class="production-equipment-page__results">
+            <div class="production-equipment-page__scope-bar art-card-xs">
+              <div>
+                <span aria-hidden="true"
+                  ><ArtSvgIcon
+                    :icon="scopeMode === 'department' ? 'ri:node-tree' : 'ri:map-pin-range-line'"
+                /></span>
+                <div>
+                  <small>当前设备范围</small>
+                  <strong>{{ activeScopeLabel }}</strong>
+                  <p>{{ scopeDescription }}</p>
+                </div>
+              </div>
+              <div class="production-equipment-page__scope-meta">
+                <span>{{ overview.total }} 台设备</span>
+                <ElTag v-if="activeScopeId" effect="plain" round>{{
+                  scopeMode === 'department' ? '包含下级产线' : '包含下级位置'
+                }}</ElTag>
+              </div>
             </div>
-            <ElTag effect="plain" round>{{
-              scopeMode === 'department' ? '上级包含下级产线' : '上级包含下级位置'
-            }}</ElTag>
-          </div>
-          <ArtTableQuery
-            ref="tableRef"
-            v-model="search"
-            :api-fn="fetchData"
-            :search-items="searchItems"
-            :columns-factory="columnsFactory"
-            :header-actions="headerActions"
-            header-actions-placement="workspace"
-            :search-bar-props="{ span: 8, labelWidth: 76, showExpand: false, isExpand: true }"
-            :table-props="{
-              rowKey: 'id',
-              tableLayout: 'fixed',
-              emptyText: '暂无生产设备',
-              emptyDescription: '点击新增设备，建立可供 PMIS 与生产执行共享的设备主档。'
-            }"
-            focusable
-            focus-scope-selector=".production-equipment-page__workspace"
-          />
-        </div>
-      </div>
+            <ArtTableQuery
+              ref="tableRef"
+              v-model="search"
+              :api-fn="fetchData"
+              :search-items="searchItems"
+              :columns-factory="columnsFactory"
+              :header-actions="headerActions"
+              header-actions-placement="workspace"
+              :search-bar-props="{ span: 8, labelWidth: 76, showExpand: false, isExpand: true }"
+              :table-props="{
+                rowKey: 'id',
+                tableLayout: 'fixed',
+                emptyText: '暂无生产设备',
+                emptyDescription: activeScopeId
+                  ? '当前范围暂无设备，可新增设备或切换到全部设备。'
+                  : '点击新增设备，建立可供 PMIS 与生产执行共享的设备主档。'
+              }"
+              focusable
+            />
+          </main>
+        </ArtWorkspaceSplitter>
+      </section>
 
       <EquipmentDialog ref="dialogRef" @success="refresh" />
       <ArtDrawer
@@ -194,6 +219,7 @@
   import { useUserStore } from '@/store/modules/user'
   import { useTenantScopeStore } from '@/store/modules/tenantScope'
   import ArtPermissionGuard from '@/components/core/feedback/art-permission-guard/index.vue'
+  import ArtAsyncState from '@/components/core/feedback/art-async-state/index.vue'
   import ArtSvgIcon from '@/components/core/base/art-svg-icon/index.vue'
   import ArtButtonTable from '@/components/core/forms/art-button-table/index.vue'
   import ArtButtonMore, {
@@ -203,6 +229,7 @@
   import type { ArtDrawerExpose } from '@/components/core/drawers/art-drawer/types'
   import ArtDescriptions from '@/components/core/base/art-descriptions/index.vue'
   import ArtSectionCard from '@/components/core/surfaces/art-section-card/index.vue'
+  import ArtWorkspaceSplitter from '@/components/core/layouts/art-workspace-splitter/index.vue'
   import BusinessWorkspaceHeader, {
     type BusinessWorkspaceMetric
   } from '@/components/business/business-workspace-header/index.vue'
@@ -266,6 +293,22 @@
     () => treeUtils.listToTree(references.departments) as TreeReference[]
   )
   const locationTree = computed(() => treeUtils.listToTree(references.locations) as TreeReference[])
+  const scopeModeOptions = [
+    { label: '部门 / 产线', value: 'department' },
+    { label: '存放位置', value: 'location' }
+  ]
+  const activeScopeTree = computed(() =>
+    scopeMode.value === 'department' ? departmentTree.value : locationTree.value
+  )
+  const scopeDescription = computed(() =>
+    activeScopeId.value
+      ? scopeMode.value === 'department'
+        ? '设备范围将覆盖当前组织及其下级产线。'
+        : '设备范围将覆盖当前位置及其下级节点。'
+      : scopeMode.value === 'department'
+        ? '展示当前租户全部生产设备，可从左侧选择部门或产线。'
+        : '展示当前租户全部生产设备，可从左侧选择存放位置。'
+  )
 
   const metrics = computed<BusinessWorkspaceMetric[]>(() => [
     {
@@ -351,15 +394,14 @@
     activeScopeLabel.value = '全部设备'
     void tableRef.value?.refreshContext()
   }
-  const selectDepartment = (data: TreeReference): void => {
+  const selectScope = (data: TreeReference): void => {
     activeScopeId.value = data.id
     activeScopeLabel.value = data.name
     void tableRef.value?.refreshContext()
   }
-  const selectLocation = (data: TreeReference): void => {
-    activeScopeId.value = data.id
-    activeScopeLabel.value = data.name
-    void tableRef.value?.refreshContext()
+  const scopeNodeIcon = (data: TreeReference): string => {
+    if (scopeMode.value === 'location') return 'ri:map-pin-line'
+    return data.kind === 'line' ? 'ri:git-branch-line' : 'ri:building-2-line'
   }
   watch(scopeMode, clearScope)
 
@@ -623,80 +665,124 @@
   .production-equipment-page {
     display: flex;
     flex-direction: column;
-    gap: 12px;
+    gap: var(--art-space-3);
     min-width: 0;
     min-height: 0;
 
     &__workspace {
-      display: grid;
-      grid-template-columns: 248px minmax(0, 1fr);
-      gap: 12px;
-      align-items: start;
+      display: flex;
+      flex: 1;
       min-width: 0;
+      min-height: 0;
     }
 
     &__navigator {
-      display: grid;
-      gap: 8px;
-      align-content: start;
+      display: flex;
+      flex-direction: column;
+      gap: var(--art-space-3);
       min-width: 0;
-      padding: 14px;
+      min-height: 0;
+      padding: var(--art-space-4);
+      overflow: hidden;
     }
 
-    &__navigator > header,
-    &__scope-bar,
-    &__scope-bar > div {
+    &__navigator > header {
       display: flex;
-      gap: 10px;
-      align-items: center;
+      gap: var(--art-space-2);
+      align-items: flex-start;
       justify-content: space-between;
+
+      > div:first-child {
+        min-width: 0;
+
+        > span,
+        strong,
+        small {
+          display: block;
+        }
+
+        > span {
+          margin-bottom: 2px;
+          font-size: 9px;
+          font-weight: 700;
+          color: var(--theme-color);
+          letter-spacing: 0.08em;
+        }
+
+        strong {
+          font-size: var(--art-font-size-section-title);
+        }
+
+        small {
+          margin-top: 2px;
+          font-size: 11px;
+          color: var(--el-text-color-secondary);
+        }
+      }
     }
 
-    &__navigator header strong,
-    &__navigator header small,
-    &__scope-bar strong,
-    &__scope-bar small {
-      display: block;
-    }
-
-    &__navigator header small,
-    &__scope-bar small {
-      margin-top: 2px;
-      font-size: 11px;
-      color: var(--el-text-color-secondary);
-    }
-
-    &__all button {
+    &__all {
       display: flex;
+      flex: none;
       align-items: center;
       justify-content: space-between;
       width: 100%;
-      min-height: 38px;
-      padding: 0 10px;
+      min-height: 40px;
+      padding: 0 var(--art-space-3);
+      font: inherit;
       color: var(--el-text-color-regular);
+      cursor: pointer;
       background: transparent;
       border: 0;
       border-radius: var(--el-border-radius-base);
+      transition:
+        color 0.18s ease,
+        background-color 0.18s ease;
+
+      > span {
+        display: inline-flex;
+        gap: var(--art-space-2);
+        align-items: center;
+        min-width: 0;
+      }
+
+      > strong {
+        min-width: 22px;
+        padding: 1px 6px;
+        font-size: 11px;
+        text-align: center;
+        background: color-mix(in srgb, var(--el-fill-color) 78%, transparent);
+        border-radius: 999px;
+      }
     }
 
-    &__all button:hover,
-    &__all.is-active button {
+    &__all:hover,
+    &__all.is-active {
       color: var(--theme-color);
       background: color-mix(in srgb, var(--theme-color) 8%, transparent);
     }
 
-    &__all span,
-    &__tree-node {
-      display: inline-flex;
-      gap: 7px;
-      align-items: center;
-      min-width: 0;
+    &__scope-state {
+      flex: 1 1 auto;
+      min-height: 0;
+      overflow: hidden;
     }
 
-    &__tree-node span {
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
+    &__scope-scrollbar {
+      height: 100%;
+    }
+
+    &__tree-node {
+      display: inline-flex;
+      gap: var(--art-space-2);
+      align-items: center;
+      min-width: 0;
+
+      > span {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
     }
 
     &__navigator :deep(.el-tree-node__content) {
@@ -706,27 +792,91 @@
     }
 
     &__results {
-      display: grid;
-      gap: 10px;
+      display: flex;
+      flex-direction: column;
+      gap: var(--art-space-3);
       min-width: 0;
+      min-height: 0;
+
+      > :deep(.art-table-query) {
+        flex: 1 1 auto;
+        min-height: 0;
+      }
     }
 
     &__scope-bar {
-      min-height: 56px;
-      padding: 9px 14px;
-      background: var(--el-bg-color);
-      border: 1px solid var(--el-border-color-lighter);
-      border-radius: var(--el-border-radius-base);
+      display: flex;
+      flex: none;
+      gap: var(--art-space-4);
+      align-items: center;
+      justify-content: space-between;
+      min-height: 64px;
+      padding: var(--art-space-3) var(--art-space-4);
+
+      > div:first-child {
+        display: flex;
+        gap: var(--art-space-3);
+        align-items: center;
+        min-width: 0;
+
+        > span {
+          display: grid;
+          flex: none;
+          place-items: center;
+          width: 38px;
+          height: 38px;
+          color: var(--theme-color);
+          background: color-mix(in srgb, var(--theme-color) 9%, var(--el-bg-color));
+          border-radius: var(--el-border-radius-base);
+        }
+
+        > div {
+          min-width: 0;
+        }
+      }
+
+      small,
+      strong,
+      p {
+        display: block;
+        margin: 0;
+      }
+
+      small {
+        font-size: 10px;
+        font-weight: 650;
+        color: var(--theme-color);
+        letter-spacing: 0.05em;
+      }
+
+      strong {
+        margin-top: 1px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        font-size: 14px;
+        white-space: nowrap;
+      }
+
+      p {
+        margin-top: 2px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        font-size: 11px;
+        color: var(--el-text-color-secondary);
+        white-space: nowrap;
+      }
     }
 
-    &__scope-bar > div > span {
-      display: grid;
-      place-items: center;
-      width: 34px;
-      height: 34px;
-      color: var(--theme-color);
-      background: color-mix(in srgb, var(--theme-color) 8%, var(--el-bg-color));
-      border-radius: var(--el-border-radius-base);
+    &__scope-meta {
+      display: flex;
+      flex: none;
+      gap: var(--art-space-2);
+      align-items: center;
+
+      > span {
+        font-size: 11px;
+        color: var(--el-text-color-secondary);
+      }
     }
 
     :deep(&__identity) {
@@ -788,7 +938,7 @@
       border-radius: var(--el-border-radius-base);
     }
 
-    &__hero > span {
+    &__hero > span:first-child {
       display: grid;
       place-items: center;
       width: 52px;
@@ -845,13 +995,19 @@
     }
   }
 
-  @media (width <= 960px) {
-    .production-equipment-page__workspace {
-      grid-template-columns: 1fr;
-    }
-  }
-
   @media (width <= 620px) {
+    .production-equipment-page__scope-bar {
+      align-items: flex-start;
+
+      p {
+        white-space: normal;
+      }
+    }
+
+    .production-equipment-page__scope-meta {
+      display: none;
+    }
+
     .equipment-detail__hero {
       grid-template-columns: 46px minmax(0, 1fr);
     }

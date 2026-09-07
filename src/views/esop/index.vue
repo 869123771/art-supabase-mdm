@@ -28,8 +28,9 @@
             <aside class="esop-page__catalog art-card-xs" aria-label="ESOP 文档分类">
               <header>
                 <div>
+                  <span>ESOP LIBRARY</span>
                   <strong>文档分类</strong>
-                  <small>选择分类同步筛选文档</small>
+                  <small>按业务用途组织</small>
                 </div>
                 <div class="esop-page__catalog-actions">
                   <ArtIconButton
@@ -60,6 +61,7 @@
                 clearable
                 placeholder="搜索分类"
                 :prefix-icon="Search"
+                :disabled="!categories.length"
                 class="esop-page__catalog-search"
               />
               <button
@@ -71,50 +73,74 @@
                 <span><ArtSvgIcon icon="ri:folder-open-line" />全部文档</span>
                 <strong>{{ overview.total }}</strong>
               </button>
-              <ElTree
-                ref="categoryTreeRef"
-                :data="categoryTree"
-                node-key="id"
-                :props="categoryTreeProps"
-                :filter-node-method="filterCategory"
-                :expand-on-click-node="false"
-                default-expand-all
-                highlight-current
-                class="esop-page__category-tree"
-                @node-click="handleCategoryClick"
-              >
-                <template #default="{ data }">
-                  <span class="esop-page__tree-node">
-                    <span>
-                      <ArtSvgIcon
-                        :icon="data.children?.length ? 'ri:folder-3-line' : 'ri:folder-line'"
-                      />
-                      <span>{{ data.categoryName }}</span>
-                    </span>
-                    <i v-if="data.status === 'disabled'">停用</i>
-                  </span>
-                </template>
-              </ElTree>
-              <ArtEmptyState
-                v-if="!loadingOptions && !categoryTree.length"
-                title="尚未建立分类"
-                description="先建立分类，再登记 ESOP 文档。"
+              <ArtAsyncState
+                :loading="loadingOptions"
+                :error="optionsError"
+                error-title="文档分类加载失败"
+                :empty="!categoryTree.length"
+                empty-text="尚未建立文档分类"
+                empty-description="先创建一个分类，再登记受控 ESOP 文档。"
+                :empty-image-size="70"
+                :min-height="180"
                 size="compact"
-                :visual-size="70"
-              />
+                full-height
+                class="esop-page__catalog-state"
+                @retry="loadOptions"
+              >
+                <template #empty-action>
+                  <ElButton
+                    v-auth="'MdmEsop:Add'"
+                    type="primary"
+                    plain
+                    @click="openCategoryDialog()"
+                  >
+                    <ArtSvgIcon icon="ri:add-line" />新建分类
+                  </ElButton>
+                </template>
+                <ElScrollbar class="esop-page__category-scrollbar">
+                  <ElTree
+                    ref="categoryTreeRef"
+                    :data="categoryTree"
+                    node-key="id"
+                    :props="categoryTreeProps"
+                    :filter-node-method="filterCategory"
+                    :expand-on-click-node="false"
+                    default-expand-all
+                    highlight-current
+                    class="esop-page__category-tree"
+                    @node-click="handleCategoryClick"
+                  >
+                    <template #default="{ data }">
+                      <span class="esop-page__tree-node">
+                        <span>
+                          <ArtSvgIcon
+                            :icon="data.children?.length ? 'ri:folder-3-line' : 'ri:folder-line'"
+                          />
+                          <span>{{ data.categoryName }}</span>
+                        </span>
+                        <i v-if="data.status === 'disabled'">停用</i>
+                      </span>
+                    </template>
+                  </ElTree>
+                </ElScrollbar>
+              </ArtAsyncState>
             </aside>
           </template>
 
           <main class="esop-page__results">
-            <div class="esop-page__scope-bar">
+            <div class="esop-page__scope-bar art-card-xs">
               <div>
                 <span><ArtSvgIcon icon="ri:focus-3-line" /></span>
                 <div>
+                  <small>当前文档范围</small>
                   <strong>{{ selectedCategory?.categoryName || '全部文档' }}</strong>
-                  <small>{{ selectedCategoryPath }}</small>
+                  <p>{{ selectedCategoryPath }}</p>
                 </div>
               </div>
-              <ElTag v-if="selectedCategory" effect="plain" round>包含下级分类</ElTag>
+              <div class="esop-page__scope-meta">
+                <span>{{ overview.total }} 份文档</span>
+                <ElTag v-if="selectedCategory" effect="plain" round>包含下级分类</ElTag>
+              </div>
             </div>
             <ArtTableQuery
               ref="tableRef"
@@ -270,8 +296,10 @@
   import { useUserStore } from '@/store/modules/user'
   import { useTenantScopeStore } from '@/store/modules/tenantScope'
   import { exportExcel, viewAttachment } from '@/utils/file'
+  import TreeUtils from '@/utils/tree'
   import ArtPermissionGuard from '@/components/core/feedback/art-permission-guard/index.vue'
   import ArtEmptyState from '@/components/core/feedback/art-empty-state/index.vue'
+  import ArtAsyncState from '@/components/core/feedback/art-async-state/index.vue'
   import ArtButtonTable from '@/components/core/forms/art-button-table/index.vue'
   import ArtButtonMore, {
     type ButtonMoreItem
@@ -346,6 +374,7 @@
   const selectedCategoryId = ref<string>()
   const categoryKeyword = ref('')
   const loadingOptions = ref(false)
+  const optionsError = ref<Error | null>(null)
   const optionsLoaded = ref(false)
   const overview = reactive({ total: 0, rows: [] as EsopDocument[] })
   const search = reactive<SearchModel>({
@@ -354,57 +383,32 @@
     uploadDateRange: undefined
   })
   const categoryTreeProps = { label: 'categoryName', children: 'children' }
-  const buildCategoryTree = (rows: EsopCategory[]): EsopCategory[] => {
-    const map = new Map(rows.map((row) => [row.id, { ...row, children: [] as EsopCategory[] }]))
-    const roots: EsopCategory[] = []
-    map.forEach((node) => {
-      const parent = node.parentId ? map.get(node.parentId) : undefined
-      if (parent) parent.children?.push(node)
-      else roots.push(node)
-    })
-    const sort = (nodes: EsopCategory[]): EsopCategory[] =>
-      nodes
-        .sort((a, b) => a.sort - b.sort || a.categoryName.localeCompare(b.categoryName, 'zh-CN'))
-        .map((node) => ({ ...node, children: sort(node.children || []) }))
-    return sort(roots)
-  }
-  const categoryTree = computed(() => buildCategoryTree(categories.value))
+  const categoryTreeUtils = new TreeUtils({
+    idKey: 'id',
+    parentKey: 'parentId',
+    childrenKey: 'children',
+    deepClone: false
+  })
+  const compareCategories = (a: EsopCategory, b: EsopCategory): number =>
+    a.sort - b.sort || a.categoryName.localeCompare(b.categoryName, 'zh-CN')
+  const categoryTree = computed(() =>
+    categoryTreeUtils.listToTree(categories.value, compareCategories)
+  )
   const selectedCategory = computed(() =>
     categories.value.find((item) => item.id === selectedCategoryId.value)
   )
   const selectedCategoryIds = computed(() => {
     if (!selectedCategoryId.value) return []
-    const ids: string[] = []
-    const collect = (nodes: EsopCategory[]): boolean => {
-      for (const node of nodes) {
-        if (node.id === selectedCategoryId.value) {
-          const add = (targets: EsopCategory[]): void =>
-            targets.forEach((target) => {
-              ids.push(target.id)
-              add(target.children || [])
-            })
-          add([node])
-          return true
-        }
-        if (collect(node.children || [])) return true
-      }
-      return false
-    }
-    collect(categoryTree.value)
-    return ids
+    return categoryTreeUtils
+      .getDescendants(categoryTree.value, selectedCategoryId.value, true)
+      .map((item) => item.id)
   })
   const selectedCategoryPath = computed(() => {
-    const target = selectedCategory.value
-    if (!target) return '覆盖当前查询范围内的全部分类'
-    const names = [target.categoryName]
-    let parentId = target.parentId
-    while (parentId) {
-      const parent = categories.value.find((item) => item.id === parentId)
-      if (!parent) break
-      names.unshift(parent.categoryName)
-      parentId = parent.parentId
-    }
-    return names.join(' / ')
+    if (!selectedCategoryId.value) return '覆盖当前查询范围内的全部分类'
+    return categoryTreeUtils
+      .getAncestors(categoryTree.value, selectedCategoryId.value)
+      .map((item) => item.categoryName)
+      .join(' / ')
   })
   const metrics = computed<BusinessWorkspaceMetric[]>(() => [
     {
@@ -461,6 +465,7 @@
   void userStore.ensureDictLoaded('commonEnabledStatus')
   const loadOptions = async (): Promise<void> => {
     loadingOptions.value = true
+    optionsError.value = null
     try {
       const [categoryRows, referenceRows] = await Promise.all([
         fetchEsopCategories(tenantId.value),
@@ -469,6 +474,10 @@
       categories.value = categoryRows
       references.value = referenceRows
       optionsLoaded.value = true
+    } catch (error) {
+      optionsLoaded.value = false
+      optionsError.value = error instanceof Error ? error : new Error('ESOP 基础数据加载失败')
+      throw error
     } finally {
       loadingOptions.value = false
     }
@@ -539,6 +548,11 @@
     await handleCategorySaved()
   }
   const openDocumentDialog = (mode: EsopDocumentDialogMode, row?: EsopDocument): void => {
+    if (mode === 'add' && !categories.value.length) {
+      ElMessage.warning('请先创建文档分类，再新增 ESOP 文档')
+      openCategoryDialog()
+      return
+    }
     void documentDialogRef.value?.handleOpen({
       mode,
       row,
@@ -844,7 +858,7 @@
     }
   ]
   watch(tenantId, async (value, oldValue) => {
-    if (!value || value === oldValue) return
+    if (value === oldValue) return
     selectedCategoryId.value = undefined
     optionsLoaded.value = false
     await loadOptions()
@@ -856,211 +870,335 @@
   .esop-page {
     display: flex;
     flex-direction: column;
-    gap: 12px;
+    gap: var(--art-space-3);
     min-width: 0;
     min-height: 0;
-  }
 
-  .esop-page__workspace {
-    display: flex;
-    flex: 1;
-    min-width: 0;
-    min-height: 0;
-  }
+    &__workspace {
+      display: flex;
+      flex: 1;
+      min-width: 0;
+      min-height: 0;
+    }
 
-  .esop-page__catalog {
-    display: flex;
-    flex-direction: column;
-    gap: 11px;
-    min-width: 0;
-    min-height: 0;
-    padding: 14px;
-    overflow: hidden;
-  }
+    &__catalog {
+      display: flex;
+      flex-direction: column;
+      gap: var(--art-space-3);
+      min-width: 0;
+      min-height: 0;
+      padding: var(--art-space-4);
+      overflow: hidden;
 
-  .esop-page__catalog > header,
-  .esop-page__scope-bar,
-  .esop-page__scope-bar > div {
-    display: flex;
-    gap: 10px;
-    align-items: center;
-    justify-content: space-between;
-  }
+      > header {
+        display: flex;
+        gap: var(--art-space-2);
+        align-items: flex-start;
+        justify-content: space-between;
 
-  .esop-page__catalog header strong,
-  .esop-page__catalog header small,
-  .esop-page__scope-bar strong,
-  .esop-page__scope-bar small {
-    display: block;
-  }
+        > div:first-child {
+          min-width: 0;
 
-  .esop-page__catalog header small,
-  .esop-page__scope-bar small {
-    margin-top: 2px;
-    font-size: 11px;
-    color: var(--el-text-color-secondary);
-  }
+          > span,
+          strong,
+          small {
+            display: block;
+          }
 
-  .esop-page__catalog-actions {
-    display: flex;
-    gap: 1px;
-  }
+          > span {
+            margin-bottom: 2px;
+            font-size: 9px;
+            font-weight: 700;
+            color: var(--theme-color);
+            letter-spacing: 0.08em;
+          }
 
-  .esop-page__all-category {
-    display: flex;
-    gap: 10px;
-    align-items: center;
-    justify-content: space-between;
-    width: 100%;
-    min-height: 38px;
-    padding: 0 10px;
-    color: var(--el-text-color-regular);
-    cursor: pointer;
-    background: transparent;
-    border: 0;
-    border-radius: 8px;
-  }
+          strong {
+            font-size: var(--art-font-size-section-title);
+          }
 
-  .esop-page__all-category:hover,
-  .esop-page__all-category.is-active {
-    color: var(--theme-color);
-    background: color-mix(in srgb, var(--theme-color) 8%, transparent);
-  }
+          small {
+            margin-top: 2px;
+            font-size: 11px;
+            color: var(--el-text-color-secondary);
+          }
+        }
+      }
+    }
 
-  .esop-page__all-category > span,
-  .esop-page__tree-node > span,
-  .esop-page__scope-cell span {
-    display: inline-flex;
-    gap: 7px;
-    align-items: center;
-    min-width: 0;
-  }
+    &__catalog-actions {
+      display: flex;
+      flex: none;
+      gap: 1px;
+    }
 
-  .esop-page__all-category strong {
-    font-variant-numeric: tabular-nums;
-  }
+    &__catalog-search {
+      flex: none;
+    }
 
-  .esop-page__category-tree {
-    flex: 1;
-    min-height: 0;
-    overflow: auto;
-    background: transparent;
-  }
+    &__all-category {
+      display: flex;
+      flex: none;
+      gap: var(--art-space-2);
+      align-items: center;
+      justify-content: space-between;
+      width: 100%;
+      min-height: 40px;
+      padding: 0 var(--art-space-3);
+      color: var(--el-text-color-regular);
+      cursor: pointer;
+      background: var(--el-fill-color-lighter);
+      border: 1px solid transparent;
+      border-radius: var(--el-border-radius-base);
+      transition:
+        color 0.16s ease,
+        background-color 0.16s ease,
+        border-color 0.16s ease;
 
-  .esop-page__category-tree :deep(.el-tree-node__content) {
-    height: 38px;
-    margin-bottom: 2px;
-    border-radius: 8px;
-  }
+      &:hover,
+      &.is-active {
+        color: var(--theme-color);
+        background: color-mix(in srgb, var(--theme-color) 8%, var(--el-bg-color));
+        border-color: color-mix(in srgb, var(--theme-color) 18%, var(--el-border-color-lighter));
+      }
 
-  .esop-page__tree-node {
-    display: flex;
-    gap: 8px;
-    align-items: center;
-    justify-content: space-between;
-    width: calc(100% - 6px);
-    min-width: 0;
-  }
+      > span,
+      strong {
+        display: inline-flex;
+        align-items: center;
+      }
 
-  .esop-page__tree-node > span > span {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
+      > span {
+        gap: var(--art-space-2);
+      }
 
-  .esop-page__tree-node i {
-    padding: 1px 5px;
-    font-size: 9px;
-    font-style: normal;
-    color: var(--el-text-color-secondary);
-    background: var(--el-fill-color);
-    border-radius: 7px;
-  }
+      strong {
+        justify-content: center;
+        min-width: 24px;
+        height: 22px;
+        padding: 0 7px;
+        font-size: 11px;
+        font-variant-numeric: tabular-nums;
+        background: var(--el-bg-color);
+        border-radius: 999px;
+      }
+    }
 
-  .esop-page__results {
-    display: flex;
-    flex-direction: column;
-    flex: 1;
-    gap: 10px;
-    min-width: 0;
-    min-height: 0;
-  }
+    &__catalog-state {
+      flex: 1;
+      min-height: 0;
+    }
 
-  .esop-page__results > .art-table-query {
-    flex: 1;
-    min-height: 0;
-  }
+    &__category-scrollbar {
+      height: 100%;
+    }
 
-  .esop-page__scope-bar {
-    flex: none;
-    min-height: 56px;
-    padding: 9px 14px;
-    background: var(--el-bg-color);
-    border: 1px solid var(--el-border-color-lighter);
-    border-radius: var(--el-border-radius-base);
-  }
+    &__category-tree {
+      padding-right: var(--art-space-1);
+      background: transparent;
 
-  .esop-page__scope-bar > div > span {
-    display: grid;
-    place-items: center;
-    width: 34px;
-    height: 34px;
-    color: var(--theme-color);
-    background: color-mix(in srgb, var(--theme-color) 8%, var(--el-bg-color));
-    border-radius: 9px;
-  }
+      :deep(.el-tree-node__content) {
+        height: 40px;
+        margin-bottom: 2px;
+        border: 1px solid transparent;
+        border-radius: var(--el-border-radius-base);
 
-  :deep(.esop-page__identity) {
-    display: grid;
-    grid-template-columns: 38px minmax(0, 1fr);
-    gap: 10px;
-    align-items: center;
-    min-width: 0;
-  }
+        &:hover {
+          border-color: var(--el-border-color-lighter);
+        }
+      }
 
-  :deep(.esop-page__identity > span:first-child) {
-    display: grid;
-    place-items: center;
-    width: 38px;
-    height: 38px;
-    color: var(--theme-color);
-    background: color-mix(in srgb, var(--theme-color) 8%, var(--el-bg-color));
-    border-radius: 10px;
-  }
+      :deep(.el-tree-node.is-current > .el-tree-node__content) {
+        color: var(--theme-color);
+        background: color-mix(in srgb, var(--theme-color) 8%, var(--el-bg-color));
+        border-color: color-mix(in srgb, var(--theme-color) 16%, var(--el-border-color-lighter));
+      }
+    }
 
-  :deep(.esop-page__identity > span:last-child) {
-    display: grid;
-    min-width: 0;
-  }
+    &__tree-node {
+      display: flex;
+      gap: var(--art-space-2);
+      align-items: center;
+      justify-content: space-between;
+      width: calc(100% - 6px);
+      min-width: 0;
 
-  :deep(.esop-page__identity strong),
-  :deep(.esop-page__identity small) {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
+      > span {
+        display: inline-flex;
+        gap: var(--art-space-2);
+        align-items: center;
+        min-width: 0;
 
-  :deep(.esop-page__identity small) {
-    margin-top: 3px;
-    font-family: var(--art-font-family-mono, Consolas, monospace);
-    font-size: 11px;
-    color: var(--el-text-color-secondary);
-  }
+        > span {
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+      }
 
-  :deep(.esop-page__scope-cell) {
-    display: flex;
-    gap: 10px;
-    color: var(--el-text-color-secondary);
-  }
+      i {
+        padding: 1px 5px;
+        font-size: 9px;
+        font-style: normal;
+        color: var(--el-text-color-secondary);
+        background: var(--el-fill-color);
+        border-radius: 999px;
+      }
+    }
 
-  :deep(.esop-page__scope-cell svg) {
-    color: var(--theme-color);
-  }
+    &__results {
+      display: flex;
+      flex: 1;
+      flex-direction: column;
+      gap: var(--art-space-3);
+      min-width: 0;
+      min-height: 0;
 
-  :deep(.esop-page__row-actions) {
-    display: flex;
-    gap: 4px;
-    align-items: center;
+      > .art-table-query {
+        flex: 1;
+        min-height: 0;
+      }
+    }
+
+    &__scope-bar {
+      display: flex;
+      flex: none;
+      gap: var(--art-space-3);
+      align-items: center;
+      justify-content: space-between;
+      min-height: 64px;
+      padding: var(--art-space-3) var(--art-space-4);
+
+      > div:first-child {
+        display: flex;
+        gap: var(--art-space-3);
+        align-items: center;
+        min-width: 0;
+
+        > span {
+          display: grid;
+          flex: none;
+          place-items: center;
+          width: 38px;
+          height: 38px;
+          color: var(--theme-color);
+          background: color-mix(in srgb, var(--theme-color) 8%, var(--el-bg-color));
+          border-radius: var(--el-border-radius-base);
+        }
+
+        > div {
+          min-width: 0;
+        }
+      }
+
+      small,
+      strong,
+      p {
+        display: block;
+        margin: 0;
+      }
+
+      small {
+        font-size: 10px;
+        font-weight: 600;
+        color: var(--theme-color);
+      }
+
+      strong {
+        margin-top: 1px;
+      }
+
+      p {
+        margin-top: 2px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        font-size: 11px;
+        color: var(--el-text-color-secondary);
+        white-space: nowrap;
+      }
+    }
+
+    &__scope-meta {
+      display: flex;
+      flex: none;
+      gap: var(--art-space-2);
+      align-items: center;
+
+      > span {
+        font-size: var(--art-font-size-caption);
+        color: var(--el-text-color-secondary);
+      }
+    }
+
+    :deep(.esop-page__identity) {
+      display: grid;
+      grid-template-columns: 38px minmax(0, 1fr);
+      gap: var(--art-space-2);
+      align-items: center;
+      min-width: 0;
+
+      > span:first-child {
+        display: grid;
+        place-items: center;
+        width: 38px;
+        height: 38px;
+        color: var(--theme-color);
+        background: color-mix(in srgb, var(--theme-color) 8%, var(--el-bg-color));
+        border-radius: var(--el-border-radius-base);
+      }
+
+      > span:last-child {
+        display: grid;
+        min-width: 0;
+      }
+
+      strong,
+      small {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      small {
+        margin-top: 3px;
+        font-family: var(--art-font-family-mono, Consolas, monospace);
+        font-size: 11px;
+        color: var(--el-text-color-secondary);
+      }
+    }
+
+    :deep(.esop-page__scope-cell) {
+      display: flex;
+      gap: var(--art-space-3);
+      color: var(--el-text-color-secondary);
+
+      span {
+        display: inline-flex;
+        gap: var(--art-space-2);
+        align-items: center;
+      }
+
+      svg {
+        color: var(--theme-color);
+      }
+    }
+
+    :deep(.esop-page__row-actions) {
+      display: flex;
+      gap: var(--art-space-1);
+      align-items: center;
+    }
+
+    @media (width <= 720px) {
+      &__scope-bar {
+        align-items: flex-start;
+      }
+
+      &__scope-meta {
+        flex-direction: column;
+        align-items: flex-end;
+      }
+    }
   }
 
   .esop-detail {
@@ -1079,7 +1217,7 @@
     border-radius: var(--el-border-radius-base);
   }
 
-  .esop-detail__hero > span {
+  .esop-detail__hero > span:first-child {
     display: grid;
     place-items: center;
     width: 52px;

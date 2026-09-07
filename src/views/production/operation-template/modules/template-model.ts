@@ -28,15 +28,17 @@ export function templatePayload(row: OperationTemplateInput): OperationTemplateI
     textColor: row.textColor || ''
   }
 }
+
+/** 供导入、批处理等无 UI 场景复用；可编辑表格页面使用 ArtTable.validate 展示字段错误。 */
 export function validateTasks(items: OperationTask[]): string {
   if (!items.length || items.length > 200) return '请添加 1 至 200 个任务项'
-  for (const [i, item] of items.entries()) {
+  for (const [index, item] of items.entries()) {
     if (!item.category.trim() || !item.name.trim())
-      return `第 ${i + 1} 行：请填写任务分类和任务项名称`
+      return `第 ${index + 1} 行：请填写任务分类和任务项名称`
     if (!Number.isFinite(item.score) || item.score < 0 || item.score > 100000)
-      return `第 ${i + 1} 行：分数需在 0 至 100000 之间`
-    if (item.inputMode === '选择' && !item.choices.some((v) => v.trim()))
-      return `第 ${i + 1} 行：请添加选择项`
+      return `第 ${index + 1} 行：分数需在 0 至 100000 之间`
+    if (item.inputMode === '选择' && !item.choices.some((value) => value.trim()))
+      return `第 ${index + 1} 行：请添加选择项`
   }
   return ''
 }

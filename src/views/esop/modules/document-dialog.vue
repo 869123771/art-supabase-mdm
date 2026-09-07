@@ -61,18 +61,27 @@
           :show-submit="false"
         >
           <template #categoryId>
-            <ElTreeSelect
-              v-model="form.categoryId"
-              :data="scopedCategories"
-              :props="treeProps"
-              node-key="id"
-              value-key="id"
-              check-strictly
-              default-expand-all
-              filterable
-              class="w-full"
-              placeholder="请选择启用的文档分类"
-            />
+            <div class="esop-document-dialog__category-field">
+              <ElTreeSelect
+                v-model="form.categoryId"
+                :data="scopedCategories"
+                :props="treeProps"
+                node-key="id"
+                value-key="id"
+                check-strictly
+                default-expand-all
+                filterable
+                :disabled="!form.tenantId"
+                empty-text="当前租户尚未建立分类"
+                class="w-full"
+                :placeholder="form.tenantId ? '请选择启用的文档分类' : '请先选择目标租户'"
+              />
+              <p v-if="form.tenantId && !scopedCategories.length" role="status">
+                <ArtSvgIcon
+                  icon="ri:information-line"
+                />当前租户暂无分类，请先关闭弹窗并在左侧新建。
+              </p>
+            </div>
           </template>
           <template #attachmentUrl>
             <div class="esop-document-dialog__upload">
@@ -154,6 +163,7 @@
   import ArtSvgIcon from '@/components/core/base/art-svg-icon/index.vue'
   import ArtUploadFile from '@/components/core/forms/art-upload-file/index.vue'
   import { useUserStore } from '@/store/modules/user'
+  import TreeUtils from '@/utils/tree'
   import {
     saveEsopDocument,
     type EsopCategory,
@@ -187,6 +197,12 @@
   const references = shallowRef<EsopReferenceOptions>({ materials: [], routes: [] })
   const tenantOptions = ref<Array<{ label: string; value: string }>>([])
   const treeProps = { label: 'categoryName', children: 'children', disabled: 'disabled' }
+  const categoryTreeUtils = new TreeUtils({
+    idKey: 'id',
+    parentKey: 'parentId',
+    childrenKey: 'children',
+    deepClone: false
+  })
   const initial = (): EsopDocumentInput => ({
     tenantId: '',
     categoryId: '',
@@ -204,13 +220,16 @@
     routeIds: []
   })
   const form = reactive<EsopDocumentInput>(initial())
-  const scopedCategories = computed(() => {
-    const filterTree = (nodes: EsopCategory[]): EsopCategory[] =>
-      nodes
-        .filter((node) => node.tenantId === form.tenantId)
-        .map((node) => ({ ...node, children: node.children ? filterTree(node.children) : [] }))
-    return filterTree(categories.value)
-  })
+  const scopedCategories = computed(() =>
+    categoryTreeUtils.mapTree(
+      categoryTreeUtils.listToTree(
+        categoryTreeUtils
+          .treeToList(categories.value)
+          .filter((node) => node.tenantId === form.tenantId)
+      ),
+      (node) => ({ ...node, disabled: node.status !== 'enabled' })
+    )
+  )
   const scopedReferences = computed<EsopReferenceOptions>(() => ({
     materials: references.value.materials.filter((item) => item.tenantId === form.tenantId),
     routes: references.value.routes.filter((item) => item.tenantId === form.tenantId)
@@ -243,12 +262,12 @@
       span: 12,
       props: { maxlength: 160, placeholder: '请输入标准作业指导书名称' }
     },
-    { label: '文档分类', key: 'categoryId', type: 'text', span: 12 },
+    { label: '文档分类', key: 'categoryId', type: 'text', span: 10 },
     {
       label: '版本号',
       key: 'versionNo',
       type: 'input',
-      span: 6,
+      span: 4,
       props: { maxlength: 30, placeholder: 'V1.0' }
     },
     {
@@ -262,7 +281,7 @@
       label: '状态',
       key: 'status',
       type: 'select',
-      span: 6,
+      span: 4,
       options: getDictMap.value.commonEnabledStatus ?? [],
       props: { placeholder: '请选择状态' }
     },
@@ -380,135 +399,206 @@
   .esop-document-dialog {
     display: grid;
     gap: 0;
-  }
 
-  .esop-document-dialog__identity {
-    display: grid;
-    grid-template-columns: 46px minmax(0, 1fr) auto;
-    gap: 12px;
-    align-items: center;
-    padding: 13px 15px;
-    margin-bottom: 4px;
-    background: color-mix(in srgb, var(--theme-color) 7%, var(--el-bg-color));
-    border: 1px solid color-mix(in srgb, var(--theme-color) 14%, var(--el-border-color-lighter));
-    border-radius: var(--el-border-radius-base);
-  }
+    &__identity {
+      display: grid;
+      grid-template-columns: 46px minmax(0, 1fr) auto;
+      gap: var(--art-space-3);
+      align-items: center;
+      padding: var(--art-space-3) var(--art-space-4);
+      margin-bottom: var(--art-space-2);
+      background: color-mix(in srgb, var(--theme-color) 7%, var(--el-bg-color));
+      border: 1px solid color-mix(in srgb, var(--theme-color) 16%, var(--el-border-color-lighter));
+      border-radius: var(--el-border-radius-base);
 
-  .esop-document-dialog__identity-icon {
-    display: grid;
-    place-items: center;
-    width: 46px;
-    height: 46px;
-    font-size: 21px;
-    color: var(--theme-color);
-    background: var(--el-bg-color);
-    border-radius: 11px;
-  }
+      small,
+      strong,
+      p {
+        display: block;
+        margin: 0;
+      }
 
-  .esop-document-dialog__identity small,
-  .esop-document-dialog__identity strong,
-  .esop-document-dialog__identity p {
-    display: block;
-    margin: 0;
-  }
+      small {
+        font-size: 9px;
+        font-weight: 700;
+        color: var(--theme-color);
+        letter-spacing: 0.08em;
+      }
 
-  .esop-document-dialog__identity small {
-    font-size: 9px;
-    font-weight: 700;
-    color: var(--theme-color);
-    letter-spacing: 0.1em;
-  }
+      strong {
+        margin-top: 2px;
+        font-size: 15px;
+      }
 
-  .esop-document-dialog__identity p {
-    margin-top: 2px;
-    font-family: var(--art-font-family-mono, Consolas, monospace);
-    font-size: 11px;
-    color: var(--el-text-color-secondary);
-  }
-
-  .esop-document-dialog__tabs :deep(.el-tabs__header) {
-    margin: 0;
-  }
-
-  .esop-document-dialog__tab-label {
-    display: inline-flex;
-    gap: 7px;
-    align-items: center;
-  }
-
-  .esop-document-dialog__tab-label i {
-    display: inline-grid;
-    place-items: center;
-    min-width: 18px;
-    height: 18px;
-    padding: 0 5px;
-    font-size: 10px;
-    font-style: normal;
-    color: var(--theme-color);
-    background: color-mix(in srgb, var(--theme-color) 10%, transparent);
-    border-radius: 9px;
-  }
-
-  .esop-document-dialog__panel {
-    padding: 16px;
-    border: 1px solid var(--el-border-color-lighter);
-    border-top: 0;
-    border-radius: 0 0 var(--el-border-radius-base) var(--el-border-radius-base);
-  }
-
-  .esop-document-dialog__section-heading {
-    display: flex;
-    gap: 12px;
-    align-items: center;
-    justify-content: space-between;
-    padding-bottom: 12px;
-    margin-bottom: 2px;
-    border-bottom: 1px solid var(--el-border-color-extra-light);
-  }
-
-  .esop-document-dialog__section-heading strong,
-  .esop-document-dialog__section-heading p {
-    display: block;
-    margin: 0;
-  }
-
-  .esop-document-dialog__section-heading p,
-  .esop-document-dialog__section-heading > span {
-    margin-top: 3px;
-    font-size: 11px;
-    color: var(--el-text-color-secondary);
-  }
-
-  .esop-document-dialog__upload {
-    padding: 11px 12px;
-    background: var(--el-fill-color-lighter);
-    border: 1px dashed var(--el-border-color);
-    border-radius: 9px;
-  }
-
-  .esop-document-dialog__scope-note {
-    display: flex;
-    gap: 9px;
-    align-items: flex-start;
-    padding: 12px 14px;
-    color: var(--el-text-color-secondary);
-    background: color-mix(in srgb, var(--el-color-info) 7%, var(--el-bg-color));
-    border-radius: 9px;
-  }
-
-  .esop-document-dialog__scope-note p {
-    margin: 0;
-    font-size: 12px;
-  }
-
-  @media (width <= 720px) {
-    .esop-document-dialog__identity {
-      grid-template-columns: 42px minmax(0, 1fr);
+      p {
+        margin-top: 2px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        font-family: var(--art-font-family-mono, Consolas, monospace);
+        font-size: 11px;
+        color: var(--el-text-color-secondary);
+        white-space: nowrap;
+      }
     }
 
-    .esop-document-dialog__identity :deep(.el-tag) {
-      grid-column: 1 / -1;
-      justify-self: start;
+    &__identity-icon {
+      display: grid;
+      place-items: center;
+      width: 46px;
+      height: 46px;
+      font-size: 21px;
+      color: var(--theme-color);
+      background: var(--el-bg-color);
+      border-radius: var(--el-border-radius-base);
+      box-shadow: var(--el-box-shadow-lighter);
+    }
+
+    &__tabs {
+      :deep(.el-tabs__header) {
+        margin: 0;
+      }
+
+      :deep(.el-tabs__nav-wrap::after) {
+        height: 1px;
+        background: var(--el-border-color-lighter);
+      }
+
+      :deep(.el-tabs__item) {
+        min-width: 108px;
+        height: 38px;
+        padding: 0 var(--art-space-4);
+      }
+    }
+
+    &__tab-label {
+      display: inline-flex;
+      gap: var(--art-space-2);
+      align-items: center;
+
+      i {
+        display: inline-grid;
+        place-items: center;
+        min-width: 20px;
+        height: 20px;
+        padding: 0 6px;
+        font-size: 10px;
+        font-style: normal;
+        color: var(--theme-color);
+        background: color-mix(in srgb, var(--theme-color) 10%, transparent);
+        border-radius: 999px;
+      }
+    }
+
+    &__panel {
+      min-height: 360px;
+      padding: var(--art-space-4);
+      background: color-mix(in srgb, var(--el-fill-color-extra-light) 45%, var(--el-bg-color));
+      border: 1px solid var(--el-border-color-lighter);
+      border-top: 0;
+      border-radius: 0 0 var(--el-border-radius-base) var(--el-border-radius-base);
+    }
+
+    &__section-heading {
+      display: flex;
+      gap: var(--art-space-3);
+      align-items: center;
+      justify-content: space-between;
+      padding-bottom: var(--art-space-3);
+      margin-bottom: var(--art-space-2);
+      border-bottom: 1px solid var(--el-border-color-extra-light);
+
+      strong,
+      p {
+        display: block;
+        margin: 0;
+      }
+
+      p,
+      > span {
+        margin-top: 3px;
+        font-size: 11px;
+        color: var(--el-text-color-secondary);
+      }
+
+      > span {
+        flex: none;
+        padding: 4px 8px;
+        background: var(--el-fill-color-lighter);
+        border-radius: 999px;
+      }
+    }
+
+    &__upload {
+      padding: var(--art-space-3);
+      background: var(--el-bg-color);
+      border: 1px dashed var(--el-border-color);
+      border-radius: var(--el-border-radius-base);
+      transition: border-color 0.16s ease;
+
+      &:focus-within,
+      &:hover {
+        border-color: var(--theme-color);
+      }
+    }
+
+    &__category-field {
+      display: grid;
+      gap: var(--art-space-1);
+
+      p {
+        display: flex;
+        gap: var(--art-space-1);
+        align-items: center;
+        margin: 0;
+        font-size: 11px;
+        line-height: 18px;
+        color: var(--el-color-warning);
+      }
+    }
+
+    &__scope-note {
+      display: flex;
+      gap: var(--art-space-2);
+      align-items: flex-start;
+      padding: var(--art-space-3) var(--art-space-4);
+      color: var(--el-text-color-secondary);
+      background: color-mix(in srgb, var(--el-color-info) 7%, var(--el-bg-color));
+      border: 1px solid color-mix(in srgb, var(--el-color-info) 14%, transparent);
+      border-radius: var(--el-border-radius-base);
+
+      > span {
+        flex: none;
+        color: var(--el-color-info);
+      }
+
+      p {
+        margin: 0;
+        font-size: 12px;
+        line-height: 20px;
+      }
+    }
+
+    @media (width <= 720px) {
+      &__identity {
+        grid-template-columns: 42px minmax(0, 1fr);
+
+        :deep(.el-tag) {
+          grid-column: 1 / -1;
+          justify-self: start;
+        }
+      }
+
+      &__section-heading {
+        align-items: flex-start;
+
+        > span {
+          display: none;
+        }
+      }
+
+      &__panel {
+        padding: var(--art-space-3);
+      }
     }
   }
 </style>

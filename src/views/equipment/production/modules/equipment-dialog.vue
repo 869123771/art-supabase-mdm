@@ -2,15 +2,15 @@
   <ArtDialog ref="dialogRef" size="xl">
     <div class="equipment-dialog">
       <div class="equipment-dialog__identity">
-        <span><ArtSvgIcon icon="ri:tools-line" /></span>
+        <span aria-hidden="true"><ArtSvgIcon icon="ri:tools-line" /></span>
         <div>
           <small>PRODUCTION EQUIPMENT</small>
           <strong>{{ form.equipmentName || '新生产设备' }}</strong>
           <p>{{ form.equipmentCode || '保存时自动生成企业设备编码' }}</p>
         </div>
-        <ElTag :type="form.status === 'enabled' ? 'success' : 'info'" effect="plain" round>
-          {{ form.status === 'enabled' ? '启用' : '停用' }}
-        </ElTag>
+        <div class="equipment-dialog__status">
+          <ArtDictDisplay dict-code="commonEnabledStatus" :value="form.status" display="tag" />
+        </div>
       </div>
 
       <ElTabs v-model="activeTab" class="equipment-dialog__tabs">
@@ -23,28 +23,40 @@
         </ElTabPane>
       </ElTabs>
 
-      <ArtForm
-        ref="formRef"
-        v-model="form"
-        :items="formItems"
-        :rules="rules"
-        :span="12"
-        :gutter="24"
-        label-position="top"
-        :show-reset="false"
-        :show-submit="false"
-        root-class="equipment-dialog__form"
-      >
-        <template #responsibleEmployeeId>
-          <ArtEmployeeSelect
-            :model-value="form.responsibleEmployeeId ?? undefined"
-            :tenant-id="form.tenantId"
-            :selected-data="selectedEmployee"
-            placeholder="选择设备管理员"
-            @update:model-value="form.responsibleEmployeeId = $event ?? null"
-          />
-        </template>
-      </ArtForm>
+      <section class="equipment-dialog__panel" :aria-labelledby="`equipment-tab-${activeTab}`">
+        <header>
+          <div>
+            <span><ArtSvgIcon :icon="activeTabMeta.icon" /></span>
+            <div>
+              <strong :id="`equipment-tab-${activeTab}`">{{ activeTabMeta.title }}</strong>
+              <small>{{ activeTabMeta.description }}</small>
+            </div>
+          </div>
+          <span>{{ activeTabMeta.hint }}</span>
+        </header>
+        <ArtForm
+          ref="formRef"
+          v-model="form"
+          :items="formItems"
+          :rules="rules"
+          :span="12"
+          :gutter="24"
+          label-position="top"
+          :show-reset="false"
+          :show-submit="false"
+          root-class="equipment-dialog__form"
+        >
+          <template #responsibleEmployeeId>
+            <ArtEmployeeSelect
+              :model-value="form.responsibleEmployeeId ?? undefined"
+              :tenant-id="form.tenantId"
+              :selected-data="selectedEmployee"
+              placeholder="选择设备管理员"
+              @update:model-value="form.responsibleEmployeeId = $event ?? null"
+            />
+          </template>
+        </ArtForm>
+      </section>
     </div>
   </ArtDialog>
 </template>
@@ -58,6 +70,7 @@
   import ArtForm, { type FormItem } from '@/components/core/forms/art-form/index.vue'
   import ArtEmployeeSelect from '@/components/business/art-employee-select/index.vue'
   import ArtSvgIcon from '@/components/core/base/art-svg-icon/index.vue'
+  import ArtDictDisplay from '@/components/core/base/art-dict-display/index.vue'
   import { useUserStore } from '@/store/modules/user'
   import {
     saveProductionEquipment,
@@ -103,6 +116,42 @@
     { name: 'connection', label: '设备接入', icon: 'ri:radar-line' },
     { name: 'governance', label: '治理设置', icon: 'ri:shield-check-line' }
   ] as const
+  const tabMeta: Record<
+    EquipmentTab,
+    { title: string; description: string; hint: string; icon: string }
+  > = {
+    identity: {
+      title: '设备基础资料',
+      description: '维护统一编码、名称、分类与启用状态。',
+      hint: '名称与分类为必填项',
+      icon: 'ri:fingerprint-line'
+    },
+    assignment: {
+      title: '生产归属',
+      description: '明确设备所在组织、工作中心和现场责任人。',
+      hint: '部门 / 产线为必填项',
+      icon: 'ri:node-tree'
+    },
+    technical: {
+      title: '技术信息',
+      description: '补充品牌型号、制造信息与资产识别信息。',
+      hint: '用于设备档案与追溯',
+      icon: 'ri:settings-5-line'
+    },
+    connection: {
+      title: '现场接入',
+      description: '维护三色灯、安灯与利用率采集基线。',
+      hint: '用于 PMIS 和现场采集',
+      icon: 'ri:radar-line'
+    },
+    governance: {
+      title: '治理设置',
+      description: '配置运行状态、显示顺序与设备概要。',
+      hint: '统一主数据展示口径',
+      icon: 'ri:shield-check-line'
+    }
+  }
+  const activeTabMeta = computed(() => tabMeta[activeTab.value])
 
   const initialForm = (): EquipmentForm => ({
     id: undefined,
@@ -324,7 +373,12 @@
       activeTab.value = 'identity'
       await nextTick()
       await formRef.value?.validate()
-      if (!form.productionDepartmentId) return false
+      if (!form.productionDepartmentId) {
+        activeTab.value = 'assignment'
+        await nextTick()
+        await formRef.value?.validate()
+        return false
+      }
       await saveProductionEquipment(cloneDeep(form), form.id)
       emit('success')
       return true
@@ -371,82 +425,185 @@
 <style scoped lang="scss">
   .equipment-dialog {
     display: grid;
-    gap: 12px;
+    gap: var(--art-space-3);
     min-width: 0;
 
     &__identity {
       display: grid;
-      grid-template-columns: 46px minmax(0, 1fr) auto;
-      gap: 12px;
+      grid-template-columns: 48px minmax(0, 1fr) auto;
+      gap: var(--art-space-3);
       align-items: center;
-      padding: 12px 14px;
+      padding: var(--art-space-3) var(--art-space-4);
       background: color-mix(in srgb, var(--theme-color) 7%, var(--el-bg-color));
       border: 1px solid color-mix(in srgb, var(--theme-color) 15%, var(--el-border-color-lighter));
       border-radius: var(--el-border-radius-base);
 
-      > span {
+      > span:first-child {
         display: grid;
         place-items: center;
-        width: 46px;
-        height: 46px;
+        width: 48px;
+        height: 48px;
         font-size: 21px;
         color: var(--theme-color);
         background: var(--el-bg-color);
         border-radius: var(--el-border-radius-base);
       }
 
-      small,
-      strong,
-      p {
-        display: block;
+      > div:nth-child(2) {
+        min-width: 0;
+
+        small,
+        strong,
+        p {
+          display: block;
+          margin: 0;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+
+        small {
+          font-size: 9px;
+          font-weight: 700;
+          color: var(--theme-color);
+          letter-spacing: 0.1em;
+        }
+
+        strong {
+          margin-top: 2px;
+          font-size: 15px;
+        }
+
+        p {
+          margin-top: 2px;
+          font-family: var(--art-font-family-mono, Consolas, monospace);
+          font-size: 11px;
+          color: var(--el-text-color-secondary);
+        }
+      }
+    }
+
+    &__status {
+      display: inline-flex;
+      align-items: center;
+      justify-content: flex-end;
+      min-width: 48px;
+
+      :deep(.el-tag) {
+        width: auto;
+        height: 24px;
+        padding: 0 9px;
+        font-size: 12px;
+        line-height: 22px;
+      }
+    }
+
+    &__tabs {
+      min-width: 0;
+
+      :deep(.el-tabs__content) {
+        display: none;
+      }
+
+      :deep(.el-tabs__header) {
         margin: 0;
       }
 
-      small {
-        font-size: 9px;
-        color: var(--theme-color);
-        letter-spacing: 0.1em;
+      :deep(.el-tabs__nav-wrap) {
+        padding-inline: var(--art-space-2);
       }
-
-      strong {
-        margin-top: 2px;
-        font-size: 15px;
-      }
-
-      p {
-        margin-top: 2px;
-        font-size: 11px;
-        color: var(--el-text-color-secondary);
-      }
-    }
-
-    &__tabs :deep(.el-tabs__content) {
-      display: none;
-    }
-
-    &__tabs :deep(.el-tabs__header) {
-      margin: 0;
     }
 
     &__tab-label {
       display: inline-flex;
-      gap: 6px;
+      gap: var(--art-space-2);
       align-items: center;
     }
 
-    :deep(.equipment-dialog__form) {
-      padding-top: 2px;
+    &__panel {
+      min-width: 0;
+      padding: var(--art-space-4);
+      background: color-mix(in srgb, var(--el-fill-color-light) 45%, var(--el-bg-color));
+      border: 1px solid var(--el-border-color-lighter);
+      border-radius: var(--el-border-radius-base);
+
+      > header {
+        display: flex;
+        gap: var(--art-space-4);
+        align-items: flex-start;
+        justify-content: space-between;
+        padding-bottom: var(--art-space-3);
+        margin-bottom: var(--art-space-4);
+        border-bottom: 1px solid var(--el-border-color-lighter);
+
+        > div {
+          display: flex;
+          gap: var(--art-space-3);
+          align-items: center;
+          min-width: 0;
+
+          > span {
+            display: grid;
+            flex: none;
+            place-items: center;
+            width: 34px;
+            height: 34px;
+            color: var(--theme-color);
+            background: color-mix(in srgb, var(--theme-color) 9%, var(--el-bg-color));
+            border-radius: var(--el-border-radius-base);
+          }
+
+          strong,
+          small {
+            display: block;
+          }
+
+          strong {
+            font-size: var(--art-font-size-section-title);
+          }
+
+          small {
+            margin-top: 2px;
+            font-size: 11px;
+            color: var(--el-text-color-secondary);
+          }
+        }
+
+        > span {
+          flex: none;
+          padding-top: 3px;
+          font-size: 11px;
+          color: var(--el-text-color-secondary);
+        }
+      }
+
+      :deep(.equipment-dialog__form) {
+        padding-top: 0;
+      }
     }
   }
 
   @media (width <= 620px) {
     .equipment-dialog__identity {
       grid-template-columns: 42px minmax(0, 1fr);
+
+      > span:first-child {
+        width: 42px;
+        height: 42px;
+      }
     }
 
-    .equipment-dialog__identity .el-tag {
+    .equipment-dialog__status {
       grid-column: 1 / -1;
       justify-self: start;
+    }
+
+    .equipment-dialog__panel {
+      padding: var(--art-space-3);
+
+      > header > span {
+        display: none;
+      }
     }
   }
 </style>

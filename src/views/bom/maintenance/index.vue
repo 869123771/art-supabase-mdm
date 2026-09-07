@@ -34,6 +34,7 @@
         focusable
       />
       <BomDialog ref="dialogRef" @success="refresh" />
+      <BomDetailDialog ref="detailDialogRef" />
     </div>
   </ArtPermissionGuard>
 </template>
@@ -73,6 +74,7 @@
     type UnitOfMeasure
   } from '@mdm/api'
   import BomDialog, { type BomDialogOpenData } from './modules/bom-dialog.vue'
+  import BomDetailDialog from './modules/bom-detail-dialog.vue'
 
   defineOptions({ name: 'MdmBomMaintenance' })
   const { confirmAction } = useArtFeedback()
@@ -82,6 +84,7 @@
   const tenantId = computed(() => effectiveTenantId.value ?? '')
   const tableRef = ref<ArtTableQueryExpose>()
   const dialogRef = ref<InstanceType<typeof BomDialog>>()
+  const detailDialogRef = ref<InstanceType<typeof BomDetailDialog>>()
   const units = ref<UnitOfMeasure[]>([])
   const overview = reactive({ total: 0, rows: [] as BomRecord[] })
   const search = reactive({
@@ -145,7 +148,7 @@
         tenantId.value
       )
   }
-  const openDialog = async (row?: BomRecord, options?: { copy?: boolean; readonly?: boolean }) => {
+  const openDialog = async (row?: BomRecord, options?: { copy?: boolean }) => {
     await ensureOptions()
     const data: BomDialogOpenData = {
       row,
@@ -158,6 +161,9 @@
       ...options
     }
     await dialogRef.value?.handleOpen(data)
+  }
+  const openDetail = async (row: BomRecord): Promise<void> => {
+    await detailDialogRef.value?.handleOpen(row)
   }
   const fetchData = async (params: BomQuery, options?: { signal?: AbortSignal }) => {
     await ensureOptions()
@@ -331,7 +337,7 @@
           <ArtButtonTable
             type="view"
             permission="MdmBomMaintenance:View"
-            onClick={() => void openDialog(row, { readonly: true })}
+            onClick={() => void openDetail(row)}
           />
           <ArtButtonTable
             type="edit"

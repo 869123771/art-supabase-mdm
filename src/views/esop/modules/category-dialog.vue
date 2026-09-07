@@ -4,6 +4,7 @@
       <div class="esop-category-dialog__context">
         <span><ArtSvgIcon icon="ri:folder-settings-line" /></span>
         <div>
+          <small>CATEGORY GOVERNANCE</small>
           <strong>文档分类</strong>
           <p>建立稳定的层级导航，分类编码在当前租户内保持唯一。</p>
         </div>
@@ -45,6 +46,7 @@
   import ArtForm, { type FormItem } from '@/components/core/forms/art-form/index.vue'
   import ArtSvgIcon from '@/components/core/base/art-svg-icon/index.vue'
   import { useUserStore } from '@/store/modules/user'
+  import TreeUtils from '@/utils/tree'
   import { saveEsopCategory, type EsopCategory, type EsopCategoryInput } from '@mdm/api'
 
   export interface EsopCategoryDialogOpenData {
@@ -68,6 +70,12 @@
   const categories = shallowRef<EsopCategory[]>([])
   const tenantOptions = ref<Array<{ label: string; value: string }>>([])
   const treeProps = { label: 'categoryName', children: 'children' }
+  const categoryTreeUtils = new TreeUtils({
+    idKey: 'id',
+    parentKey: 'parentId',
+    childrenKey: 'children',
+    deepClone: false
+  })
   const initial = (): EsopCategoryInput => ({
     tenantId: '',
     parentId: null,
@@ -79,20 +87,16 @@
   })
   const form = reactive<EsopCategoryInput>(initial())
   const availableCategories = computed(() => {
-    const excluded = new Set<string>()
-    const collect = (nodes: EsopCategory[], targetId?: string, belowTarget = false): void => {
-      nodes.forEach((node) => {
-        const excludedBranch = belowTarget || node.id === targetId
-        if (excludedBranch) excluded.add(node.id)
-        if (node.children?.length) collect(node.children, targetId, excludedBranch)
-      })
-    }
-    collect(categories.value, form.id)
-    const clone = (nodes: EsopCategory[]): EsopCategory[] =>
-      nodes
+    const excluded = new Set(
+      form.id
+        ? categoryTreeUtils.getDescendants(categories.value, form.id, true).map((node) => node.id)
+        : []
+    )
+    return categoryTreeUtils.listToTree(
+      categoryTreeUtils
+        .treeToList(categories.value)
         .filter((node) => node.tenantId === form.tenantId && !excluded.has(node.id))
-        .map((node) => ({ ...node, children: node.children ? clone(node.children) : [] }))
-    return clone(categories.value)
+    )
   })
   const items = computed<FormItem[]>(() => [
     {
@@ -195,50 +199,68 @@
 </script>
 
 <style scoped lang="scss">
-  .esop-category-dialog__context {
-    display: grid;
-    grid-template-columns: 42px minmax(0, 1fr);
-    gap: 12px;
-    align-items: center;
-    padding: 13px 14px;
-    margin-bottom: 16px;
-    background: color-mix(in srgb, var(--theme-color) 7%, var(--el-bg-color));
-    border: 1px solid color-mix(in srgb, var(--theme-color) 14%, var(--el-border-color-lighter));
-    border-radius: var(--el-border-radius-base);
-  }
+  .esop-category-dialog {
+    &__context {
+      display: grid;
+      grid-template-columns: 44px minmax(0, 1fr);
+      gap: var(--art-space-3);
+      align-items: center;
+      padding: var(--art-space-3) var(--art-space-4);
+      margin-bottom: var(--art-space-4);
+      background: color-mix(in srgb, var(--theme-color) 7%, var(--el-bg-color));
+      border: 1px solid color-mix(in srgb, var(--theme-color) 16%, var(--el-border-color-lighter));
+      border-radius: var(--el-border-radius-base);
 
-  .esop-category-dialog__context > span {
-    display: grid;
-    place-items: center;
-    width: 42px;
-    height: 42px;
-    color: var(--theme-color);
-    background: var(--el-bg-color);
-    border-radius: 10px;
-  }
+      > span {
+        display: grid;
+        place-items: center;
+        width: 44px;
+        height: 44px;
+        font-size: 19px;
+        color: var(--theme-color);
+        background: var(--el-bg-color);
+        border-radius: var(--el-border-radius-base);
+        box-shadow: var(--el-box-shadow-lighter);
+      }
 
-  .esop-category-dialog__context strong,
-  .esop-category-dialog__context p {
-    display: block;
-    margin: 0;
-  }
+      small,
+      strong,
+      p {
+        display: block;
+        margin: 0;
+      }
 
-  .esop-category-dialog__context p {
-    margin-top: 3px;
-    font-size: 12px;
-    color: var(--el-text-color-secondary);
-  }
+      small {
+        font-size: 9px;
+        font-weight: 700;
+        color: var(--theme-color);
+        letter-spacing: 0.07em;
+      }
 
-  .esop-category-dialog :deep(.el-radio-group) {
-    display: flex;
-    width: 100%;
-  }
+      strong {
+        margin-top: 1px;
+        font-size: 15px;
+      }
 
-  .esop-category-dialog :deep(.el-radio-button) {
-    flex: 1;
-  }
+      p {
+        margin-top: 3px;
+        font-size: 12px;
+        line-height: 18px;
+        color: var(--el-text-color-secondary);
+      }
+    }
 
-  .esop-category-dialog :deep(.el-radio-button__inner) {
-    width: 100%;
+    :deep(.el-radio-group) {
+      display: flex;
+      width: 100%;
+    }
+
+    :deep(.el-radio-button) {
+      flex: 1;
+    }
+
+    :deep(.el-radio-button__inner) {
+      width: 100%;
+    }
   }
 </style>

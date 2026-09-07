@@ -19,7 +19,6 @@
         :span="8"
         :gutter="18"
         label-position="top"
-        :disabled="readonly"
         :show-reset="false"
         :show-submit="false"
         root-class="bom-dialog__form"
@@ -35,7 +34,6 @@
             title="选择 BOM 父项物料"
             subtitle="父项物料决定 BOM 的基本计量口径"
             show-pagination
-            :disabled="readonly"
             @change="handleParentChange"
           />
         </template>
@@ -44,7 +42,7 @@
       <section class="bom-dialog__components">
         <header>
           <div><strong>组件明细</strong><small>按装配顺序维护用量、损耗率和工序位置</small></div>
-          <div v-if="!readonly" class="bom-dialog__component-actions">
+          <div class="bom-dialog__component-actions">
             <ArtTableMultipleSelect
               v-model="selectedComponentIds"
               :selected-data="selectedComponents"
@@ -67,6 +65,7 @@
           </div>
         </header>
         <ArtTable
+          ref="componentTableRef"
           :data="form.items"
           :columns="componentColumns"
           row-key="componentMaterialId"
@@ -87,7 +86,14 @@
 
 <script setup lang="tsx">
   import { cloneDeep } from 'lodash-es'
-  import { ElInput, ElInputNumber, ElOption, ElSelect, type FormRules } from 'element-plus'
+  import {
+    ElInput,
+    ElInputNumber,
+    ElMessage,
+    ElOption,
+    ElSelect,
+    type FormRules
+  } from 'element-plus'
   import ArtDialog from '@/components/core/dialogs/art-dialog/index.vue'
   import type { ArtDialogExpose } from '@/components/core/dialogs/art-dialog/types'
   import ArtForm, { type FormItem } from '@/components/core/forms/art-form/index.vue'
@@ -96,6 +102,7 @@
   import ArtIconButton from '@/components/core/widget/art-icon-button/index.vue'
   import ArtDictDisplay from '@/components/core/base/art-dict-display/index.vue'
   import ArtSvgIcon from '@/components/core/base/art-svg-icon/index.vue'
+  import type { ArtTableExpose } from '@/components/core/tables/art-table/index.vue'
   import { useUserStore } from '@/store/modules/user'
   import type { ColumnOption } from '@/types'
   import type {
@@ -114,7 +121,6 @@
   export interface BomDialogOpenData {
     row?: BomRecord
     copy?: boolean
-    readonly?: boolean
     tenantId: string
     tenantOptions: Array<{ label: string; value: string }>
     units: UnitOfMeasure[]
@@ -130,9 +136,9 @@
   const { getDictMap } = storeToRefs(userStore)
   const dialogRef = ref<ArtDialogExpose<BomDialogOpenData>>()
   const formRef = ref<FormExpose>()
+  const componentTableRef = ref<ArtTableExpose>()
   const tenantOptions = ref<Array<{ label: string; value: string }>>([])
   const units = ref<UnitOfMeasure[]>([])
-  const readonly = ref(false)
   const selectedParent = ref<MaterialArchive[]>([])
   const selectedComponents = ref<MaterialArchive[]>([])
   const selectedComponentIds = ref<Array<string | number>>([])
@@ -256,6 +262,10 @@
     })
   const materialById = (id: string) =>
     [...selectedParent.value, ...selectedComponents.value].find((item) => item.id === id)
+  const componentRowLabel = (row: BomComponentInput, rowIndex: number): string => {
+    const materialName = materialById(row.componentMaterialId)?.materialName
+    return `第 ${rowIndex + 1} 行${materialName ? `“${materialName}”` : '组件'}`
+  }
   const componentIndex = (row: BomComponentInput) => form.items.indexOf(row)
   const componentColumns = computed<ColumnOption<BomComponentInput>[]>(() => [
     { type: 'index', label: '#', width: 48, align: 'center' },
@@ -292,7 +302,6 @@
           min={1}
           max={999999}
           controls={false}
-          disabled={readonly.value}
           aria-label="组件顺序"
           class="bom-dialog__number-input"
         />
@@ -301,6 +310,12 @@
     {
       prop: 'quantity',
       label: '用量',
+      required: true,
+      requiredMessage: ({ row, rowIndex }) => `${componentRowLabel(row, rowIndex)}的用量不能为空`,
+      rules: {
+        validator: ({ value }) => Number.isFinite(Number(value)) && Number(value) > 0,
+        message: ({ row, rowIndex }) => `${componentRowLabel(row, rowIndex)}的用量必须大于 0`
+      },
       width: 118,
       align: 'center',
       formatter: (row) => (
@@ -309,7 +324,6 @@
           min={0.00000001}
           precision={6}
           controlsPosition="right"
-          disabled={readonly.value}
           aria-label="组件用量"
           class="bom-dialog__number-input"
         />
@@ -318,15 +332,11 @@
     {
       prop: 'unitId',
       label: '单位',
+      required: true,
+      requiredMessage: ({ row, rowIndex }) => `${componentRowLabel(row, rowIndex)}未选择单位`,
       width: 110,
       formatter: (row) => (
-        <ElSelect
-          v-model={row.unitId}
-          filterable
-          disabled={readonly.value}
-          aria-label="组件单位"
-          class="w-full!"
-        >
+        <ElSelect v-model={row.unitId} filterable clearable aria-label="组件单位" class="w-full!">
           {scopedUnits.value.map((unit) => (
             <ElOption key={unit.id} label={unit.unitName} value={unit.id} />
           ))}
@@ -345,7 +355,6 @@
           max={100}
           precision={2}
           controls={false}
-          disabled={readonly.value}
           aria-label="组件损耗率"
           class="bom-dialog__number-input"
         />
@@ -357,9 +366,9 @@
       formatter: (row) => (
         <ElInput
           v-model={row.operationName}
+          clearable
           maxlength={120}
           placeholder="填写工序"
-          disabled={readonly.value}
           aria-label="组件工序"
         />
       )
@@ -370,32 +379,28 @@
       formatter: (row) => (
         <ElInput
           v-model={row.positionNo}
+          clearable
           maxlength={60}
           placeholder="填写位号"
-          disabled={readonly.value}
           aria-label="组件位号"
         />
       )
     },
-    ...(!readonly.value
-      ? [
-          {
-            prop: 'operation',
-            label: '操作',
-            width: 64,
-            fixed: 'right' as const,
-            align: 'center' as const,
-            formatter: (row: BomComponentInput) => (
-              <ArtIconButton
-                icon="ri:delete-bin-line"
-                label="移除组件"
-                tone="danger"
-                onClick={() => form.items.splice(componentIndex(row), 1)}
-              />
-            )
-          }
-        ]
-      : [])
+    {
+      prop: 'operation',
+      label: '操作',
+      width: 64,
+      fixed: 'right',
+      align: 'center',
+      formatter: (row) => (
+        <ArtIconButton
+          icon="ri:delete-bin-line"
+          label="移除组件"
+          tone="danger"
+          onClick={() => form.items.splice(componentIndex(row), 1)}
+        />
+      )
+    }
   ])
   const handleParentChange = (_value: unknown, rows: DataSelectRecord[]) => {
     const row = rows[0] as MaterialArchive | undefined
@@ -423,11 +428,30 @@
         }
     )
   }
+  const validateComponents = async (): Promise<boolean> => {
+    if (!form.items.length) {
+      ElMessage.warning('请至少添加一项 BOM 组件')
+      return false
+    }
+    const result = await componentTableRef.value?.validate()
+    if (result?.valid !== false) return true
+    ElMessage.warning(
+      `${result.firstError?.message || '组件明细填写不完整'}，请完善红色标记项后再保存`
+    )
+    return false
+  }
   const handleSubmit = async (): Promise<boolean> => {
     try {
       await formRef.value?.validate()
-      if (!form.items.length) return false
-      if (form.items.some((item) => !item.unitId || item.quantity <= 0)) return false
+    } catch {
+      ElMessage.warning('请先完善 BOM 基本信息中的必填项')
+      dialogRef.value?.scrollTo({ top: 0 })
+      return false
+    }
+
+    if (!(await validateComponents())) return false
+
+    try {
       await saveBom(form)
       emit('success')
       return true
@@ -439,7 +463,6 @@
     Object.assign(form, initialForm())
     tenantOptions.value = data.tenantOptions
     units.value = data.units
-    readonly.value = Boolean(data.readonly)
     selectedParent.value = data.row?.material ? [data.row.material as MaterialArchive] : []
     selectedComponents.value = (data.row?.items.map((item) => item.component).filter(Boolean) ||
       []) as MaterialArchive[]
@@ -453,19 +476,15 @@
       form.status = 'design'
     }
     await dialogRef.value?.handleOpen(data, {
-      title: data.readonly
-        ? 'BOM 结构详情'
-        : data.copy
-          ? '复制 BOM'
-          : data.row
-            ? '编辑 BOM'
-            : '新增 BOM',
+      title: data.copy ? '复制 BOM' : data.row ? '编辑 BOM' : '新增 BOM',
       subtitle: '版本化维护父项与组件的工程关系',
       confirmText: '保存 BOM',
-      showConfirmButton: !data.readonly,
       contentMaxHeight: '76vh',
       onConfirm: handleSubmit,
-      onOpen: () => formRef.value?.clearValidate()
+      onOpen: () => {
+        formRef.value?.clearValidate()
+        componentTableRef.value?.clearValidate()
+      }
     })
   }
   watch(

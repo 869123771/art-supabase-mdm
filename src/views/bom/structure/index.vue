@@ -14,117 +14,160 @@
         :metrics="metrics"
       />
 
-      <section class="bom-structure-page__toolbar">
-        <div class="bom-structure-page__selector">
-          <label>BOM 版本</label>
-          <ArtTableSingleSelect
-            v-model="selectedBomId"
-            :selected-data="selectedBom ? [selectedBom] : []"
-            :api-fn="fetchBomOptions"
-            :columns="bomColumns"
-            label-key="bomCode"
-            :description-key="
-              (row) => `${row.material?.materialName || '未关联父项'} · ${row.version}`
-            "
-            title="选择要展开的 BOM"
-            subtitle="可查询设计、审核、生效与历史归档版本"
-            show-pagination
-            @change="handleBomChange"
-          />
+      <ArtSectionCard
+        class="bom-structure-page__filters"
+        title="分析条件"
+        subtitle="选择一个 BOM 版本，并设置需要展开的结构范围。"
+        preserve-content-structure
+      >
+        <div class="bom-structure-page__filter-grid">
+          <label class="bom-structure-page__field bom-structure-page__field--bom">
+            <span><ArtSvgIcon icon="ri:git-branch-line" />BOM 版本</span>
+            <ArtTableSingleSelect
+              v-model="selectedBomId"
+              :selected-data="selectedBom ? [selectedBom] : []"
+              :api-fn="fetchBomOptions"
+              :columns="bomColumns"
+              label-key="bomCode"
+              :description-key="
+                (row) => `${row.material?.materialName || '未关联父项'} · ${row.version}`
+              "
+              title="选择要展开的 BOM"
+              subtitle="可查询设计、审核、生效与历史归档版本"
+              show-pagination
+              aria-label="选择 BOM 版本"
+              @change="handleBomChange"
+            />
+          </label>
+          <label class="bom-structure-page__field">
+            <span><ArtSvgIcon icon="ri:node-tree" />展开方式</span>
+            <ElSegmented
+              v-model="mode"
+              :options="modeOptions"
+              aria-label="选择 BOM 展开方式"
+              @change="loadStructure"
+            />
+          </label>
+          <label class="bom-structure-page__field">
+            <span><ArtSvgIcon icon="ri:stack-line" />最大层级</span>
+            <ElInputNumber
+              v-model="maxDepth"
+              :min="2"
+              :max="20"
+              :disabled="mode === 'single'"
+              controls-position="right"
+              aria-label="BOM 最大展开层级"
+              @change="loadStructure"
+            />
+            <small>{{ mode === 'single' ? '单层模式固定展开 1 层' : '支持展开 2–20 层' }}</small>
+          </label>
         </div>
-        <div class="bom-structure-page__mode">
-          <label>展开方式</label>
-          <ElRadioGroup v-model="mode" @change="loadStructure">
-            <ElRadioButton value="single">单层</ElRadioButton>
-            <ElRadioButton value="multi">多层</ElRadioButton>
-          </ElRadioGroup>
-        </div>
-        <div v-if="mode === 'multi'" class="bom-structure-page__depth">
-          <label>最大层级</label>
-          <ElInputNumber
-            v-model="maxDepth"
-            :min="2"
-            :max="20"
-            controls-position="right"
-            @change="loadStructure"
-          />
-        </div>
-      </section>
+      </ArtSectionCard>
 
-      <section class="bom-structure-page__canvas" v-loading="loading">
-        <template v-if="selectedBom">
-          <header class="bom-structure-page__root">
-            <span class="bom-structure-page__root-icon"><ArtSvgIcon icon="ri:box-3-line" /></span>
-            <div
-              ><small>ROOT MATERIAL · {{ selectedBom.bomCode }} · {{ selectedBom.version }}</small
-              ><strong>{{ selectedBom.material?.materialName || '父项物料' }}</strong
-              ><p>{{
-                [selectedBom.material?.materialCode, selectedBom.material?.specificationModel]
-                  .filter(Boolean)
-                  .join(' · ')
-              }}</p></div
-            >
-            <ArtDictDisplay dict-code="mdmBomStatus" :value="selectedBom.status" display="tag" />
-          </header>
-          <div class="bom-structure-page__column-head"
-            ><span>组件层级</span><span>需求用量</span><span>结构状态</span></div
-          >
-          <ElTree
-            v-if="tree.length"
-            ref="treeRef"
-            :data="tree"
-            node-key="nodeId"
-            :props="{ children: 'children', label: 'materialName' }"
-            default-expand-all
-            :expand-on-click-node="false"
-            class="bom-structure-page__tree"
-          >
-            <template #default="{ data }">
-              <div class="bom-structure-page__node">
-                <span class="bom-structure-page__node-icon"
-                  ><ArtSvgIcon :icon="data.hasChildren ? 'ri:node-tree' : 'ri:box-3-line'"
-                /></span>
-                <div class="bom-structure-page__node-main"
-                  ><strong>{{ data.materialName }}</strong
-                  ><small>{{
-                    [data.materialCode, data.specificationModel].filter(Boolean).join(' · ')
-                  }}</small></div
-                >
-                <div class="bom-structure-page__quantity"
-                  ><strong>{{ data.quantity }}</strong
-                  ><small>{{ data.unitName }}</small></div
-                >
-                <ElTag :type="data.hasChildren ? 'primary' : 'info'" effect="plain" size="small">{{
-                  data.hasChildren ? '可展开' : '末级件'
-                }}</ElTag>
-              </div>
-            </template>
-          </ElTree>
-          <ArtEmptyState
-            v-else
-            title="当前 BOM 暂无组件明细"
-            description="返回 BOM 维护添加组件后，即可在这里查看层级结构。"
-            :visual-size="96"
-          />
+      <ArtSectionCard
+        class="bom-structure-page__result"
+        title="结构视图"
+        :subtitle="resultSubtitle"
+        :loading="loading"
+        :error="loadError"
+        error-title="BOM 结构加载失败"
+        :empty="!selectedBom"
+        empty-title="选择一个 BOM 版本"
+        empty-description="选定父项及版本后，系统会在这里展开单层或多层结构。"
+        :empty-visual-size="112"
+        :min-height="320"
+        @retry="loadStructure"
+      >
+        <template #actions>
+          <div class="bom-structure-page__legend" aria-label="结构状态图例">
+            <span><i class="is-branch"></i>含下级</span>
+            <span><i></i>末级件</span>
+          </div>
         </template>
-        <ArtEmptyState
-          v-else
-          title="选择一个 BOM 版本"
-          description="选定父项及版本后，系统会在这里展开单层或多层结构。"
-          :visual-size="112"
-        />
-      </section>
+
+        <ElScrollbar v-if="selectedBom" class="bom-structure-page__scrollbar">
+          <div class="bom-structure-page__content">
+            <header class="bom-structure-page__root">
+              <span class="bom-structure-page__root-icon"><ArtSvgIcon icon="ri:box-3-line" /></span>
+              <div class="bom-structure-page__root-main">
+                <small>根节点 · {{ selectedBom.bomCode }} · {{ selectedBom.version }}</small>
+                <strong>{{ selectedBom.material?.materialName || '父项物料' }}</strong>
+                <p>{{ rootMaterialDescription }}</p>
+              </div>
+              <div class="bom-structure-page__root-tags">
+                <ArtDictDisplay
+                  dict-code="mdmBomPurpose"
+                  :value="selectedBom.purpose"
+                  display="tag"
+                />
+                <ArtDictDisplay
+                  dict-code="mdmBomStatus"
+                  :value="selectedBom.status"
+                  display="tag"
+                />
+              </div>
+            </header>
+
+            <ArtAsyncState
+              :empty="!tree.length"
+              empty-text="当前 BOM 暂无组件明细"
+              empty-description="返回 BOM 维护添加组件后，即可在这里查看层级结构。"
+              :empty-image-size="88"
+              :min-height="220"
+            >
+              <div class="bom-structure-page__column-head">
+                <span>组件层级</span><span>需求用量</span><span>结构状态</span>
+              </div>
+              <ElTree
+                ref="treeRef"
+                :data="tree"
+                node-key="nodeId"
+                :props="{ children: 'children', label: 'materialName' }"
+                default-expand-all
+                :expand-on-click-node="false"
+                class="bom-structure-page__tree"
+              >
+                <template #default="{ data }">
+                  <div class="bom-structure-page__node">
+                    <span class="bom-structure-page__node-icon">
+                      <ArtSvgIcon :icon="data.hasChildren ? 'ri:node-tree' : 'ri:box-3-line'" />
+                    </span>
+                    <div class="bom-structure-page__node-main">
+                      <small>第 {{ data.depth }} 层</small>
+                      <strong>{{ data.materialName }}</strong>
+                      <p>{{ nodeDescription(data) }}</p>
+                    </div>
+                    <div class="bom-structure-page__quantity">
+                      <strong>{{ formatQuantity(data.quantity) }}</strong>
+                      <small>{{ data.unitName || '—' }}</small>
+                    </div>
+                    <ElTag
+                      :type="data.hasChildren ? 'primary' : 'info'"
+                      effect="plain"
+                      size="small"
+                    >
+                      {{ data.hasChildren ? '含下级' : '末级件' }}
+                    </ElTag>
+                  </div>
+                </template>
+              </ElTree>
+            </ArtAsyncState>
+          </div>
+        </ElScrollbar>
+      </ArtSectionCard>
     </div>
   </ArtPermissionGuard>
 </template>
 
 <script setup lang="ts">
   import ArtPermissionGuard from '@/components/core/feedback/art-permission-guard/index.vue'
-  import ArtEmptyState from '@/components/core/feedback/art-empty-state/index.vue'
+  import ArtAsyncState from '@/components/core/feedback/art-async-state/index.vue'
   import ArtTableSingleSelect from '@/components/core/forms/art-data-select/table-single.vue'
   import ArtSvgIcon from '@/components/core/base/art-svg-icon/index.vue'
   import ArtDictDisplay from '@/components/core/base/art-dict-display/index.vue'
+  import ArtSectionCard from '@/components/core/surfaces/art-section-card/index.vue'
   import { useUserStore } from '@/store/modules/user'
+  import TreeUtils from '@/utils/tree'
   import BusinessWorkspaceHeader, {
     type BusinessWorkspaceMetric
   } from '@/components/business/business-workspace-header/index.vue'
@@ -143,9 +186,21 @@
   const selectedBomId = ref<string | number>()
   const selectedBom = ref<BomRecord>()
   const mode = ref<'single' | 'multi'>('multi')
+  const modeOptions = [
+    { label: '单层', value: 'single' },
+    { label: '多层', value: 'multi' }
+  ]
   const maxDepth = ref(8)
   const loading = ref(false)
+  const loadError = ref<Error | null>(null)
   const tree = ref<BomStructureNode[]>([])
+  const treeUtils = new TreeUtils({
+    idKey: 'nodeId',
+    parentKey: 'parentNodeId',
+    childrenKey: 'children',
+    deepClone: false
+  })
+  let loadRequestId = 0
   const bomColumns: DataSelectColumn[] = [
     { prop: 'bomCode', label: 'BOM 编码', minWidth: 150 },
     { prop: 'version', label: '版本', width: 90 },
@@ -162,7 +217,17 @@
       dict: { code: 'mdmBomStatus', display: 'tag' }
     }
   ]
-  const flatNodes = computed(() => flattenTree(tree.value))
+  const flatNodes = computed(() => treeUtils.treeToList(tree.value))
+  const resultSubtitle = computed(() => {
+    if (!selectedBom.value) return '选择版本后查看父项、层级、需求用量与可继续展开节点。'
+    const scope = mode.value === 'single' ? '单层结构' : `最多 ${maxDepth.value} 层`
+    return `${selectedBom.value.bomCode} · ${scope} · ${flatNodes.value.length} 个组件节点`
+  })
+  const rootMaterialDescription = computed(() =>
+    [selectedBom.value?.material?.materialCode, selectedBom.value?.material?.specificationModel]
+      .filter(Boolean)
+      .join(' · ')
+  )
   void Promise.all([
     userStore.ensureDictLoaded('mdmBomPurpose'),
     userStore.ensureDictLoaded('mdmBomStatus')
@@ -207,32 +272,33 @@
     selectedBom.value = rows[0] as BomRecord | undefined
     void loadStructure()
   }
-  const buildTree = (rows: BomStructureNode[]): BomStructureNode[] => {
-    const map = new Map(
-      rows.map((row) => [row.nodeId, { ...row, children: [] as BomStructureNode[] }])
-    )
-    const roots: BomStructureNode[] = []
-    map.forEach((node) => {
-      const parent = node.parentNodeId ? map.get(node.parentNodeId) : undefined
-      if (parent) parent.children!.push(node)
-      else roots.push(node)
-    })
-    return roots
-  }
-  const flattenTree = (nodes: BomStructureNode[]): BomStructureNode[] =>
-    nodes.flatMap((node) => [node, ...flattenTree(node.children || [])])
+  const nodeDescription = (node: BomStructureNode): string =>
+    [node.materialCode, node.specificationModel].filter(Boolean).join(' · ') || '未维护物料说明'
+  const formatQuantity = (value: number): string =>
+    Number(value).toLocaleString('zh-CN', { maximumFractionDigits: 6 })
+
   async function loadStructure() {
+    const currentRequestId = ++loadRequestId
     if (!selectedBom.value) {
       tree.value = []
+      loadError.value = null
       return
     }
     loading.value = true
+    loadError.value = null
     try {
-      tree.value = buildTree(
-        await fetchBomStructure(selectedBom.value.id, mode.value === 'single' ? 1 : maxDepth.value)
+      const rows = await fetchBomStructure(
+        selectedBom.value.id,
+        mode.value === 'single' ? 1 : maxDepth.value
       )
+      if (currentRequestId === loadRequestId) tree.value = treeUtils.listToTree(rows)
+    } catch (error) {
+      if (currentRequestId === loadRequestId) {
+        tree.value = []
+        loadError.value = error instanceof Error ? error : new Error('BOM 结构加载失败')
+      }
     } finally {
-      loading.value = false
+      if (currentRequestId === loadRequestId) loading.value = false
     }
   }
 </script>
@@ -241,203 +307,280 @@
   .bom-structure-page {
     display: flex;
     flex-direction: column;
-    gap: 12px;
-    min-height: 0;
+    gap: var(--art-space-3);
     min-width: 0;
-  }
-
-  .bom-structure-page__toolbar {
-    flex: none;
-    display: grid;
-    grid-template-columns: minmax(320px, 1fr) auto auto;
-    gap: 18px;
-    align-items: end;
-    padding: 14px 16px;
-    background: var(--el-bg-color);
-    border: 1px solid var(--el-border-color-lighter);
-    border-radius: var(--el-border-radius-base);
-  }
-
-  .bom-structure-page__toolbar label {
-    display: block;
-    margin-bottom: 7px;
-    font-size: 11px;
-    font-weight: 600;
-    color: var(--el-text-color-secondary);
-  }
-
-  .bom-structure-page__canvas {
-    flex: 1;
     min-height: 0;
-    padding: 16px;
-    overflow: auto;
-    background: var(--el-bg-color);
-    border: 1px solid var(--el-border-color-lighter);
-    border-radius: var(--el-border-radius-base);
-  }
 
-  .bom-structure-page__root {
-    display: grid;
-    grid-template-columns: auto minmax(0, 1fr) auto;
-    gap: 12px;
-    align-items: center;
-    padding: 14px 16px;
-    background: color-mix(in srgb, var(--theme-color) 7%, var(--el-bg-color));
-    border: 1px solid color-mix(in srgb, var(--theme-color) 15%, var(--el-border-color-lighter));
-    border-radius: 12px;
-  }
+    &__filters {
+      flex: none;
+    }
 
-  .bom-structure-page__root-icon {
-    display: grid;
-    place-items: center;
-    width: 46px;
-    height: 46px;
-    font-size: 21px;
-    color: var(--theme-color);
-    background: var(--el-bg-color);
-    border-radius: 11px;
-  }
+    &__filter-grid {
+      display: grid;
+      grid-template-columns: minmax(320px, 1fr) minmax(190px, auto) 184px;
+      gap: var(--art-space-4);
+      align-items: start;
+    }
 
-  @media (width <= 900px) {
-    .bom-structure-page {
+    &__field {
+      display: grid;
+      gap: var(--art-space-2);
+      min-width: 0;
+
+      > span {
+        display: inline-flex;
+        gap: var(--art-space-2);
+        align-items: center;
+        font-size: var(--art-font-size-caption);
+        font-weight: 600;
+        color: var(--el-text-color-regular);
+
+        svg {
+          color: var(--theme-color);
+        }
+      }
+
+      > small {
+        font-size: 11px;
+        color: var(--el-text-color-secondary);
+      }
+
+      :deep(.el-segmented),
+      :deep(.el-input-number) {
+        width: 100%;
+      }
+    }
+
+    &__result {
+      display: flex;
+      flex: 1;
+      flex-direction: column;
+      min-height: 320px;
+      overflow: hidden;
+
+      :deep(.art-section-card__body) {
+        flex: 1;
+        min-height: 0;
+      }
+    }
+
+    &__legend {
+      display: inline-flex;
+      gap: var(--art-space-3);
+      align-items: center;
+      font-size: var(--art-font-size-caption);
+      color: var(--el-text-color-secondary);
+
+      span {
+        display: inline-flex;
+        gap: var(--art-space-1);
+        align-items: center;
+      }
+
+      i {
+        width: 7px;
+        height: 7px;
+        background: var(--el-color-info-light-5);
+        border-radius: 50%;
+
+        &.is-branch {
+          background: var(--theme-color);
+        }
+      }
+    }
+
+    &__scrollbar {
+      height: 100%;
+    }
+
+    &__content {
+      min-width: 660px;
+      padding-right: var(--art-space-1);
+    }
+
+    &__root {
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr) auto;
+      gap: var(--art-space-3);
+      align-items: center;
+      padding: var(--art-space-4);
+      background: color-mix(in srgb, var(--theme-color) 7%, var(--el-bg-color));
+      border: 1px solid color-mix(in srgb, var(--theme-color) 18%, var(--el-border-color-lighter));
+      border-radius: var(--el-border-radius-base);
+    }
+
+    &__root-icon,
+    &__node-icon {
+      display: grid;
+      place-items: center;
+      color: var(--theme-color);
+      background: var(--el-bg-color);
+      border-radius: var(--el-border-radius-base);
+    }
+
+    &__root-icon {
+      width: 46px;
+      height: 46px;
+      font-size: 21px;
+    }
+
+    &__root-main {
+      min-width: 0;
+
+      small,
+      strong,
+      p {
+        display: block;
+        margin: 0;
+      }
+
+      small {
+        font-size: 10px;
+        font-weight: 700;
+        color: var(--theme-color);
+        letter-spacing: 0.05em;
+      }
+
+      strong {
+        margin-top: 2px;
+        font-size: 16px;
+      }
+
+      p {
+        margin-top: 3px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        font-family: var(--art-font-family-mono, Consolas, monospace);
+        font-size: 11px;
+        color: var(--el-text-color-secondary);
+        white-space: nowrap;
+      }
+    }
+
+    &__root-tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: var(--art-space-2);
+      justify-content: flex-end;
+    }
+
+    &__column-head {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 150px 104px;
+      gap: var(--art-space-3);
+      padding: var(--art-space-3) var(--art-space-4) var(--art-space-2) 58px;
+      font-size: var(--art-font-size-caption);
+      font-weight: 600;
+      color: var(--el-text-color-secondary);
+    }
+
+    &__tree {
+      --el-tree-node-content-height: 62px;
+
+      background: transparent;
+
+      :deep(.el-tree-node__content) {
+        height: auto;
+        min-height: 62px;
+        margin-bottom: var(--art-space-1);
+        background: var(--el-fill-color-lighter);
+        border: 1px solid transparent;
+        border-radius: var(--el-border-radius-base);
+        transition:
+          border-color 0.16s ease,
+          background-color 0.16s ease;
+
+        &:hover {
+          background: color-mix(in srgb, var(--theme-color) 5%, var(--el-fill-color-lighter));
+          border-color: color-mix(in srgb, var(--theme-color) 20%, var(--el-border-color-lighter));
+        }
+      }
+
+      :deep(.el-tree-node__expand-icon) {
+        margin-left: var(--art-space-2);
+      }
+    }
+
+    &__node {
+      display: grid;
+      grid-template-columns: 34px minmax(0, 1fr) 150px 104px;
+      gap: var(--art-space-3);
+      align-items: center;
+      width: 100%;
+      min-width: 0;
+      padding: var(--art-space-2) var(--art-space-3) var(--art-space-2) 2px;
+    }
+
+    &__node-icon {
+      width: 32px;
+      height: 32px;
+    }
+
+    &__node-main,
+    &__quantity {
+      min-width: 0;
+    }
+
+    &__node-main {
+      small,
+      strong,
+      p {
+        display: block;
+        margin: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      small {
+        font-size: 9px;
+        font-weight: 700;
+        color: var(--theme-color);
+      }
+
+      p {
+        margin-top: 2px;
+        font-family: var(--art-font-family-mono, Consolas, monospace);
+        font-size: 10px;
+        color: var(--el-text-color-secondary);
+      }
+    }
+
+    &__quantity {
+      strong {
+        font-variant-numeric: tabular-nums;
+      }
+
+      small {
+        margin-left: var(--art-space-1);
+        color: var(--el-text-color-secondary);
+      }
+    }
+
+    @media (width <= 1000px) {
+      &__filter-grid {
+        grid-template-columns: 1fr 1fr;
+      }
+
+      &__field--bom {
+        grid-column: 1 / -1;
+      }
+    }
+
+    @media (width <= 760px) {
       height: auto;
-    }
 
-    .bom-structure-page__canvas {
-      min-height: 420px;
-    }
-  }
+      &__filter-grid {
+        grid-template-columns: 1fr;
+      }
 
-  .bom-structure-page__root small,
-  .bom-structure-page__root strong,
-  .bom-structure-page__root p {
-    display: block;
-    margin: 0;
-  }
+      &__field--bom {
+        grid-column: auto;
+      }
 
-  .bom-structure-page__root small {
-    font-size: 9px;
-    font-weight: 700;
-    color: var(--theme-color);
-    letter-spacing: 0.08em;
-  }
-
-  .bom-structure-page__root p {
-    margin-top: 3px;
-    font-family: var(--art-font-family-mono, Consolas, monospace);
-    font-size: 11px;
-    color: var(--el-text-color-secondary);
-  }
-
-  .bom-structure-page__column-head {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) 140px 110px;
-    gap: 12px;
-    padding: 12px 14px 8px 58px;
-    font-size: 11px;
-    color: var(--el-text-color-secondary);
-  }
-
-  .bom-structure-page__tree {
-    --el-tree-node-content-height: 54px;
-
-    background: transparent;
-  }
-
-  .bom-structure-page__tree :deep(.el-tree-node__content) {
-    height: auto;
-    min-height: 54px;
-    margin-bottom: 4px;
-    background: var(--el-fill-color-lighter);
-    border: 1px solid transparent;
-    border-radius: 9px;
-    transition:
-      border-color 0.16s ease,
-      background-color 0.16s ease;
-  }
-
-  .bom-structure-page__tree :deep(.el-tree-node__content:hover) {
-    background: color-mix(in srgb, var(--theme-color) 5%, var(--el-fill-color-lighter));
-    border-color: color-mix(in srgb, var(--theme-color) 18%, var(--el-border-color-lighter));
-  }
-
-  .bom-structure-page__tree :deep(.el-tree-node__expand-icon) {
-    margin-left: 8px;
-  }
-
-  .bom-structure-page__node {
-    display: grid;
-    grid-template-columns: 34px minmax(0, 1fr) 140px 110px;
-    gap: 10px;
-    align-items: center;
-    width: 100%;
-    min-width: 0;
-    padding: 7px 12px 7px 2px;
-  }
-
-  .bom-structure-page__node-icon {
-    display: grid;
-    place-items: center;
-    width: 32px;
-    height: 32px;
-    color: var(--theme-color);
-    background: var(--el-bg-color);
-    border-radius: 8px;
-  }
-
-  .bom-structure-page__node-main,
-  .bom-structure-page__quantity {
-    min-width: 0;
-  }
-
-  .bom-structure-page__node-main strong,
-  .bom-structure-page__node-main small {
-    display: block;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .bom-structure-page__node-main small {
-    margin-top: 2px;
-    font-family: var(--art-font-family-mono, Consolas, monospace);
-    font-size: 10px;
-    color: var(--el-text-color-secondary);
-  }
-
-  .bom-structure-page__quantity strong {
-    font-variant-numeric: tabular-nums;
-  }
-
-  .bom-structure-page__quantity small {
-    margin-left: 5px;
-    color: var(--el-text-color-secondary);
-  }
-
-  @media (width <= 860px) {
-    .bom-structure-page__toolbar {
-      grid-template-columns: 1fr 1fr;
-    }
-
-    .bom-structure-page__selector {
-      grid-column: 1 / -1;
-    }
-
-    .bom-structure-page__column-head {
-      display: none;
-    }
-
-    .bom-structure-page__node {
-      grid-template-columns: 32px minmax(0, 1fr) auto;
-    }
-
-    .bom-structure-page__quantity {
-      grid-column: 2;
-    }
-
-    .bom-structure-page__node .el-tag {
-      grid-row: 1 / span 2;
-      grid-column: 3;
+      &__result {
+        min-height: 440px;
+      }
     }
   }
 </style>

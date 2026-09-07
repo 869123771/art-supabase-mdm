@@ -45,6 +45,7 @@
         </div>
         <ElAlert v-if="form.error" :title="form.error" type="error" :closable="false" show-icon />
         <ArtTable
+          ref="taskTableRef"
           :data="form.model.items"
           :columns="columns"
           :show-pagination="false"
@@ -63,16 +64,11 @@
   import ArtForm, { type FormItem } from '@/components/core/forms/art-form/index.vue'
   import ArtIconButton from '@/components/core/widget/art-icon-button/index.vue'
   import type { ArtDialogExpose } from '@/components/core/dialogs/art-dialog/types'
+  import type { ArtTableExpose } from '@/components/core/tables/art-table/index.vue'
   import type { ColumnOption } from '@/types'
   import { useUserStore } from '@/store/modules/user'
   import { saveOperationTemplate, type OperationTemplate, type OperationTask } from '@mdm/api'
-  import {
-    createTemplate,
-    createTask,
-    templatePayload,
-    validateTasks,
-    templateScore
-  } from './template-model'
+  import { createTemplate, createTask, templatePayload, templateScore } from './template-model'
   interface OpenData {
     row?: OperationTemplate
     mode: 'add' | 'edit' | 'copy' | 'view'
@@ -80,6 +76,7 @@
   const emit = defineEmits<{ success: [] }>()
   const dialogRef = ref<ArtDialogExpose<OpenData>>()
   const formRef = ref<InstanceType<typeof ArtForm>>()
+  const taskTableRef = ref<ArtTableExpose>()
   const user = useUserStore()
   const form = reactive({ model: createTemplate(), readonly: false, error: '' })
   const total = computed(() => templateScore(form.model.items))
@@ -120,6 +117,7 @@
     {
       prop: 'category',
       label: '任务分类',
+      required: true,
       minWidth: 125,
       formatter: (row) =>
         form.readonly ? (
@@ -136,6 +134,7 @@
     {
       prop: 'name',
       label: '任务项名称',
+      required: true,
       minWidth: 160,
       formatter: (row) =>
         form.readonly ? (
@@ -168,6 +167,12 @@
     {
       prop: 'choices',
       label: '选择项',
+      rules: {
+        validator: ({ value, row }) =>
+          row.inputMode !== '选择' ||
+          (Array.isArray(value) && value.some((item) => String(item).trim())),
+        message: ({ rowIndex }) => `第 ${rowIndex + 1} 行选择任务请至少添加一个选择项`
+      },
       minWidth: 150,
       formatter: (row) =>
         form.readonly ? (
@@ -189,6 +194,13 @@
     {
       prop: 'score',
       label: '分数',
+      rules: {
+        validator: ({ value }) => {
+          const score = Number(value)
+          return Number.isFinite(score) && score >= 0 && score <= 100000
+        },
+        message: ({ rowIndex }) => `第 ${rowIndex + 1} 行分数需在 0 至 100000 之间`
+      },
       width: 95,
       align: 'center',
       formatter: (row) =>
@@ -276,8 +288,16 @@
       showConfirmButton: !form.readonly,
       contentMaxHeight: '72vh',
       onConfirm: async () => {
-        form.error = validateTasks(form.model.items)
+        form.error =
+          !form.model.items.length || form.model.items.length > 200
+            ? '请添加 1 至 200 个任务项'
+            : ''
         if (form.error) return false
+        const tableValidation = await taskTableRef.value?.validate()
+        if (tableValidation?.valid === false) {
+          form.error = tableValidation.firstError?.message || '请完整填写作业任务'
+          return false
+        }
         try {
           await formRef.value?.validate()
           await saveOperationTemplate(
