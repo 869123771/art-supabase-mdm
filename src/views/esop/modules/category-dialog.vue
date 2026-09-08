@@ -1,14 +1,13 @@
 <template>
   <ArtDialog ref="dialogRef" size="sm">
     <div class="esop-category-dialog">
-      <div class="esop-category-dialog__context">
-        <span><ArtSvgIcon icon="ri:folder-settings-line" /></span>
-        <div>
-          <small>CATEGORY GOVERNANCE</small>
-          <strong>文档分类</strong>
-          <p>建立稳定的层级导航，分类编码在当前租户内保持唯一。</p>
-        </div>
-      </div>
+      <ArtEntitySummary
+        class="esop-category-dialog__context"
+        icon="ri:folder-settings-line"
+        eyebrow="CATEGORY GOVERNANCE"
+        title="文档分类"
+        description="建立稳定的层级导航，分类编码在当前租户内保持唯一。"
+      />
       <ArtForm
         ref="formRef"
         v-model="form"
@@ -44,7 +43,7 @@
   import ArtDialog from '@/components/core/dialogs/art-dialog/index.vue'
   import type { ArtDialogExpose } from '@/components/core/dialogs/art-dialog/types'
   import ArtForm, { type FormItem } from '@/components/core/forms/art-form/index.vue'
-  import ArtSvgIcon from '@/components/core/base/art-svg-icon/index.vue'
+  import ArtEntitySummary from '@/components/core/surfaces/art-entity-summary/index.vue'
   import { useUserStore } from '@/store/modules/user'
   import TreeUtils from '@/utils/tree'
   import { saveEsopCategory, type EsopCategory, type EsopCategoryInput } from '@mdm/api'
@@ -129,10 +128,9 @@
     {
       label: '状态',
       key: 'status',
-      type: 'radioGroup',
+      type: 'segment',
       span: 12,
-      options: getDictMap.value.commonEnabledStatus ?? [],
-      props: { optionType: 'button' }
+      options: getDictMap.value.commonEnabledStatus ?? []
     },
     {
       label: '排序',
@@ -201,66 +199,7 @@
 <style scoped lang="scss">
   .esop-category-dialog {
     &__context {
-      display: grid;
-      grid-template-columns: 44px minmax(0, 1fr);
-      gap: var(--art-space-3);
-      align-items: center;
-      padding: var(--art-space-3) var(--art-space-4);
       margin-bottom: var(--art-space-4);
-      background: color-mix(in srgb, var(--theme-color) 7%, var(--el-bg-color));
-      border: 1px solid color-mix(in srgb, var(--theme-color) 16%, var(--el-border-color-lighter));
-      border-radius: var(--el-border-radius-base);
-
-      > span {
-        display: grid;
-        place-items: center;
-        width: 44px;
-        height: 44px;
-        font-size: 19px;
-        color: var(--theme-color);
-        background: var(--el-bg-color);
-        border-radius: var(--el-border-radius-base);
-        box-shadow: var(--el-box-shadow-lighter);
-      }
-
-      small,
-      strong,
-      p {
-        display: block;
-        margin: 0;
-      }
-
-      small {
-        font-size: 9px;
-        font-weight: 700;
-        color: var(--theme-color);
-        letter-spacing: 0.07em;
-      }
-
-      strong {
-        margin-top: 1px;
-        font-size: 15px;
-      }
-
-      p {
-        margin-top: 3px;
-        font-size: 12px;
-        line-height: 18px;
-        color: var(--el-text-color-secondary);
-      }
-    }
-
-    :deep(.el-radio-group) {
-      display: flex;
-      width: 100%;
-    }
-
-    :deep(.el-radio-button) {
-      flex: 1;
-    }
-
-    :deep(.el-radio-button__inner) {
-      width: 100%;
     }
   }
 </style>

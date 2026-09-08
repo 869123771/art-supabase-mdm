@@ -1,17 +1,17 @@
 <template>
   <ArtDialog ref="dialogRef" size="xl">
     <div class="esop-document-dialog">
-      <div class="esop-document-dialog__identity">
-        <span class="esop-document-dialog__identity-icon"
-          ><ArtSvgIcon icon="ri:file-shield-2-line"
-        /></span>
-        <div>
-          <small>CONTROLLED WORK INSTRUCTION</small>
-          <strong>{{ form.documentName || '新 ESOP 文档' }}</strong>
-          <p>{{ form.documentCode || '保存前请完成文档编号与受控附件' }}</p>
-        </div>
-        <ArtDictDisplay dict-code="commonEnabledStatus" :value="form.status" display="tag" />
-      </div>
+      <ArtEntitySummary
+        class="esop-document-dialog__identity"
+        icon="ri:file-shield-2-line"
+        eyebrow="CONTROLLED WORK INSTRUCTION"
+        :title="form.documentName || '新 ESOP 文档'"
+        :description="form.documentCode || '保存前请完成文档编号与受控附件'"
+      >
+        <template #aside>
+          <ArtDictDisplay dict-code="commonEnabledStatus" :value="form.status" display="tag" />
+        </template>
+      </ArtEntitySummary>
 
       <ElTabs v-model="activeTab" class="esop-document-dialog__tabs">
         <ElTabPane name="document">
@@ -162,6 +162,7 @@
   import ArtDictDisplay from '@/components/core/base/art-dict-display/index.vue'
   import ArtSvgIcon from '@/components/core/base/art-svg-icon/index.vue'
   import ArtUploadFile from '@/components/core/forms/art-upload-file/index.vue'
+  import ArtEntitySummary from '@/components/core/surfaces/art-entity-summary/index.vue'
   import { useUserStore } from '@/store/modules/user'
   import TreeUtils from '@/utils/tree'
   import {
@@ -401,56 +402,7 @@
     gap: 0;
 
     &__identity {
-      display: grid;
-      grid-template-columns: 46px minmax(0, 1fr) auto;
-      gap: var(--art-space-3);
-      align-items: center;
-      padding: var(--art-space-3) var(--art-space-4);
       margin-bottom: var(--art-space-2);
-      background: color-mix(in srgb, var(--theme-color) 7%, var(--el-bg-color));
-      border: 1px solid color-mix(in srgb, var(--theme-color) 16%, var(--el-border-color-lighter));
-      border-radius: var(--el-border-radius-base);
-
-      small,
-      strong,
-      p {
-        display: block;
-        margin: 0;
-      }
-
-      small {
-        font-size: 9px;
-        font-weight: 700;
-        color: var(--theme-color);
-        letter-spacing: 0.08em;
-      }
-
-      strong {
-        margin-top: 2px;
-        font-size: 15px;
-      }
-
-      p {
-        margin-top: 2px;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        font-family: var(--art-font-family-mono, Consolas, monospace);
-        font-size: 11px;
-        color: var(--el-text-color-secondary);
-        white-space: nowrap;
-      }
-    }
-
-    &__identity-icon {
-      display: grid;
-      place-items: center;
-      width: 46px;
-      height: 46px;
-      font-size: 21px;
-      color: var(--theme-color);
-      background: var(--el-bg-color);
-      border-radius: var(--el-border-radius-base);
-      box-shadow: var(--el-box-shadow-lighter);
     }
 
     &__tabs {
@@ -579,15 +531,6 @@
     }
 
     @media (width <= 720px) {
-      &__identity {
-        grid-template-columns: 42px minmax(0, 1fr);
-
-        :deep(.el-tag) {
-          grid-column: 1 / -1;
-          justify-self: start;
-        }
-      }
-
       &__section-heading {
         align-items: flex-start;
 

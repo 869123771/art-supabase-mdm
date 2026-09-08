@@ -1,14 +1,11 @@
 import { useSupabase } from '@/hooks'
-
-export type MdmCatalogScope =
-  | 'organization'
-  | 'position'
-  | 'employee'
-  | 'partner'
-  | 'logistics'
-  | 'vehicle'
-  | 'equipment'
-  | 'material'
+import { mdmCatalogSourceDefinitions, type MdmCatalogScope } from './catalog-source-definitions'
+export {
+  mdmCatalogSourceDefinitions,
+  mdmCatalogSourceKindCounts,
+  type MdmCatalogScope,
+  type MdmCatalogSourceDefinition
+} from './catalog-source-definitions'
 
 export type MdmCatalogState = 'active' | 'inactive'
 export type MdmCatalogQuality = 'complete' | 'attention'
@@ -70,12 +67,6 @@ export interface MdmCatalogPageResponse {
   summary: MdmCatalogSummary
 }
 
-export interface MdmCatalogSourceDefinition {
-  type: string
-  label: string
-  app: string
-}
-
 export interface MdmDomainSummary {
   key: 'organization' | 'partner' | 'logistics' | 'asset' | 'material'
   label: string
@@ -97,47 +88,6 @@ interface RequestOptions {
 }
 
 const { supabase, responseHandle } = useSupabase()
-
-export const mdmCatalogSourceDefinitions: Record<MdmCatalogScope, MdmCatalogSourceDefinition[]> = {
-  organization: [{ type: 'organization', label: '组织机构', app: 'platform' }],
-  position: [
-    { type: 'job_family', label: '职族', app: 'hr' },
-    { type: 'grade', label: '职级', app: 'hr' },
-    { type: 'job_profile', label: '职务', app: 'hr' },
-    { type: 'position', label: '岗位', app: 'hr' }
-  ],
-  employee: [
-    { type: 'employee', label: '员工', app: 'hr' },
-    { type: 'employee_assignment', label: '员工任职', app: 'hr' }
-  ],
-  partner: [
-    { type: 'business_partner', label: '往来主体', app: 'mdm' },
-    { type: 'customer', label: '客户', app: 'tms' },
-    { type: 'carrier', label: '承运商', app: 'tms' },
-    { type: 'supplier', label: '供应商', app: 'vms' },
-    { type: 'insurance_company', label: '保险公司', app: 'vms' },
-    { type: 'external_vendor', label: '外部服务商', app: 'hr' }
-  ],
-  logistics: [
-    { type: 'station', label: '站点', app: 'tms' },
-    { type: 'customer_address', label: '客户地址', app: 'tms' },
-    { type: 'cargo', label: '货物', app: 'tms' },
-    { type: 'driver', label: '司机', app: 'tms' }
-  ],
-  vehicle: [{ type: 'vehicle', label: '车辆', app: 'vms' }],
-  equipment: [
-    { type: 'equipment_category', label: '设备分类', app: 'smis' },
-    { type: 'equipment', label: '设备', app: 'smis' },
-    { type: 'part_category', label: '备件分类', app: 'vms' },
-    { type: 'part', label: '备件', app: 'vms' }
-  ],
-  material: [
-    { type: 'material_category', label: '物料分类', app: 'smis' },
-    { type: 'material', label: '物料', app: 'smis' },
-    { type: 'site', label: '场所', app: 'smis' },
-    { type: 'storage_location', label: '存放位置', app: 'smis' }
-  ]
-}
 
 export const mdmDomainDefinitions: Omit<MdmDomainSummary, 'recordCount' | 'attentionCount'>[] = [
   {

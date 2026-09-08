@@ -1,15 +1,16 @@
 <template>
   <ArtDialog ref="dialogRef" size="xl">
     <div class="bom-dialog">
-      <div class="bom-dialog__identity">
-        <span class="bom-dialog__identity-icon"><ArtSvgIcon icon="ri:git-merge-line" /></span>
-        <div>
-          <small>BILL OF MATERIALS</small>
-          <strong>{{ selectedParent[0]?.materialName || '选择父项物料建立 BOM' }}</strong>
-          <p>{{ [form.bomCode || '待定义编码', form.version].filter(Boolean).join(' · ') }}</p>
-        </div>
-        <ArtDictDisplay dict-code="mdmBomStatus" :value="form.status" display="tag" />
-      </div>
+      <ArtEntitySummary
+        icon="ri:git-merge-line"
+        eyebrow="BILL OF MATERIALS"
+        :title="selectedParent[0]?.materialName || '选择父项物料建立 BOM'"
+        :description="[form.bomCode || '待定义编码', form.version].filter(Boolean).join(' · ')"
+      >
+        <template #aside>
+          <ArtDictDisplay dict-code="mdmBomStatus" :value="form.status" display="tag" />
+        </template>
+      </ArtEntitySummary>
 
       <ArtForm
         ref="formRef"
@@ -102,6 +103,7 @@
   import ArtIconButton from '@/components/core/widget/art-icon-button/index.vue'
   import ArtDictDisplay from '@/components/core/base/art-dict-display/index.vue'
   import ArtSvgIcon from '@/components/core/base/art-svg-icon/index.vue'
+  import ArtEntitySummary from '@/components/core/surfaces/art-entity-summary/index.vue'
   import type { ArtTableExpose } from '@/components/core/tables/art-table/index.vue'
   import { useUserStore } from '@/store/modules/user'
   import type { ColumnOption } from '@/types'
@@ -508,49 +510,6 @@
     gap: 12px;
   }
 
-  .bom-dialog__identity {
-    display: grid;
-    grid-template-columns: auto minmax(0, 1fr) auto;
-    gap: 12px;
-    align-items: center;
-    padding: 12px 14px;
-    background: color-mix(in srgb, var(--theme-color) 7%, var(--el-bg-color));
-    border: 1px solid color-mix(in srgb, var(--theme-color) 14%, var(--el-border-color-lighter));
-    border-radius: var(--el-border-radius-base);
-  }
-
-  .bom-dialog__identity-icon {
-    display: grid;
-    place-items: center;
-    width: 44px;
-    height: 44px;
-    font-size: 21px;
-    color: var(--theme-color);
-    background: var(--el-bg-color);
-    border-radius: 11px;
-  }
-
-  .bom-dialog__identity small,
-  .bom-dialog__identity strong,
-  .bom-dialog__identity p {
-    display: block;
-    margin: 0;
-  }
-
-  .bom-dialog__identity small {
-    font-size: 9px;
-    font-weight: 700;
-    color: var(--theme-color);
-    letter-spacing: 0.1em;
-  }
-
-  .bom-dialog__identity p {
-    margin-top: 2px;
-    font-family: var(--art-font-family-mono, Consolas, monospace);
-    font-size: 11px;
-    color: var(--el-text-color-secondary);
-  }
-
   :deep(.bom-dialog__form) {
     padding-top: 0;
   }
@@ -651,15 +610,6 @@
   }
 
   @media (width <= 820px) {
-    .bom-dialog__identity {
-      grid-template-columns: auto minmax(0, 1fr);
-    }
-
-    .bom-dialog__identity > .el-tag {
-      grid-column: 1 / -1;
-      justify-self: start;
-    }
-
     .bom-dialog__components > header {
       flex-direction: column;
       align-items: flex-start;

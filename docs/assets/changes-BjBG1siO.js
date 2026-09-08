@@ -1,0 +1,1 @@
+import{Sn as e,dn as t,sr as n}from"./useApi-s_02lHjl-BdnPpILt.js";import{t as r}from"./center-BKpV09Ex.js";var i=e({name:`MdmChangeManagement`,__name:`index`,setup(e){return(e,i)=>(n(),t(r,{"initial-view":`changes`}))}});export{i as default};

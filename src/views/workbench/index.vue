@@ -8,7 +8,7 @@
       :tags="[
         { label: '统一目录', type: 'primary' },
         { label: '租户隔离', type: 'success' },
-        { label: '只读治理', type: 'info' }
+        { label: '受控治理', type: 'info' }
       ]"
       :metrics="metrics"
       refreshable
@@ -49,7 +49,14 @@
             >
             <span class="domain-list__count"
               ><strong>{{ domain.recordCount.toLocaleString() }}</strong
-              ><small>{{ domain.sourceCount }} 类主档</small></span
+              ><small>{{ domain.sourceCount }} 类治理对象</small
+              ><em :class="{ 'is-complete': !domain.attentionCount }">
+                {{
+                  domain.attentionCount
+                    ? `${domain.attentionCount.toLocaleString()} 条待完善`
+                    : '关键资料完整'
+                }}
+              </em></span
             >
             <ArtSvgIcon class="domain-list__arrow" icon="ri:arrow-right-line" />
           </button>
@@ -99,7 +106,7 @@
             <article
               ><span><ArtSvgIcon icon="ri:edit-2-line" /></span
               ><div
-                ><strong>来源系统维护</strong><p>新增、修改、停用由业务系统承担。</p></div
+                ><strong>受控变更发布</strong><p>治理审批生成指令，来源系统负责幂等落地。</p></div
               ></article
             >
             <article
@@ -123,7 +130,12 @@
   } from '@/components/business/business-workspace-header/index.vue'
   import ArtSectionCard from '@/components/core/surfaces/art-section-card/index.vue'
   import ArtSvgIcon from '@/components/core/base/art-svg-icon/index.vue'
-  import { fetchMdmOverview, mdmDomainDefinitions, type MdmDomainSummary } from '@mdm/api'
+  import {
+    fetchMdmOverview,
+    mdmCatalogSourceKindCounts,
+    mdmDomainDefinitions,
+    type MdmDomainSummary
+  } from '@mdm/api'
   import { getFriendlySupabaseErrorMessage } from '@/utils/supabase/error'
 
   defineOptions({ name: 'MdmWorkbench' })
@@ -138,9 +150,6 @@
 
   const totalRecords = computed(() =>
     domains.value.reduce((total, domain) => total + domain.recordCount, 0)
-  )
-  const totalSources = computed(() =>
-    domains.value.reduce((total, domain) => total + domain.sourceCount, 0)
   )
   const attentionCount = computed(() =>
     domains.value.reduce((total, domain) => total + domain.attentionCount, 0)
@@ -168,19 +177,24 @@
       loading: loading.value
     },
     {
-      label: '标准主档',
-      value: totalSources.value,
-      description: '已纳入统一目录',
+      label: '独立主档类型',
+      value: mdmCatalogSourceKindCounts.master,
+      description: `另有 ${mdmCatalogSourceKindCounts.relation} 类关系/明细对象`,
       icon: 'ri:stack-line',
       tone: 'success',
       loading: loading.value
     },
     {
-      label: '治理模式',
-      value: '只读',
-      description: '写入仍由来源系统负责',
-      icon: 'ri:shield-check-line',
-      tone: 'info'
+      label: '待完善记录',
+      value: errorMessage.value ? '—' : attentionCount.value.toLocaleString(),
+      description: errorMessage.value
+        ? '概览加载失败，请重试'
+        : attentionCount.value
+          ? '按资料缺口进入来源系统处理'
+          : '当前未发现关键字段缺口',
+      icon: 'ri:error-warning-line',
+      tone: attentionCount.value ? 'warning' : 'success',
+      loading: loading.value
     }
   ])
 
@@ -321,6 +335,17 @@
     &__count small {
       font-size: 10px;
       color: var(--el-text-color-secondary);
+    }
+
+    &__count em {
+      font-size: 10px;
+      font-style: normal;
+      font-weight: 650;
+      color: var(--el-color-warning);
+    }
+
+    &__count em.is-complete {
+      color: var(--el-color-success);
     }
 
     &__arrow {

@@ -40,7 +40,8 @@
           <ArtSvgIcon icon="ri:folder-3-line" /><span
             ><strong>{{ source.label }}</strong
             ><small
-              >{{ source.app === 'platform' ? '平台' : source.app.toUpperCase() }} · 来源系统</small
+              >{{ source.app === 'platform' ? '平台' : source.app.toUpperCase() }} ·
+              {{ source.kind === 'relation' ? '关系明细' : '权威主档' }}</small
             ></span
           ><ArtSvgIcon v-if="selected === source.type" icon="ri:check-line" />
         </button>

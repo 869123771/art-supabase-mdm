@@ -1,6 +1,7 @@
 export {
   fetchMdmCatalogPage,
   fetchMdmOverview,
+  mdmCatalogSourceKindCounts,
   mdmCatalogSourceDefinitions,
   mdmDomainDefinitions,
   type MdmCatalogAttribute,
@@ -21,3 +22,4 @@ export * from './modules/material'
 export * from './modules/bom'
 export * from './modules/esop'
 export * from './modules/equipment'
+export * from './modules/governance'
