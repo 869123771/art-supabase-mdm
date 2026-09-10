@@ -8,36 +8,63 @@
       :metrics="workspaceMetrics"
       ><template #actions
         ><BusinessTableWorkspaceActions :table="tableRef" /></template></ProductionWorkspaceHeader
-    ><ArtTableQuery
-      ref="tableRef"
-      v-model="search"
-      :api-fn="fetchRows"
-      :columns-factory="columns"
-      :header-actions="actions"
-      header-actions-placement="workspace"
-      :search-bar-props="{ span: 8, labelWidth: 82, showExpand: false }"
-      :on-success="handleTableSuccess"
-      :search-items="[
-        {
-          key: 'keyword',
-          label: '路线名称',
-          type: 'input',
-          props: { clearable: true, placeholder: '搜索工艺路线' }
-        }
-      ]"
-      :enable-cache="false"
-      focusable
-      :table-props="{
-        rowKey: 'id',
-        tableLayout: 'fixed',
-        emptyText: '暂无工艺路线',
-        emptyDescription: '先创建产品路线，再添加工序和工作中心。'
-      }" /><RouteDialog ref="routeDialog" @success="refresh" /><StepsDialog ref="stepsDialog"
-  /></div>
+    ><div class="process-route-page__workspace">
+      <MasterGroupPanel
+        title="路线分组"
+        :groups="groupState.rows"
+        :selected-id="groupState.selectedId"
+        :loading="groupState.loading"
+        :error="groupState.error"
+        manage-permission="MdmProcessRoute:ManageGroup"
+        @select="selectGroup"
+        @refresh="loadGroups"
+        @add="openGroupAdd"
+        @edit="openGroupEdit"
+        @remove="removeGroup"
+      />
+      <ArtTableQuery
+        ref="tableRef"
+        v-model="search"
+        :api-fn="fetchRows"
+        :columns-factory="columns"
+        :header-actions="actions"
+        header-actions-placement="workspace"
+        :search-bar-props="{ span: 8, labelWidth: 82, showExpand: false }"
+        :on-success="handleTableSuccess"
+        :search-items="[
+          {
+            key: 'keyword',
+            label: '路线信息',
+            type: 'input',
+            props: { clearable: true, placeholder: '编码 / 名称 / 版本 / 路径' }
+          },
+          {
+            key: 'enabled',
+            label: '启用状态',
+            type: 'select',
+            props: {
+              clearable: true,
+              options: booleanOptions
+            }
+          }
+        ]"
+        :enable-cache="false"
+        focusable
+        focus-scope-selector=".process-route-page__workspace"
+        :table-props="{
+          rowKey: 'id',
+          tableLayout: 'fixed',
+          emptyText: '暂无工艺路线',
+          emptyDescription: '先创建产品路线，再维护工序序列与工艺配置。'
+        }"
+      />
+    </div>
+    <RouteDialog ref="routeDialog" @success="refresh" />
+    <StepsDialog ref="stepsDialog" />
+    <GroupDialog ref="groupDialog" @success="handleGroupSaved" />
+  </div>
 </template>
 <script setup lang="tsx">
-  import { useArtFeedback } from '@/hooks/core/useArtFeedback'
-  const { confirmAction } = useArtFeedback()
   import { computed, ref, reactive } from 'vue'
   import dayjs from 'dayjs'
   import { uniq } from 'lodash-es'
@@ -50,26 +77,61 @@
   import ArtButtonTable from '@/components/core/forms/art-button-table/index.vue'
   import ArtButtonMore from '@/components/core/forms/art-button-more/index.vue'
   import ArtSvgIcon from '@/components/core/base/art-svg-icon/index.vue'
+  import BusinessTableRowActions from '@/components/business/business-table-row-actions/index.vue'
   import type { BusinessWorkspaceMetric } from '@/components/business/business-workspace-header/index.vue'
+  import { useArtFeedback } from '@/hooks/core/useArtFeedback'
+  import { useTenantScopeStore } from '@/store/modules/tenantScope'
   import { useUserStore } from '@/store/modules/user'
   import { exportExcel } from '@/utils/file'
   import { formatWithDayjs } from '@/utils/time'
   import {
     fetchProcessRoutes,
+    copyProcessRoute,
     deleteProcessRoute,
+    importProcessRoutes,
+    fetchMasterGroups,
+    deleteMasterGroup,
+    type MasterGroup,
     type ProcessRoute,
+    type ProcessRouteInput,
     type WorkspaceQuery
   } from '@mdm/api'
   import RouteDialog from './modules/route-dialog.vue'
   import StepsDialog from './modules/steps-dialog.vue'
+  import MasterGroupPanel from '../../operational-master/modules/master-group-panel.vue'
+  import GroupDialog, {
+    type GroupDialogOpenData
+  } from '../../operational-master/modules/group-dialog.vue'
   import ProductionWorkspaceHeader from '../modules/production-workspace-header.vue'
   defineOptions({ name: 'MdmProcessRoute' })
-  const user = useUserStore()
+  const declaredPermissions = [
+    'MdmProcessRoute:View',
+    'MdmProcessRoute:Add',
+    'MdmProcessRoute:Copy',
+    'MdmProcessRoute:Edit',
+    'MdmProcessRoute:Delete',
+    'MdmProcessRoute:Import',
+    'MdmProcessRoute:Export',
+    'MdmProcessRoute:ManageGroup'
+  ] as const
+  void declaredPermissions
+  const { confirmAction, promptText } = useArtFeedback()
+  const tenantScopeStore = useTenantScopeStore()
+  const userStore = useUserStore()
+  const { getDictMap } = storeToRefs(userStore)
+  const { effectiveTenantId, tenantOptions } = storeToRefs(tenantScopeStore)
   const tableRef = ref<ArtTableQueryExpose>()
   const routeDialog = ref<InstanceType<typeof RouteDialog>>()
   const stepsDialog = ref<InstanceType<typeof StepsDialog>>()
-  const search = reactive({ keyword: '' })
+  const groupDialog = ref<{ handleOpen: (data: GroupDialogOpenData) => Promise<void> }>()
+  const search = reactive({ keyword: '', enabled: undefined as boolean | undefined })
   const overview = reactive({ total: 0, rows: [] as ProcessRoute[] })
+  const groupState = reactive({
+    rows: [] as MasterGroup[],
+    selectedId: '',
+    loading: false,
+    error: ''
+  })
   const workspaceMetrics = computed<BusinessWorkspaceMetric[]>(() => [
     {
       label: '路线总数',
@@ -93,8 +155,21 @@
       icon: 'ri:history-line'
     }
   ])
+  const booleanOptions = computed(() =>
+    (getDictMap.value.commonBoolean ?? []).map((item) => ({
+      ...item,
+      value: item.value === 'true' || item.value === '1'
+    }))
+  )
   const fetchRows = (p: WorkspaceQuery, o?: { signal?: AbortSignal }) =>
-    fetchProcessRoutes({ ...p, tenantId: user.info.tenantId || '' }, o)
+    fetchProcessRoutes(
+      {
+        ...p,
+        tenantId: effectiveTenantId.value || '',
+        groupId: groupState.selectedId || undefined
+      },
+      o
+    )
   const refresh = () => tableRef.value?.refreshData()
   const handleTableSuccess: ArtTableQueryProps['onSuccess'] = (rows, response) => {
     overview.rows = rows as ProcessRoute[]
@@ -102,6 +177,7 @@
   }
   const columns = (): ColumnOption<ProcessRoute>[] => [
     { type: 'globalIndex', label: '序号', width: 72 },
+    { prop: 'code', label: '路线编码', width: 128, fixed: 'left' },
     {
       prop: 'material',
       label: '产品主数据',
@@ -125,7 +201,68 @@
         </div>
       )
     },
-    { prop: 'name', label: '路线名称', minWidth: 220, showOverflowTooltip: true },
+    { prop: 'name', label: '路线名称', minWidth: 200, showOverflowTooltip: true },
+    { prop: 'version', label: '工艺版本', width: 110, formatter: (row) => row.version || '—' },
+    {
+      prop: 'group',
+      label: '路线分组',
+      minWidth: 140,
+      formatter: (row) => row.group?.name || '未分组'
+    },
+    {
+      prop: 'routeType',
+      label: '类型',
+      width: 100,
+      formatter: (row) => dictLabel('mdmProcessRouteType', row.routeType)
+    },
+    {
+      prop: 'allocationMode',
+      label: '分配方式',
+      width: 110,
+      formatter: (row) => dictLabel('mdmProcessRouteAllocationMode', row.allocationMode)
+    },
+    {
+      prop: 'department',
+      label: '生产车间',
+      minWidth: 130,
+      formatter: (row) => row.department?.name || '未指定'
+    },
+    {
+      prop: 'isDefault',
+      label: '默认',
+      width: 80,
+      align: 'center',
+      formatter: (row) => (row.isDefault ? '是' : '否')
+    },
+    {
+      prop: 'batchFrom',
+      label: '批量从',
+      width: 100,
+      align: 'right',
+      formatter: (row) => row.batchFrom ?? '—'
+    },
+    { prop: 'batchTo', label: '批量至', width: 120, align: 'right' },
+    {
+      prop: 'productionUnit',
+      label: '生产单位',
+      width: 110,
+      formatter: (row) => row.productionUnit?.unitName || '多单位'
+    },
+    { prop: 'effectiveDate', label: '生效日期', width: 116 },
+    { prop: 'expiryDate', label: '失效日期', width: 116 },
+    {
+      prop: 'source',
+      label: '来源',
+      width: 100,
+      formatter: (row) => dictLabel('mdmProcessRouteSource', row.source)
+    },
+    {
+      prop: 'enabled',
+      label: '状态',
+      width: 88,
+      align: 'center',
+      formatter: (row) => (row.enabled ? '启用' : '停用')
+    },
     {
       prop: 'updateTime',
       label: '更新时间',
@@ -138,7 +275,7 @@
       width: 164,
       fixed: 'right',
       formatter: (r) => (
-        <div class="process-route-page__actions">
+        <BusinessTableRowActions>
           <ArtButtonTable
             type="view"
             permission="MdmProcessRoute:View"
@@ -147,13 +284,19 @@
           <ArtButtonTable
             type="edit"
             permission="MdmProcessRoute:Edit"
-            onClick={() => void routeDialog.value?.handleOpen(r)}
+            onClick={() => void routeDialog.value?.handleOpen(r, r.tenantId)}
           />
           <ArtButtonMore
             list={[
               {
+                key: 'copy',
+                label: '复制路线',
+                icon: 'ri:file-copy-line',
+                auth: 'MdmProcessRoute:Copy'
+              },
+              {
                 key: 'steps',
-                label: '工序明细',
+                label: '工艺维护',
                 icon: 'ri:git-commit-line',
                 auth: 'MdmProcessRoute:Edit'
               },
@@ -165,11 +308,9 @@
                 auth: 'MdmProcessRoute:Delete'
               }
             ]}
-            onClick={(item) =>
-              item.key === 'steps' ? void stepsDialog.value?.handleOpen(r) : void remove(r)
-            }
+            onClick={(item) => handleMore(r, String(item.key))}
           />
-        </div>
+        </BusinessTableRowActions>
       )
     }
   ]
@@ -183,6 +324,24 @@
     } catch {
       /* API owns feedback. */
     }
+  }
+  async function copyRoute(row: ProcessRoute) {
+    try {
+      const name = await promptText('复制会保留全部序列、工序及页签配置。', '复制工艺路线', {
+        initialValue: `${row.name} - 副本`,
+        placeholder: '请输入新路线名称',
+        maxLength: 100
+      })
+      await copyProcessRoute(row.id, name)
+      await refresh()
+    } catch {
+      /* Prompt cancellation and API feedback need no duplicate message. */
+    }
+  }
+  function handleMore(row: ProcessRoute, key: string) {
+    if (key === 'copy') void copyRoute(row)
+    else if (key === 'steps') void stepsDialog.value?.handleOpen(row)
+    else void remove(row)
   }
   async function exportRows() {
     const rows: ProcessRoute[] = []
@@ -213,16 +372,134 @@
       type: 'add',
       label: '新增路线',
       permission: 'MdmProcessRoute:Add',
-      onClick: () => void routeDialog.value?.handleOpen()
+      onClick: () =>
+        void routeDialog.value?.handleOpen(undefined, effectiveTenantId.value || undefined)
+    },
+    {
+      type: 'import',
+      label: '导入',
+      permission: 'MdmProcessRoute:Import',
+      importColumns: [
+        { key: 'materialId', title: '产品物料ID', required: true },
+        { key: 'name', title: '路线名称', required: true },
+        { key: 'version', title: '工艺版本' },
+        { key: 'batchFrom', title: '批量从' },
+        { key: 'batchTo', title: '批量至' },
+        { key: 'effectiveDate', title: '生效日期' },
+        { key: 'expiryDate', title: '失效日期' }
+      ],
+      importTransformer: (rows) =>
+        rows.map((row) => ({
+          ...row,
+          tenantId: effectiveTenantId.value || '',
+          code: '',
+          routeType: 'standard',
+          allocationMode: 'quantity',
+          groupId: null,
+          batchFrom: row.batchFrom || null,
+          batchTo: row.batchTo || 9999999999,
+          productionUnitId: null,
+          departmentId: null,
+          effectiveDate: row.effectiveDate || dayjs().format('YYYY-MM-DD'),
+          expiryDate: row.expiryDate || '9999-12-31',
+          isDefault: false,
+          source: 'manual',
+          customUnitConversion: false,
+          enabled: true,
+          path: '',
+          remark: ''
+        })),
+      importApi: (rows) => importProcessRoutes(rows as ProcessRouteInput[])
     },
     { type: 'export', permission: 'MdmProcessRoute:Export', onClick: exportRows }
   ]
+
+  const tenantChoices = () =>
+    tenantOptions.value.map((tenant) => ({
+      label: `${tenant.tenantName || tenant.tenantCode}（${tenant.tenantCode}）`,
+      value: tenant.id
+    }))
+  function dictLabel(code: string, value: string): string {
+    return getDictMap.value[code]?.find((item) => item.value === value)?.label || value
+  }
+  async function loadGroups() {
+    groupState.loading = true
+    groupState.error = ''
+    try {
+      groupState.rows = await fetchMasterGroups('process-route', effectiveTenantId.value)
+    } catch (error) {
+      groupState.error = error instanceof Error ? error.message : '分组加载失败，请重试'
+    } finally {
+      groupState.loading = false
+    }
+  }
+  function selectGroup(id: string) {
+    groupState.selectedId = id
+    void tableRef.value?.getData()
+  }
+  function openGroupAdd(parent?: MasterGroup) {
+    void groupDialog.value?.handleOpen({
+      domain: 'process-route',
+      tenantId: parent?.tenantId || effectiveTenantId.value || '',
+      tenantOptions: tenantChoices(),
+      groups: groupState.rows,
+      parent
+    })
+  }
+  function openGroupEdit(row: MasterGroup) {
+    void groupDialog.value?.handleOpen({
+      domain: 'process-route',
+      tenantId: row.tenantId,
+      tenantOptions: tenantChoices(),
+      groups: groupState.rows,
+      row
+    })
+  }
+  async function removeGroup(row: MasterGroup) {
+    try {
+      await confirmAction(`确认删除路线分组“${row.name}”？`, '删除路线分组', { type: 'warning' })
+      await deleteMasterGroup(row.id)
+      if (groupState.selectedId === row.id) groupState.selectedId = ''
+      await loadGroups()
+      await refresh()
+    } catch {
+      /* API owns feedback. */
+    }
+  }
+  async function handleGroupSaved() {
+    await loadGroups()
+    await refresh()
+  }
+  async function loadContext() {
+    Object.assign(search, { keyword: '', enabled: undefined })
+    groupState.selectedId = ''
+    await tenantScopeStore.loadTenantOptions()
+    await Promise.all(
+      [
+        'commonBoolean',
+        'mdmProcessRouteType',
+        'mdmProcessRouteAllocationMode',
+        'mdmProcessRouteSource'
+      ].map((code) => userStore.ensureDictLoaded(code))
+    )
+    await loadGroups()
+    await tableRef.value?.getData()
+  }
+  watch(effectiveTenantId, () => void loadContext(), { immediate: true })
 </script>
 
 <style scoped lang="scss">
   .process-route-page {
     gap: 12px;
     min-width: 0;
+
+    &__workspace {
+      display: grid;
+      flex: 1;
+      grid-template-columns: minmax(250px, 0.28fr) minmax(0, 1fr);
+      gap: 14px;
+      min-height: 0;
+    }
 
     :deep(.process-route-page__identity) {
       display: grid;
@@ -258,12 +535,11 @@
         color: var(--el-text-color-secondary);
       }
     }
+  }
 
-    :deep(.process-route-page__actions) {
-      display: flex;
-      gap: 4px;
-      align-items: center;
-      justify-content: center;
+  @media (width <= 1180px) {
+    .process-route-page__workspace {
+      grid-template-columns: minmax(220px, 0.34fr) minmax(0, 1fr);
     }
   }
 </style>

@@ -42,6 +42,7 @@
     type MdmOutboxDelivery,
     type MdmQualityIssue
   } from '@mdm/api'
+  import { getGovernanceEventTypeLabel } from '../governance-labels'
 
   defineOptions({ name: 'MdmGovernanceActionDialog' })
 
@@ -218,7 +219,7 @@
     } else {
       Object.assign(state, {
         title: '重放死信事件',
-        subtitle: `${next.row.consumer?.consumerName || '未命名消费者'} · ${next.row.event?.eventType || next.row.eventId}`,
+        subtitle: `${next.row.consumer?.consumerName || '未命名消费者'} · ${getGovernanceEventTypeLabel(next.row.event?.eventType)}`,
         icon: 'ri:restart-line',
         tone: 'warning',
         confirmText: '进入重试队列',

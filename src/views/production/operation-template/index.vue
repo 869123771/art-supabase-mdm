@@ -636,13 +636,6 @@
       color: var(--el-text-color-secondary);
     }
 
-    :deep(.template-workspace__actions) {
-      display: flex;
-      gap: 8px;
-      align-items: center;
-      white-space: nowrap;
-    }
-
     :deep(.el-segmented) {
       --el-segmented-item-selected-color: var(--el-color-white);
       --el-segmented-item-selected-bg-color: var(--theme-color);

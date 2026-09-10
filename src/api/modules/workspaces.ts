@@ -18,8 +18,11 @@ import type {
   CenterDeviceInput,
   ProcessRoute,
   ProcessRouteInput,
+  ProcessSequence,
+  ProcessSequenceInput,
   ProcessStep,
   ProcessStepInput,
+  ProcessRouteReferences,
   CenterPolicy,
   PersonnelWorkCenterConfig,
   PersonnelWorkCenterQuery
@@ -412,17 +415,25 @@ export async function fetchProductionReferences(
 }
 
 export async function fetchProcessRoutes(p: WorkspaceQuery, options?: { signal?: AbortSignal }) {
-  const query = supabase.rpc('mdm_production_reference_list', {
-    p_kind: 'routes',
-    p_keyword: p.keyword ?? '',
-    p_from: (p.current - 1) * p.size,
-    p_to: p.current * p.size - 1
-  })
-  const { data } = await responseHandle<{ records: ProcessRoute[]; total: number }>(
+  let query = supabase
+    .from('mdm_process_route')
+    .select(
+      `*,material:mdm_material!mdm_process_route_material_tenant_fkey(id,material_code,material_name,specification_model,production_unit_id),group:mdm_master_group!mdm_process_route_group_fk(id,code,name),productionUnit:mdm_unit_of_measure!mdm_process_route_production_unit_fk(id,unit_code,unit_name,symbol),department:mdm_production_department!mdm_process_route_department_fk(id,code,name)`,
+      { count: 'exact' }
+    )
+    .order('is_default', { ascending: false })
+    .order('update_time', { ascending: false })
+    .range((p.current - 1) * p.size, p.current * p.size - 1)
+  if (p.tenantId) query = query.eq('tenant_id', p.tenantId)
+  if (p.groupId) query = query.eq('group_id', p.groupId)
+  if (typeof p.enabled === 'boolean') query = query.eq('enabled', p.enabled)
+  if (p.keyword)
+    query = query.or(buildOrIlikeFilter(['code', 'name', 'version', 'path'], p.keyword))
+  const { data, total } = await responseHandle<ProcessRoute[]>(
     () => (options?.signal ? query.abortSignal(options.signal) : query),
     read
   )
-  return { data: data?.records ?? [], total: data?.total ?? 0, current: p.current, size: p.size }
+  return { data: data ?? [], total: total ?? 0, current: p.current, size: p.size }
 }
 
 export async function saveProcessRoute(input: ProcessRouteInput, id?: string) {
@@ -444,24 +455,85 @@ export async function deleteProcessRoute(id: string) {
     write
   )
 }
+export async function importProcessRoutes(inputs: ProcessRouteInput[]) {
+  await responseHandle(
+    () =>
+      supabase
+        .from('mdm_process_route')
+        .insert(inputs.map((input) => keysToSnakeDeep(input)))
+        .select('id'),
+    { ...write, message: `已导入 ${inputs.length} 条工艺路线` }
+  )
+}
+export async function copyProcessRoute(id: string, name: string) {
+  const { data } = await responseHandle<string>(
+    () => supabase.rpc('mdm_copy_process_route', { p_id: id, p_name: name }),
+    { ...write, message: '工艺路线及全部配置已复制' }
+  )
+  return data
+}
+export async function fetchProcessSequences(routeId: string) {
+  const { data } = await responseHandle<ProcessSequence[]>(
+    () =>
+      supabase
+        .from('mdm_process_route_sequence')
+        .select('*')
+        .eq('route_id', routeId)
+        .order('sequence_no'),
+    read
+  )
+  return data ?? []
+}
+export async function saveProcessSequence(input: ProcessSequenceInput, id?: string) {
+  const { data } = await responseHandle<{ id: string }[]>(
+    () =>
+      id
+        ? supabase
+            .from('mdm_process_route_sequence')
+            .update(keysToSnakeDeep(input))
+            .eq('id', id)
+            .select('id')
+        : supabase.from('mdm_process_route_sequence').insert(keysToSnakeDeep(input)).select('id'),
+    write
+  )
+  return data?.[0]?.id
+}
+export async function deleteProcessSequence(id: string) {
+  await responseHandle(
+    () => supabase.from('mdm_process_route_sequence').delete().eq('id', id).select('id'),
+    { ...write, errorMessage: '删除失败，请先移除该序列下的工序' }
+  )
+}
 export async function fetchProcessSteps(
-  p: WorkspaceQuery & { routeId?: string; workCenterId?: string; bound?: boolean },
+  p: WorkspaceQuery & {
+    routeId?: string
+    sequenceId?: string
+    workCenterId?: string
+    bound?: boolean
+  },
   options?: { signal?: AbortSignal }
 ) {
-  const query = supabase.rpc('mdm_production_reference_list', {
-    p_kind: 'steps',
-    p_keyword: p.keyword ?? '',
-    p_from: (p.current - 1) * p.size,
-    p_to: p.current * p.size - 1,
-    p_route_id: p.routeId ?? null,
-    p_center_id: p.workCenterId ?? null,
-    p_bound: p.bound ?? null
-  })
-  const { data } = await responseHandle<{ records: ProcessStep[]; total: number }>(
+  let query = supabase
+    .from('mdm_process_route_step')
+    .select(
+      `*,route:mdm_process_route!mdm_process_route_step_tenant_id_route_id_fkey(*,material:mdm_material!mdm_process_route_material_tenant_fkey(id,material_code,material_name)),template:mdm_operation_template!mdm_process_route_step_tenant_id_template_id_fkey(id,name,total_score),workCenter:mdm_work_center!mdm_process_route_step_tenant_id_work_center_id_fkey(id,code,name),sequence:mdm_process_route_sequence!mdm_process_route_step_sequence_fk(id,sequence_no,sequence_type,remark),operation:mdm_operation!mdm_process_route_step_operation_fk(id,code,name),controlCode:mdm_operation_control_code!mdm_process_route_step_control_code_fk(id,control_code,control_code_name),unit:mdm_unit_of_measure!mdm_process_route_step_unit_fk(id,unit_code,unit_name,symbol),department:mdm_production_department!mdm_process_route_step_department_fk(id,code,name)`,
+      { count: 'exact' }
+    )
+    .order('sort')
+    .order('code')
+    .range((p.current - 1) * p.size, p.current * p.size - 1)
+  if (p.tenantId) query = query.eq('tenant_id', p.tenantId)
+  if (p.routeId) query = query.eq('route_id', p.routeId)
+  if (p.sequenceId) query = query.eq('sequence_id', p.sequenceId)
+  if (p.workCenterId) query = query.eq('work_center_id', p.workCenterId)
+  if (typeof p.bound === 'boolean')
+    query = p.bound ? query.not('template_id', 'is', null) : query.is('template_id', null)
+  if (p.keyword) query = query.or(buildOrIlikeFilter(['code', 'name', 'description'], p.keyword))
+  const { data, total } = await responseHandle<ProcessStep[]>(
     () => (options?.signal ? query.abortSignal(options.signal) : query),
     read
   )
-  return { data: data?.records ?? [], total: data?.total ?? 0, current: p.current, size: p.size }
+  return { data: data ?? [], total: total ?? 0, current: p.current, size: p.size }
 }
 
 export async function saveProcessStep(input: ProcessStepInput, id?: string) {
@@ -481,6 +553,25 @@ export async function deleteProcessStep(id: string) {
   await responseHandle(
     () => supabase.from('mdm_process_route_step').delete().eq('id', id).select('id'),
     write
+  )
+}
+export async function fetchProcessRouteReferences(tenantId?: string) {
+  const { data } = await responseHandle<ProcessRouteReferences>(
+    () => supabase.rpc('mdm_process_route_references', { p_tenant_id: tenantId || null }),
+    read
+  )
+  return (
+    data ?? {
+      groups: [],
+      operations: [],
+      controlCodes: [],
+      units: [],
+      departments: [],
+      workCenters: [],
+      activityFormulas: [],
+      suppliers: [],
+      esopDocuments: []
+    }
   )
 }
 export async function bindOperationTemplate(ids: string[], templateId: string | null) {

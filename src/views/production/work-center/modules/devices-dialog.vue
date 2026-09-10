@@ -170,10 +170,3 @@
   }
   defineExpose({ handleOpen })
 </script>
-<style scoped lang="scss">
-  .center-device-actions {
-    display: flex;
-    gap: 8px;
-    align-items: center;
-  }
-</style>

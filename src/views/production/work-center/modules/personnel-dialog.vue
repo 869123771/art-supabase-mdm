@@ -167,11 +167,13 @@
       width: 70,
       fixed: 'right',
       formatter: (r) => (
-        <ArtButtonTable
-          type="delete"
-          permission="MdmWorkCenter:Personnel"
-          onClick={() => void remove(r)}
-        />
+        <div>
+          <ArtButtonTable
+            type="delete"
+            permission="MdmWorkCenter:Personnel"
+            onClick={() => void remove(r)}
+          />
+        </div>
       )
     }
   ]

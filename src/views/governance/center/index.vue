@@ -1,5 +1,8 @@
 <template>
-  <div class="art-full-height mdm-governance-center business-workspace-page">
+  <div
+    v-auth="'MdmGovernance:View'"
+    class="art-full-height mdm-governance-center business-workspace-page"
+  >
     <BusinessWorkspaceHeader
       :eyebrow="pageHeader.eyebrow"
       :title="pageHeader.title"
@@ -19,6 +22,7 @@
     >
       <template #actions>
         <div class="mdm-governance-center__actions">
+          <BusinessTableWorkspaceActions :table="activeTable" />
           <ElButton
             v-auth="'MdmGovernance:RunQuality'"
             :loading="qualityScanning"
@@ -43,25 +47,6 @@
         </div>
       </template>
     </BusinessWorkspaceHeader>
-
-    <div class="mdm-governance-center__health" aria-label="治理运行保障">
-      <article>
-        <span><ArtSvgIcon icon="ri:lock-2-line" /></span>
-        <div
-          ><strong>来源主档受保护</strong><small>审批结果通过 Outbox 交给来源适配器执行</small></div
-        >
-      </article>
-      <article>
-        <span><ArtSvgIcon icon="ri:eye-2-line" /></span>
-        <div
-          ><strong>职责分离</strong><small>申请人不能审核自己的变更，整改人不能复核自己</small></div
-        >
-      </article>
-      <article>
-        <span><ArtSvgIcon icon="ri:timer-flash-line" /></span>
-        <div><strong>交付可恢复</strong><small>可见性锁、指数退避、死信与受控重放</small></div>
-      </article>
-    </div>
 
     <ArtSectionCard class="mdm-governance-center__workspace" preserve-content-structure>
       <template #header>
@@ -185,6 +170,7 @@
   import BusinessWorkspaceHeader, {
     type BusinessWorkspaceMetric
   } from '@/components/business/business-workspace-header/index.vue'
+  import BusinessTableWorkspaceActions from '@/components/business/business-table-workspace-actions/index.vue'
   import ArtSectionCard from '@/components/core/surfaces/art-section-card/index.vue'
   import ArtSectionTitle from '@/components/core/surfaces/art-section-title/index.vue'
   import ArtSvgIcon from '@/components/core/base/art-svg-icon/index.vue'
@@ -209,6 +195,13 @@
   import MdmChangeRequestDialog from './modules/change-request-dialog.vue'
   import MdmGovernanceActionDialog from './modules/governance-action-dialog.vue'
   import MdmGovernanceConfigDialog from './modules/governance-config-dialog.vue'
+  import {
+    getGovernanceAggregateTypeLabel,
+    getGovernanceChangeOperationLabel,
+    getGovernanceEventTypeLabel,
+    getGovernanceSourceCodeLabel,
+    getGovernanceSourceTypeLabel
+  } from './governance-labels'
 
   defineOptions({ name: 'MdmGovernanceCenter' })
 
@@ -276,6 +269,15 @@
   const changeTableRef = ref<ArtTableQueryExpose>()
   const matchTableRef = ref<ArtTableQueryExpose>()
   const outboxTableRef = ref<ArtTableQueryExpose>()
+  const activeTable = computed(
+    () =>
+      ({
+        quality: qualityTableRef.value,
+        changes: changeTableRef.value,
+        matches: matchTableRef.value,
+        outbox: outboxTableRef.value
+      })[activeTab.value]
+  )
   const changeDialogRef = ref<ChangeDialogExpose>()
   const configDialogRef = ref<ConfigDialogExpose>()
   const actionDialogRef = ref<ActionDialogExpose>()
@@ -576,11 +578,18 @@
       formatter: (row) => (
         <div class="governance-identity">
           <strong>{row.sourceName}</strong>
-          <small>{row.sourceCode || row.sourceRecordId}</small>
+          <small>
+            {getGovernanceSourceCodeLabel(row.sourceType, row.sourceRecordId, row.sourceCode)}
+          </small>
         </div>
       )
     },
-    { prop: 'sourceType', label: '主档类型', minWidth: 140 },
+    {
+      prop: 'sourceType',
+      label: '主档类型',
+      minWidth: 140,
+      formatter: (row) => getGovernanceSourceTypeLabel(row.sourceType)
+    },
     { prop: 'severity', label: '级别', width: 88, formatter: (row) => severityCell(row.severity) },
     { prop: 'state', label: '状态', width: 112, formatter: (row) => statusCell(row.state) },
     {
@@ -628,8 +637,18 @@
         </div>
       )
     },
-    { prop: 'sourceType', label: '主档类型', minWidth: 130 },
-    { prop: 'operation', label: '动作', width: 90 },
+    {
+      prop: 'sourceType',
+      label: '主档类型',
+      minWidth: 130,
+      formatter: (row) => getGovernanceSourceTypeLabel(row.sourceType)
+    },
+    {
+      prop: 'operation',
+      label: '动作',
+      width: 90,
+      formatter: (row) => getGovernanceChangeOperationLabel(row.operation)
+    },
     { prop: 'state', label: '状态', width: 105, formatter: (row) => statusCell(row.state) },
     { prop: 'requesterEmail', label: '申请人', minWidth: 180 },
     {
@@ -653,7 +672,12 @@
   ]
   const matchColumns = (): ColumnOption<MdmMatchCandidate>[] => [
     { type: 'globalIndex', label: '序号', width: 66 },
-    { prop: 'sourceType', label: '主档类型', minWidth: 130 },
+    {
+      prop: 'sourceType',
+      label: '主档类型',
+      minWidth: 130,
+      formatter: (row) => getGovernanceSourceTypeLabel(row.sourceType)
+    },
     { prop: 'leftRecordId', label: '左侧来源记录', minWidth: 220 },
     { prop: 'rightRecordId', label: '右侧来源记录', minWidth: 220 },
     {
@@ -707,9 +731,10 @@
       minWidth: 250,
       formatter: (row) => (
         <div class="governance-identity">
-          <strong>{row.event?.eventType || '未知事件'}</strong>
+          <strong>{getGovernanceEventTypeLabel(row.event?.eventType)}</strong>
           <small>
-            {row.event?.aggregateType || 'aggregate'} · v{row.event?.eventVersion || 1}
+            {getGovernanceAggregateTypeLabel(row.event?.aggregateType)} · 版本
+            {row.event?.eventVersion || 1}
           </small>
         </div>
       )
@@ -845,57 +870,13 @@
       display: flex;
       flex-wrap: wrap;
       gap: 8px;
-    }
-
-    &__health {
-      display: grid;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
-      gap: 12px;
-
-      article {
-        display: grid;
-        grid-template-columns: auto minmax(0, 1fr);
-        gap: 11px;
-        align-items: center;
-        min-width: 0;
-        padding: 12px 14px;
-        background: var(--el-bg-color);
-        border: 1px solid var(--el-border-color-lighter);
-        border-radius: var(--el-border-radius-base);
-      }
-
-      article > span {
-        display: grid;
-        place-items: center;
-        width: 34px;
-        height: 34px;
-        font-size: 17px;
-        color: var(--el-color-primary);
-        background: color-mix(in srgb, var(--theme-color) 9%, var(--el-bg-color));
-        border-radius: 50%;
-      }
-
-      article div {
-        display: grid;
-        gap: 2px;
-        min-width: 0;
-      }
-
-      strong {
-        font-size: 12px;
-      }
-
-      small {
-        overflow: hidden;
-        text-overflow: ellipsis;
-        font-size: 10px;
-        color: var(--el-text-color-secondary);
-        white-space: nowrap;
-      }
+      align-items: center;
     }
 
     &__workspace {
+      display: flex;
       flex: 1;
+      flex-direction: column;
       min-height: 0;
       overflow: hidden;
     }
@@ -916,7 +897,30 @@
     }
 
     &__tabs {
+      display: flex;
+      flex: 1;
+      flex-direction: column;
       min-height: 0;
+
+      :deep(.el-tabs__header) {
+        flex: 0 0 auto;
+      }
+
+      :deep(.el-tabs__content) {
+        display: flex;
+        flex: 1;
+        min-height: 0;
+      }
+
+      :deep(.el-tab-pane) {
+        flex: 1;
+        min-width: 0;
+        min-height: 0;
+      }
+
+      :deep(.art-table-query) {
+        height: 100%;
+      }
     }
 
     &__tab-label {
@@ -964,16 +968,6 @@
   :deep(.is-overdue) {
     font-weight: 650;
     color: var(--el-color-danger);
-  }
-
-  @media (width <= 980px) {
-    .mdm-governance-center__health {
-      grid-template-columns: 1fr;
-    }
-
-    .mdm-governance-center__health small {
-      white-space: normal;
-    }
   }
 
   @media (width <= 720px) {

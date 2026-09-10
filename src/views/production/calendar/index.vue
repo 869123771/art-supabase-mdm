@@ -209,14 +209,14 @@
                           :style="{ background: pattern.color }" /><div
                           ><strong>{{ index + 1 }}. {{ pattern.name }}</strong
                           ><p>{{ pattern.description || '暂无描述' }}</p></div
-                        ><div class="production-calendar__pattern-tools"
+                        ><BusinessTableRowActions
                           ><ArtButtonTable
                             type="edit"
                             permission="MdmFactoryCalendar:EditPattern"
                             @click="editPattern(pattern)" /><ArtButtonTable
                             type="delete"
                             permission="MdmFactoryCalendar:DeletePattern"
-                            @click="removePattern(pattern)" /></div
+                            @click="removePattern(pattern)" /></BusinessTableRowActions
                       ></div>
                       <div class="production-calendar__shift-list">
                         <div v-for="(shift, shiftIndex) in pattern.shifts" :key="shiftIndex"
@@ -251,6 +251,7 @@
   import { useArtFeedback } from '@/hooks/core/useArtFeedback'
   import { useUserStore } from '@/store/modules/user'
   import { useAuth } from '@/hooks/core/useAuth'
+  import BusinessTableRowActions from '@/components/business/business-table-row-actions/index.vue'
   import {
     fetchProductionDepartments,
     fetchShiftPatterns,

@@ -130,7 +130,10 @@
       key: 'status',
       type: 'segment',
       span: 12,
-      options: getDictMap.value.commonEnabledStatus ?? []
+      props: {
+        class: 'w-full',
+        options: getDictMap.value.commonEnabledStatus ?? []
+      }
     },
     {
       label: '排序',

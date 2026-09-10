@@ -44,7 +44,7 @@ export async function fetchEsopDocuments(
   let query = supabase
     .from('mdm_esop_document')
     .select(
-      '*,category:mdm_esop_category!mdm_esop_document_category_fkey(id,category_code,category_name),bindings:mdm_esop_binding(id,target_type,material_id,process_route_id,material:mdm_material!mdm_esop_binding_material_fkey(id,material_code,material_name,specification_model),processRoute:mdm_process_route!mdm_esop_binding_route_fkey(id,name,material_id,material:mdm_material!mdm_process_route_material_id_fkey(id,material_code,material_name,specification_model)))',
+      '*,category:mdm_esop_category!mdm_esop_document_category_fkey(id,category_code,category_name),bindings:mdm_esop_binding(id,target_type,material_id,process_route_id,material:mdm_material!mdm_esop_binding_material_fkey(id,material_code,material_name,specification_model),processRoute:mdm_process_route!mdm_esop_binding_route_fkey(id,name,material_id,material:mdm_material!mdm_process_route_material_tenant_fkey(id,material_code,material_name,specification_model)))',
       { count: 'exact' }
     )
     .order('upload_time', { ascending: false })

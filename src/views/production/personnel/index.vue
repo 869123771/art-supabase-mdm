@@ -539,7 +539,9 @@
       formatter: (row) => (
         <div class="production-workspace__identity">
           <ElAvatar size={32} src={row.avatarUrl}>
-            {row.name.slice(0, 1)}
+            <span class="production-workspace__avatar-initial">
+              {row.name.trim().slice(0, 1) || '人'}
+            </span>
           </ElAvatar>
           <span>
             <strong title={row.name}>{row.name}</strong>

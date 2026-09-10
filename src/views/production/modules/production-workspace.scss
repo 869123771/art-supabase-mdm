@@ -56,7 +56,19 @@
     min-width: 0;
 
     .el-avatar {
+      display: inline-flex;
       flex: none;
+      align-items: center;
+      justify-content: center;
+      line-height: 1;
+    }
+
+    .production-workspace__avatar-initial {
+      display: grid;
+      place-items: center;
+      width: 100%;
+      height: 100%;
+      line-height: 1;
     }
 
     > span,
@@ -179,13 +191,6 @@
       justify-self: start;
       margin-top: 2px;
     }
-  }
-
-  :deep(.production-workspace__row-actions) {
-    display: flex;
-    gap: 8px;
-    align-items: center;
-    white-space: nowrap;
   }
 
   @media (width <= 800px) {

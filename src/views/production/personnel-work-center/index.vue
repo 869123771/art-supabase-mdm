@@ -275,7 +275,9 @@
       formatter: (row) => (
         <div class="personnel-work-center__employee">
           <ElAvatar size={34} src={row.avatarUrl || undefined}>
-            {row.name.slice(0, 1)}
+            <span class="production-workspace__avatar-initial">
+              {row.name.trim().slice(0, 1) || '人'}
+            </span>
           </ElAvatar>
           <span>
             <strong>{row.name}</strong>
