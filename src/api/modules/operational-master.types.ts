@@ -56,6 +56,14 @@ export interface OperationalMasterRecord {
   addressDetail?: string | null
   contactName?: string | null
   contactPhone?: string | null
+  contactDepartment?: string | null
+  contactPosition?: string | null
+  contactEmail?: string | null
+  contactQq?: string | null
+  invoiceTitle?: string | null
+  taxNo?: string | null
+  bankName?: string | null
+  bankAccount?: string | null
   projectMode?: string | null
   projectStage?: string | null
   projectStatus?: string | null

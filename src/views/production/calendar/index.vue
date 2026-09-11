@@ -97,6 +97,10 @@
                 </template>
                 <template v-if="calendar.tab === 'calendar'">
                   <div class="production-calendar__legend">
+                    <span v-for="meta in dayTypeLegend" :key="meta.value"
+                      ><i :style="{ background: meta.color }" />{{ meta.label }}</span
+                    >
+                    <span class="production-calendar__legend-divider" aria-hidden="true" />
                     <span v-for="pattern in calendar.patterns" :key="pattern.id"
                       ><i :style="{ background: pattern.color }" />{{ pattern.name }}</span
                     >
@@ -104,13 +108,17 @@
                   </div>
                   <div class="production-calendar__hint">
                     <span
-                      >双击未来日期修改排班；按住 Ctrl / ⌘
-                      点击可多选，也可选中日期后点击修改。</span
+                      >单击日期可快速设置休息日、节假日、工作日或半工作日；按住 Ctrl / ⌘
+                      点击可多选后批量调整轮班。</span
                     >
                     <ElButton
                       v-auth="'MdmFactoryCalendar:Configure'"
                       size="small"
-                      :disabled="!calendar.selectedDates.length"
+                      :disabled="
+                        !calendar.selectedDates.length ||
+                        calendar.selectedDates.some((date) => date <= today) ||
+                        !calendar.patterns.length
+                      "
                       @click="openAction('batch', calendar.selectedDates)"
                       >修改选中日期（{{ calendar.selectedDates.length }}）</ElButton
                     >
@@ -146,20 +154,19 @@
                           'is-selected': calendar.selectedDates.includes(data.day),
                           'is-outside': data.type !== 'current-month',
                           'is-today': data.day === today,
-                          'is-past': data.day <= today
+                          'is-past': data.day <= today,
+                          [`is-${resolveDayType(data.day)}`]: true
                         }"
-                        :style="
-                          dayPattern(data.day)
-                            ? { '--shift-color': dayPattern(data.day)?.color }
-                            : undefined
-                        "
+                        :style="{
+                          '--shift-color': dayPattern(data.day)?.color,
+                          '--day-type-color': resolveDayTypeMeta(data.day).color
+                        }"
                         :aria-label="dayLabel(data.day)"
                         :title="dayLabel(data.day)"
                         :aria-pressed="calendar.selectedDates.includes(data.day)"
-                        :disabled="data.day <= today || !hasAuth('MdmFactoryCalendar:Configure')"
+                        :disabled="!hasAuth('MdmFactoryCalendar:Configure')"
                         @click.stop="selectDate(data.day, $event)"
-                        @dblclick.stop="editDate(data.day)"
-                        @keydown.enter.prevent="editDate(data.day)"
+                        @keydown.enter.prevent="openDayType(data.day)"
                       >
                         <span class="production-calendar__day-number"
                           >{{ Number(data.day.slice(-2))
@@ -168,6 +175,10 @@
                         <span v-if="dayPattern(data.day)" class="production-calendar__shift"
                           ><i /><span>{{ dayPattern(data.day)?.name }}</span></span
                         >
+                        <span class="production-calendar__day-type">
+                          <ArtSvgIcon :icon="resolveDayTypeMeta(data.day).icon" />
+                          {{ resolveDayTypeMeta(data.day).displayLabel }}
+                        </span>
                         <small v-if="dayPattern(data.day)" class="production-calendar__duration"
                           >{{ patternMinutes(dayPattern(data.day)) }} 分钟</small
                         >
@@ -242,6 +253,7 @@
     </div>
     <PatternDialog ref="patternDialog" @success="loadCalendar" />
     <CalendarActionDialog ref="actionDialog" @success="loadCalendar" />
+    <CalendarDayTypeDialog ref="dayTypeDialog" @success="handleDayTypeSuccess" />
   </div>
 </template>
 <script setup lang="ts">
@@ -256,11 +268,14 @@
     fetchProductionDepartments,
     fetchShiftPatterns,
     fetchProductionCalendar,
+    fetchProductionCalendarDaySettings,
     fetchCalendarReminder,
     deleteShiftPattern,
     type ProductionDepartment,
     type ShiftPattern,
     type ProductionCalendarDay,
+    type ProductionCalendarDaySetting,
+    type ProductionCalendarDayType,
     type CalendarReminder
   } from '@mdm/api'
   import ProductionTree from '../modules/production-tree.vue'
@@ -268,12 +283,15 @@
   import { productionToday } from '../modules/production-model'
   import PatternDialog from './modules/pattern-dialog.vue'
   import CalendarActionDialog from './modules/calendar-action-dialog.vue'
+  import { calendarDayTypes } from './modules/calendar-day-types'
+  import CalendarDayTypeDialog from './modules/calendar-day-type-dialog.vue'
   defineOptions({ name: 'MdmFactoryCalendar' })
   const user = useUserStore()
   const { hasAuth } = useAuth()
   const { confirmAction } = useArtFeedback()
   const patternDialog = ref<InstanceType<typeof PatternDialog>>()
   const actionDialog = ref<InstanceType<typeof CalendarActionDialog>>()
+  const dayTypeDialog = ref<InstanceType<typeof CalendarDayTypeDialog>>()
   const scope = reactive({
     departments: [] as ProductionDepartment[],
     selected: '',
@@ -285,6 +303,7 @@
     tab: 'calendar',
     patterns: [] as ShiftPattern[],
     days: [] as ProductionCalendarDay[],
+    daySettings: [] as ProductionCalendarDaySetting[],
     selectedDates: [] as string[],
     loading: false,
     error: '',
@@ -295,8 +314,27 @@
   const monthKey = computed(() => dayjs(calendar.month).format('YYYY-MM'))
   const monthTitle = computed(() => dayjs(calendar.month).format('YYYY 年 M 月'))
   const dayMap = computed(() => new Map(calendar.days.map((d) => [d.workDate, d.patternId])))
+  const daySettingMap = computed(
+    () => new Map(calendar.daySettings.map((setting) => [setting.workDate, setting]))
+  )
   const patternMap = computed(() => new Map(calendar.patterns.map((p) => [p.id, p])))
+  const dayTypeLegend = calendarDayTypes
   const dayPattern = (date: string) => patternMap.value.get(dayMap.value.get(date) || '')
+  const resolveDayType = (date: string): ProductionCalendarDayType =>
+    daySettingMap.value.get(date)?.dayType ??
+    (dayPattern(date) ? 'work_day' : [0, 6].includes(dayjs(date).day()) ? 'rest_day' : 'work_day')
+  const resolveDayTypeMeta = (date: string) => {
+    const dayType = resolveDayType(date)
+    const meta = dayTypeLegend.find((item) => item.value === dayType) ?? dayTypeLegend[2]
+    const setting = daySettingMap.value.get(date)
+    return {
+      ...meta,
+      displayLabel:
+        setting?.holidayName
+          ? `${dayType === 'work_day' ? '班 · ' : dayType === 'rest_day' ? '休 · ' : ''}${setting.holidayName}`
+          : meta.label
+    }
+  }
   const patternMinutes = (pattern: ShiftPattern | undefined) =>
     pattern?.shifts.reduce((sum, s) => sum + (s.workMinutes || 0), 0) || 0
   const monthDays = computed(() =>
@@ -365,7 +403,14 @@
   async function loadCalendar() {
     const request = ++calendarRequest
     if (!scope.selected || !hasAuth('MdmFactoryCalendar:View')) {
-      Object.assign(calendar, { patterns: [], days: [], reminder: null, loading: false, error: '' })
+      Object.assign(calendar, {
+        patterns: [],
+        days: [],
+        daySettings: [],
+        reminder: null,
+        loading: false,
+        error: ''
+      })
       return
     }
     calendar.loading = true
@@ -375,7 +420,7 @@
     const reminderEnd = dayjs(today).add(30, 'day')
     // Include the reminder horizon independently of the visible month.
     try {
-      const [patterns, visibleDays, upcomingDays, reminder] = await Promise.all([
+      const [patterns, visibleDays, upcomingDays, reminder, daySettings] = await Promise.all([
         fetchShiftPatterns(user.info.tenantId || '', scope.selected),
         fetchProductionCalendar(
           user.info.tenantId || '',
@@ -389,13 +434,15 @@
           today,
           reminderEnd.format('YYYY-MM-DD')
         ),
-        fetchCalendarReminder(user.info.tenantId || '', scope.selected)
+        fetchCalendarReminder(user.info.tenantId || '', scope.selected),
+        fetchProductionCalendarDaySettings(scope.selected, start, monthEnd.format('YYYY-MM-DD'))
       ])
       if (request !== calendarRequest) return
       Object.assign(calendar, {
         patterns,
         days: uniqBy([...visibleDays, ...upcomingDays], 'workDate'),
-        reminder
+        reminder,
+        daySettings
       })
     } catch {
       if (request === calendarRequest) calendar.error = '日历加载失败，请重试。'
@@ -407,20 +454,31 @@
     calendar.month = dayjs(calendar.month).add(amount, 'month').toDate()
   }
   function selectDate(date: string, event: MouseEvent) {
-    if (date <= today || !hasAuth('MdmFactoryCalendar:Configure')) return
+    if (!hasAuth('MdmFactoryCalendar:Configure')) return
     calendar.selectedDates =
       event.ctrlKey || event.metaKey
         ? calendar.selectedDates.includes(date)
           ? calendar.selectedDates.filter((d) => d !== date)
           : [...calendar.selectedDates, date]
         : [date]
+    if (!event.ctrlKey && !event.metaKey) openDayType(date)
   }
-  function editDate(date: string) {
-    if (date > today && hasAuth('MdmFactoryCalendar:Configure')) openAction('batch', [date])
+  function openDayType(date: string) {
+    if (!hasAuth('MdmFactoryCalendar:Configure')) return
+    calendar.selectedDates = [date]
+    void dayTypeDialog.value?.handleOpen({
+      departmentId: scope.selected,
+      workDate: date,
+      dayType: resolveDayType(date),
+      holidayName: daySettingMap.value.get(date)?.holidayName
+    })
+  }
+  async function handleDayTypeSuccess() {
+    await loadCalendar()
   }
   function dayLabel(date: string) {
     const pattern = dayPattern(date)
-    return `${date}，${pattern ? pattern.name + '，' + patternMinutes(pattern) + ' 分钟' : '未设置班次'}${date <= today ? '，历史日期不可修改' : ''}`
+    return `${date}，${resolveDayTypeMeta(date).displayLabel}，${pattern ? pattern.name + '，' + patternMinutes(pattern) + ' 分钟' : '未设置班次'}`
   }
   function openAction(kind: 'batch' | 'reference' | 'reminder', dates: string[] = []) {
     void actionDialog.value?.handleOpen({
@@ -462,8 +520,6 @@
   )
 </script>
 <style scoped lang="scss">
-  @use '../modules/production-workspace';
-
   .production-calendar {
     &__scroll {
       min-width: 0;
@@ -588,7 +644,7 @@
     }
 
     :deep(.el-calendar-day) {
-      height: 108px;
+      height: 128px;
       padding: 4px;
     }
 
@@ -616,16 +672,22 @@
       }
 
       &.is-selected {
-        background: var(--el-color-primary-light-9);
         border-color: var(--theme-color);
+        box-shadow: inset 0 0 0 1px var(--theme-color);
+      }
+
+      &.is-rest_day,
+      &.is-statutory_holiday,
+      &.is-half_work_day {
+        background: color-mix(in srgb, var(--day-type-color) 15%, var(--el-bg-color));
+      }
+
+      &.is-work_day.is-selected {
+        background: var(--el-color-primary-light-9);
       }
 
       &.is-outside {
         opacity: 0.55;
-      }
-
-      &.is-past {
-        cursor: default;
       }
 
       &.is-today .production-calendar__day-number {
@@ -643,6 +705,21 @@
         font-size: 10px;
         font-weight: 400;
       }
+    }
+
+    &__day-type {
+      display: flex;
+      gap: 5px;
+      align-items: center;
+      min-width: 0;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--el-text-color-primary);
+      overflow-wrap: anywhere;
+    }
+
+    &__legend-divider {
+      border-left: 1px solid var(--el-border-color);
     }
 
     &__shift {
@@ -764,7 +841,7 @@
       }
 
       :deep(.el-calendar-day) {
-        height: 100px;
+        height: 128px;
       }
 
       &__day {

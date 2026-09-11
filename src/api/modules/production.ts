@@ -12,8 +12,13 @@ import type {
   ShiftPattern,
   ShiftPatternInput,
   ProductionCalendarDay,
+  ProductionCalendarDaySetting,
+  ProductionCalendarDayType,
   CalendarReminder,
-  ProductionEmployeeReference
+  ProductionEmployeeReference,
+  StatutoryHoliday,
+  StatutoryHolidaySavePayload,
+  StatutoryHolidaySearchParams
 } from './production.types'
 export * from './production.types'
 const { supabase, responseHandle, keysToSnakeDeep } = useSupabase()
@@ -299,6 +304,82 @@ export async function setProductionCalendar(
         p_dates: dates
       }),
     { ...writeOptions, requireAffected: false }
+  )
+}
+export async function fetchProductionCalendarDaySettings(
+  departmentId: string,
+  start: string,
+  end: string
+): Promise<ProductionCalendarDaySetting[]> {
+  const { data } = await responseHandle<ProductionCalendarDaySetting[]>(
+    () =>
+      supabase.rpc('mdm_list_production_calendar_day_settings_secure', {
+        p_department_id: departmentId,
+        p_start_date: start,
+        p_end_date: end
+      }),
+    readOptions
+  )
+  return data ?? []
+}
+export async function setProductionCalendarDayType(
+  departmentId: string,
+  workDate: string,
+  dayType: ProductionCalendarDayType
+): Promise<void> {
+  await responseHandle(
+    () =>
+      supabase.rpc('mdm_set_production_calendar_day_type_secure', {
+        p_department_id: departmentId,
+        p_work_date: workDate,
+        p_day_type: dayType
+      }),
+    { ...writeOptions, requireAffected: false, message: '日期类型已更新' }
+  )
+}
+
+interface StatutoryHolidayListResult {
+  records?: StatutoryHoliday[]
+  total?: number
+}
+export async function fetchStatutoryHolidayList(params: StatutoryHolidaySearchParams = {}) {
+  const from = Math.max(params.from ?? 0, 0)
+  const result = await responseHandle<StatutoryHolidayListResult>(
+    () =>
+      supabase.rpc('mdm_list_statutory_holidays_secure', {
+        p_from: from,
+        p_to: Math.max(params.to ?? from + 999, from),
+        p_organization_id: params.organizationId || null,
+        p_holiday_type: params.holidayType || null,
+        p_year: params.year ? Number(params.year) : null
+      }),
+    { showErrorMessage: true }
+  )
+  return {
+    data: result.data?.records ?? [],
+    total: result.data?.total ?? 0,
+    error: result.error
+  }
+}
+export async function saveStatutoryHoliday(params: StatutoryHolidaySavePayload) {
+  const { id, ...payload } = params
+  return await responseHandle<string>(
+    () =>
+      supabase.rpc('mdm_save_statutory_holiday_secure', {
+        p_id: id ?? null,
+        p_payload: keysToSnakeDeep(payload)
+      }),
+    {
+      showMessage: true,
+      breakReturn: true,
+      message: id ? '节假日安排已更新' : '节假日安排已新增'
+    }
+  )
+}
+export async function deleteStatutoryHolidays(ids: string[]) {
+  return await responseHandle<number>(
+    () => supabase.rpc('mdm_delete_statutory_holidays_secure', { p_ids: ids }),
+    { showMessage: true, breakReturn: true, message: '节假日安排已删除' }
   )
 }
 export async function fetchCalendarReminder(

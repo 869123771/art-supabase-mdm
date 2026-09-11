@@ -47,6 +47,8 @@
     type MaterialType,
     type MaterialContextOption
   } from '@mdm/api'
+  import { buildMaterialCategoryWriteInput } from './category-payload'
+  import { MATERIAL_DESCRIPTION_FIELD_OPTIONS } from '../../modules/material-description-fields'
 
   export interface CategoryDialogOpenData {
     row?: MaterialCategory
@@ -55,6 +57,7 @@
     sites: MaterialContextOption[]
     tenantId: string
     tenantOptions: Array<{ label: string; value: string }>
+    parentId?: string
     copy?: boolean
   }
   interface FormExpose {
@@ -79,6 +82,7 @@
     tenantId: '',
     parentId: null,
     categoryCode: '',
+    codePrefix: '',
     categoryName: '',
     materialTypeId: null,
     printName: '',
@@ -99,8 +103,7 @@
     valuationMethod: 'moving_average',
     description: '',
     status: 'enabled',
-    sort: 10,
-    remark: ''
+    sort: 10
   })
   const formModel = reactive<MaterialCategory>(initialForm())
   const tenantId = computed(() => formModel.tenantId)
@@ -116,6 +119,7 @@
         placeholder: '请选择本次维护的数据归属租户'
       }
     },
+    { label: '分类身份', key: 'identity', type: 'divider', span: 24 },
     {
       label: '上级分类',
       key: 'parentId',
@@ -137,12 +141,20 @@
       props: { maxlength: 40, placeholder: '如 RAW-METAL' }
     },
     {
+      label: '编码前缀',
+      key: 'codePrefix',
+      type: 'input',
+      help: '默认跟随分类编码；手动修改后将保留自定义值。',
+      props: { maxlength: 40, placeholder: '默认取分类编码' }
+    },
+    {
       label: '分类名称',
       key: 'categoryName',
       type: 'input',
       props: { maxlength: 100, placeholder: '如 金属原材料' }
     },
     { label: '打印名称', key: 'printName', type: 'input', props: { maxlength: 100 } },
+    { label: '描述规则', key: 'descriptionRule', type: 'divider', span: 24 },
     {
       label: '描述连接符',
       key: 'compositionSeparator',
@@ -154,9 +166,11 @@
       key: 'compositionColumns',
       type: 'select',
       span: 24,
-      options: getDictMap.value.mdmMaterialCoreAttribute ?? [],
-      props: { multiple: true, clearable: true }
+      options: [...MATERIAL_DESCRIPTION_FIELD_OPTIONS],
+      help: '物料档案将按所选字段顺序与连接符实时生成“物料描述”。',
+      props: { multiple: true, clearable: true, filterable: true }
     },
+    { label: '采购与收货策略', key: 'purchasePolicy', type: 'divider', span: 24 },
     {
       label: '超采购比例（%）',
       key: 'overPurchasePercent',
@@ -206,6 +220,7 @@
     { label: '需要检验', key: 'requiresInspection', type: 'switch' },
     { label: '生成送货通知', key: 'createDeliveryNotice', type: 'switch' },
     { label: '批次管理', key: 'batchManaged', type: 'switch' },
+    { label: '治理信息', key: 'governance', type: 'divider', span: 24 },
     {
       label: '状态',
       key: 'status',
@@ -227,7 +242,7 @@
     }
   ])
   void Promise.all(
-    ['mdmMaterialCoreAttribute', 'mdmMaterialValuationMethod', 'commonEnabledStatus'].map((code) =>
+    ['mdmMaterialValuationMethod', 'commonEnabledStatus'].map((code) =>
       userStore.ensureDictLoaded(code)
     )
   )
@@ -250,7 +265,10 @@
   const handleSubmit = async (): Promise<boolean> => {
     try {
       await formRef.value?.validate()
-      await saveMaterialCategory(formModel, formModel.id || undefined)
+      await saveMaterialCategory(
+        buildMaterialCategoryWriteInput(formModel),
+        formModel.id || undefined
+      )
       emit('success')
       return true
     } catch {
@@ -265,9 +283,12 @@
     sourceSites.value = data.sites
     if (data.row) Object.assign(formModel, cloneDeep(data.row))
     formModel.tenantId = data.row?.tenantId || data.tenantId
+    if (!data.row && data.parentId) formModel.parentId = data.parentId
     if (data.copy) {
+      const originalCode = formModel.categoryCode
       formModel.id = ''
       formModel.categoryCode = `${formModel.categoryCode}-COPY`
+      if (formModel.codePrefix === originalCode) formModel.codePrefix = formModel.categoryCode
       formModel.categoryName = `${formModel.categoryName}（副本）`
     }
     syncTenantOptions()
@@ -280,6 +301,14 @@
       onOpen: () => formRef.value?.clearValidate()
     })
   }
+  watch(
+    () => formModel.categoryCode,
+    (value, previous) => {
+      if (!formModel.codePrefix || formModel.codePrefix === previous) {
+        formModel.codePrefix = value
+      }
+    }
+  )
   watch(
     () => formModel.tenantId,
     (value, previous) => {

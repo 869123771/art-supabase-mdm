@@ -784,6 +784,3 @@
     { immediate: true }
   )
 </script>
-<style scoped lang="scss">
-  @use '../modules/production-workspace';
-</style>

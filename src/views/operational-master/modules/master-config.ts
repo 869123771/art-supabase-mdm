@@ -13,6 +13,10 @@ export interface MasterFieldConfig {
   reference?: 'customers' | 'departments' | 'workCenters' | 'units' | 'menus'
   multiple?: boolean
   table?: boolean
+  exportable?: boolean
+  systemGenerated?: boolean
+  validation?: 'phone' | 'email'
+  maxlength?: number
   placeholder?: string
 }
 
@@ -36,6 +40,7 @@ export interface OperationalMasterConfig {
   groupTitle?: string
   formSections: MasterFormSectionConfig[]
   fields: MasterFieldConfig[]
+  formSpan?: number
   importable?: boolean
 }
 
@@ -72,6 +77,7 @@ const configurations: Record<string, OperationalMasterConfig> = {
     nameKey: 'customerName',
     groupDomain: 'customer',
     groupTitle: '客户分组',
+    formSpan: 8,
     formSections: [
       {
         key: 'identity',
@@ -81,9 +87,28 @@ const configurations: Record<string, OperationalMasterConfig> = {
       },
       {
         key: 'contact',
-        title: '联系与地址',
-        description: '补充主要联系人和业务往来地址，便于下游单据直接引用。',
-        fieldKeys: ['contactName', 'contactPhone', 'region', 'addressDetail']
+        title: '联系人信息',
+        description: '统一维护主要联系人的部门、职位和联系方式，供下游业务实时引用。',
+        fieldKeys: [
+          'contactName',
+          'contactPhone',
+          'contactDepartment',
+          'contactPosition',
+          'contactEmail',
+          'contactQq'
+        ]
+      },
+      {
+        key: 'finance',
+        title: '财务信息',
+        description: '维护开票与收付款资料，供合同、结算和票据业务使用。',
+        fieldKeys: ['invoiceTitle', 'taxNo', 'bankName', 'bankAccount']
+      },
+      {
+        key: 'address',
+        title: '业务地址',
+        description: '记录客户经营地址，便于订单、运输与现场作业复用。',
+        fieldKeys: ['region', 'addressDetail']
       },
       {
         key: 'status',
@@ -113,8 +138,64 @@ const configurations: Record<string, OperationalMasterConfig> = {
         minWidth: 120,
         table: true
       },
-      { key: 'contactName', label: '联系人', minWidth: 120, table: true },
-      { key: 'contactPhone', label: '联系电话', minWidth: 150, table: true },
+      { key: 'contactName', label: '姓名', maxlength: 50, minWidth: 120, table: true },
+      {
+        key: 'contactPhone',
+        label: '联系电话',
+        validation: 'phone',
+        maxlength: 20,
+        minWidth: 150,
+        table: true
+      },
+      {
+        key: 'contactDepartment',
+        label: '部门',
+        maxlength: 50,
+        exportable: true,
+        placeholder: '请输入联系人部门'
+      },
+      {
+        key: 'contactPosition',
+        label: '职位',
+        maxlength: 50,
+        exportable: true,
+        placeholder: '请输入联系人职位'
+      },
+      {
+        key: 'contactEmail',
+        label: 'E-mail',
+        validation: 'email',
+        maxlength: 100,
+        exportable: true,
+        placeholder: '请输入邮箱地址'
+      },
+      {
+        key: 'contactQq',
+        label: 'QQ',
+        maxlength: 20,
+        exportable: true,
+        placeholder: '请输入 QQ'
+      },
+      {
+        key: 'invoiceTitle',
+        label: '发票抬头',
+        maxlength: 100,
+        exportable: true
+      },
+      {
+        key: 'taxNo',
+        label: '纳税人识别号',
+        maxlength: 40,
+        exportable: true
+      },
+      { key: 'bankName', label: '开户行', maxlength: 100, exportable: true },
+      {
+        key: 'bankAccount',
+        label: '银行账号',
+        maxlength: 50,
+        span: 16,
+        exportable: true
+      },
       { key: 'region', label: '省市区', span: 12, minWidth: 160, table: true },
       { key: 'addressDetail', label: '详细地址', span: 12, minWidth: 220, table: true },
       ...baseFields
@@ -149,7 +230,8 @@ const configurations: Record<string, OperationalMasterConfig> = {
           'source',
           'ownerId',
           'salespersonId',
-          'contactName'
+          'contactName',
+          'contactPhone'
         ]
       },
       {
@@ -172,7 +254,8 @@ const configurations: Record<string, OperationalMasterConfig> = {
         label: '项目编号',
         minWidth: 150,
         table: true,
-        placeholder: '留空后按月份自动生成'
+        systemGenerated: true,
+        placeholder: '创建后由系统生成'
       },
       { key: 'projectName', label: '项目名称', required: true, minWidth: 220, table: true },
       {
@@ -211,7 +294,15 @@ const configurations: Record<string, OperationalMasterConfig> = {
       },
       { key: 'ownerId', label: '负责人', type: 'slot', minWidth: 130, table: true },
       { key: 'salespersonId', label: '销售员', type: 'slot', minWidth: 130, table: true },
-      { key: 'contactName', label: '联系人', minWidth: 120, table: true },
+      { key: 'contactName', label: '联系人', maxlength: 50, minWidth: 120, table: true },
+      {
+        key: 'contactPhone',
+        label: '联系电话',
+        validation: 'phone',
+        maxlength: 20,
+        minWidth: 150,
+        table: true
+      },
       { key: 'region', label: '省市区', minWidth: 160, table: true },
       { key: 'addressDetail', label: '详细地址', minWidth: 220, table: true },
       {

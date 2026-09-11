@@ -83,11 +83,54 @@ export interface ProductionCalendarDay {
   workDate: string
   patternId: string
 }
+export type ProductionCalendarDayType =
+  'rest_day' | 'statutory_holiday' | 'work_day' | 'half_work_day'
+export interface ProductionCalendarDaySetting {
+  id?: string
+  departmentId: string
+  workDate: string
+  dayType: ProductionCalendarDayType
+  source: 'manual' | 'statutory_holiday'
+  holidayId?: string | null
+  holidayName?: string | null
+}
 export interface CalendarReminder {
   id?: string
   departmentId: string
   enabled: boolean
   leadDays: number
+}
+export interface StatutoryHolidayOrganizationSummary {
+  id: string
+  organizationCode: string
+  organizationName: string
+  organizationType?: string
+}
+export interface StatutoryHoliday {
+  id?: string
+  organizationId: string
+  holidayType: string
+  startDate: string
+  endDate: string
+  remark?: string | null
+  organization: StatutoryHolidayOrganizationSummary
+  createTime?: string
+  updateTime?: string
+}
+export interface StatutoryHolidaySearchParams {
+  organizationId?: string
+  holidayType?: string
+  year?: number | string
+  from?: number
+  to?: number
+}
+export interface StatutoryHolidaySavePayload {
+  id?: string
+  organizationId: string
+  holidayType: string
+  startDate: string
+  endDate: string
+  remark?: string
 }
 export interface ProductionEmployeeReference extends EmployeeIntegrationItem {
   id: string

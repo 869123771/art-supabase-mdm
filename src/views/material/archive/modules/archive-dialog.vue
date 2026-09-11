@@ -42,35 +42,77 @@
             <ElInput
               v-model="formModel.materialCode"
               maxlength="60"
-              placeholder="输入或按规则生成物料编码"
+              :disabled="Boolean(formModel.codeRuleId && !formModel.id)"
+              :placeholder="
+                formModel.codeRuleId ? '保存时按编码策略自动生成' : '未选择策略时手工录入编码'
+              "
             >
               <template #prefix><ArtSvgIcon icon="ri:barcode-line" /></template>
             </ElInput>
           </template>
           <template #codeRuleId>
-            <div class="material-archive-dialog__rule-field">
-              <ElSelect
-                v-model="formModel.codeRuleId"
-                clearable
-                filterable
-                placeholder="选择编码规则"
+            <ElSelect
+              v-model="formModel.codeRuleId"
+              clearable
+              filterable
+              placeholder="选择编码策略"
+            >
+              <ElOption
+                v-for="item in scopedCodeRules"
+                :key="item.id"
+                :label="item.ruleName"
+                :value="item.id"
+              />
+            </ElSelect>
+          </template>
+          <template #imageUrls>
+            <ArtUploadImage
+              v-model="formModel.imageUrls"
+              multiple
+              :limit="5"
+              :size="92"
+              tip="支持上传或从资源库选择，最多 5 张"
+            />
+          </template>
+          <template #area>
+            <div class="material-archive-dialog__area-field">
+              <ElInputNumber
+                v-model="formModel.area"
+                :min="0"
+                :precision="4"
+                controls-position="right"
+                class="!w-full"
+              />
+              <ElButton plain @click="recalculateArea"
+                ><ArtSvgIcon icon="ri:calculator-line" />长×宽</ElButton
               >
-                <ElOption
-                  v-for="item in scopedCodeRules"
-                  :key="item.id"
-                  :label="item.ruleName"
-                  :value="item.id"
-                />
-              </ElSelect>
-              <ElButton
-                v-auth="'MdmMaterialArchive:GenerateCode'"
-                type="primary"
-                plain
-                :loading="generating"
-                :disabled="!formModel.codeRuleId"
-                @click="handleGenerateCode"
-                ><ArtSvgIcon icon="ri:magic-line" />生成编码</ElButton
-              >
+            </div>
+          </template>
+          <template #description>
+            <div class="material-archive-dialog__description">
+              <ElInput
+                :model-value="materialDescription"
+                type="textarea"
+                :rows="2"
+                readonly
+                resize="none"
+                placeholder="填写分类配置的组成字段后自动生成"
+                aria-label="自动生成的物料描述"
+              />
+              <div class="material-archive-dialog__description-rule">
+                <span><ArtSvgIcon icon="ri:magic-line" />分类描述规则</span>
+                <template v-if="descriptionRuleLabels.length">
+                  <ElTag
+                    v-for="(label, index) in descriptionRuleLabels"
+                    :key="`${label}-${index}`"
+                    size="small"
+                    effect="plain"
+                    >{{ label }}</ElTag
+                  >
+                  <small>连接符：{{ selectedCategory?.compositionSeparator || '（空）' }}</small>
+                </template>
+                <small v-else>当前分类尚未配置描述组成字段</small>
+              </div>
             </div>
           </template>
           <template #purchaser
@@ -107,6 +149,13 @@
               :tenant-id="tenantId"
               placeholder="选择调度员"
               @update:model-value="formModel.dispatcherId = $event ?? null"
+          /></template>
+          <template #productionPlanner
+            ><ArtEmployeeSelect
+              :model-value="formModel.productionPlannerId ?? undefined"
+              :tenant-id="tenantId"
+              placeholder="选择生产计划员"
+              @update:model-value="formModel.productionPlannerId = $event ?? null"
           /></template>
           <template #unitConversions>
             <div class="conversion-builder">
@@ -158,17 +207,18 @@
 </template>
 
 <script setup lang="ts">
-  import type { FormRules } from 'element-plus'
+  import dayjs from 'dayjs'
+  import { ElMessage, type FormRules } from 'element-plus'
   import { cloneDeep, omit } from 'lodash-es'
   import ArtDialog from '@/components/core/dialogs/art-dialog/index.vue'
   import type { ArtDialogExpose } from '@/components/core/dialogs/art-dialog/types'
   import ArtForm, { type FormItem } from '@/components/core/forms/art-form/index.vue'
+  import ArtUploadImage from '@/components/core/forms/art-upload-image/index.vue'
   import ArtEmployeeSelect from '@/components/business/art-employee-select/index.vue'
   import ArtIconButton from '@/components/core/widget/art-icon-button/index.vue'
   import ArtSvgIcon from '@/components/core/base/art-svg-icon/index.vue'
   import { useUserStore } from '@/store/modules/user'
   import {
-    generateMaterialCode,
     saveMaterialArchive,
     type MaterialArchive,
     type MaterialArchiveInput,
@@ -179,12 +229,13 @@
     type MaterialType,
     type UnitOfMeasure
   } from '@mdm/api'
+  import { buildMaterialDescription } from './material-description'
+  import { MATERIAL_DESCRIPTION_FIELD_LABELS } from '../../modules/material-description-fields'
 
   type ArchiveTab =
     'base' | 'purchase' | 'sales' | 'inventory' | 'production' | 'finance' | 'conversion'
   interface ArchiveFormModel extends MaterialArchiveInput {
     id?: string
-    codeRuleId?: string
   }
   export interface ArchiveDialogOpenData {
     row?: MaterialArchive
@@ -197,6 +248,11 @@
     attributeGroups: MaterialAttributeGroup[]
     codeRules: MaterialCodeRule[]
     storageOptions: MaterialContextOption[]
+    materialGroupOptions: MaterialContextOption[]
+    supplierOptions: MaterialContextOption[]
+    warehouseOptions: MaterialContextOption[]
+    outboundRuleOptions: MaterialContextOption[]
+    supplyRuleOptions: MaterialContextOption[]
   }
   interface FormExpose {
     validate: () => Promise<boolean>
@@ -216,7 +272,11 @@
   const attributeGroups = ref<MaterialAttributeGroup[]>([])
   const codeRules = ref<MaterialCodeRule[]>([])
   const storageOptions = ref<MaterialContextOption[]>([])
-  const generating = ref(false)
+  const materialGroupOptions = ref<MaterialContextOption[]>([])
+  const supplierOptions = ref<MaterialContextOption[]>([])
+  const warehouseOptions = ref<MaterialContextOption[]>([])
+  const outboundRuleOptions = ref<MaterialContextOption[]>([])
+  const supplyRuleOptions = ref<MaterialContextOption[]>([])
   const tabs = [
     { name: 'base', label: '基本信息', icon: 'ri:information-line' },
     { name: 'purchase', label: '采购', icon: 'ri:shopping-bag-3-line' },
@@ -276,9 +336,10 @@
   const initialForm = (): ArchiveFormModel => ({
     id: undefined,
     tenantId: '',
-    codeRuleId: undefined,
+    codeRuleId: null,
     categoryId: '',
     materialCode: '',
+    oldMaterialCode: '',
     materialName: '',
     specificationModel: '',
     drawingNo: '',
@@ -291,6 +352,7 @@
     auxiliaryUnit2Id: null,
     attributeGroupId: null,
     attributeValues: {},
+    materialGroupId: null,
     brand: '',
     manufacturer: '',
     materialComposition: '',
@@ -298,21 +360,90 @@
     color: '',
     imageUrls: [],
     description: '',
+    grossWeight: null,
+    netWeight: null,
+    length: null,
+    width: null,
+    thickness: null,
+    area: null,
+    volume: null,
+    effectiveDate: dayjs().format('YYYY-MM-DD'),
+    expirationDate: '9999-12-31',
     purchaseUnitId: null,
     purchaserId: null,
     plannerId: null,
+    purchaseOrganization: null,
+    defaultSupplierId: null,
+    overReceiptPercent: null,
+    underReceiptPercent: null,
+    overPurchaseQuantity: null,
+    purchaseFixedLeadDays: null,
+    purchasePreprocessDays: null,
+    purchasePostprocessDays: null,
+    inspectionLeadDays: null,
     batchPolicy: '',
     minBatch: null,
     maxBatch: null,
     salesUnitId: null,
     salespersonId: null,
     salesOrganization: '',
+    shippingLeadDays: null,
+    shippingDelayDays: null,
+    overDeliveryPercent: null,
+    underDeliveryPercent: null,
     inventoryUnitId: null,
     storageLocationId: null,
     custodianId: null,
+    abcClassification: null,
+    allowNegativeInventory: false,
+    minimumPackQuantity: null,
+    defaultWarehouseId: null,
+    minStockAlertEnabled: false,
+    minStock: null,
+    safetyStockAlertEnabled: false,
+    safetyStock: null,
+    reorderPointAlertEnabled: false,
+    reorderPoint: null,
+    reorderQuantity: null,
+    dailyConsumption: null,
+    maxStockAlertEnabled: false,
+    maxStock: null,
+    outboundRuleId: null,
+    batchManagementEnabled: false,
+    batchRuleId: null,
+    serialManagementEnabled: false,
+    serialRuleId: null,
+    serialGenerationTiming: null,
+    shelfLifeManagementEnabled: false,
+    shelfLifeUnitId: null,
+    shelfLife: null,
+    shelfLifeCalculationDirection: null,
+    expiryCalculationMethod: null,
+    advancePeriodUnitId: null,
+    inboundExpiryLead: null,
+    outboundExpiryLead: null,
+    expiryAlertEnabled: false,
+    expiryAlertDays: null,
+    barcodeManagementEnabled: false,
+    barcode: '',
     productionUnitId: null,
     mrpType: '',
     dispatcherId: null,
+    productionPlannerId: null,
+    keyComponent: false,
+    inboundWarehouseId: null,
+    fixedBatch: null,
+    productionFixedLeadDays: null,
+    productionPreprocessDays: null,
+    selfMadeProductionDays: null,
+    productionPostprocessDays: null,
+    productionInspectionLeadDays: null,
+    issuingWarehouseId: null,
+    materialIssueMethod: null,
+    backflushMethod: null,
+    overIssueControlMethod: null,
+    issueTolerancePercent: null,
+    minimumIssueBatch: 1,
     costUnitId: null,
     valuationMethod: 'moving_average',
     currencyCode: 'CNY',
@@ -338,9 +469,8 @@
   const scopedCodeRules = computed(() =>
     codeRules.value.filter((item) => item.tenantId === formModel.tenantId)
   )
-  const scopedStorageOptions = computed(() =>
-    storageOptions.value.filter((item) => item.tenantId === formModel.tenantId)
-  )
+  const scopedContextOptions = (items: MaterialContextOption[]) =>
+    items.filter((item) => item.tenantId === formModel.tenantId)
   function option<T extends { id: string }>(items: T[], label: (item: T) => string) {
     return items.map((item) => ({ label: label(item), value: item.id }))
   }
@@ -361,6 +491,21 @@
       scopedAttributeGroups.value,
       (item: MaterialAttributeGroup) => `${item.groupName} · ${item.groupCode}`
     )
+  )
+  const namedOptions = (items: MaterialContextOption[]) =>
+    scopedContextOptions(items).map((item) => ({
+      label: item.code ? `${item.name} · ${item.code}` : item.name,
+      value: item.id
+    }))
+  const materialGroupSelectOptions = computed(() => namedOptions(materialGroupOptions.value))
+  const supplierSelectOptions = computed(() => namedOptions(supplierOptions.value))
+  const warehouseSelectOptions = computed(() => namedOptions(warehouseOptions.value))
+  const outboundRuleSelectOptions = computed(() => namedOptions(outboundRuleOptions.value))
+  const batchRuleSelectOptions = computed(() =>
+    namedOptions(supplyRuleOptions.value.filter((item) => item.applyBatch))
+  )
+  const serialRuleSelectOptions = computed(() =>
+    namedOptions(supplyRuleOptions.value.filter((item) => item.applySerial))
   )
   const selectedBaseUnit = computed(() =>
     scopedUnits.value.find((item) => item.id === formModel.baseUnitId)
@@ -386,6 +531,17 @@
   const selectedAttributeGroup = computed(() =>
     scopedAttributeGroups.value.find((item) => item.id === formModel.attributeGroupId)
   )
+  const selectedCategory = computed(() =>
+    scopedCategories.value.find((item) => item.id === formModel.categoryId)
+  )
+  const materialDescription = computed(() =>
+    buildMaterialDescription(selectedCategory.value, formModel, selectedAttributeGroup.value)
+  )
+  const descriptionRuleLabels = computed(() => {
+    return (selectedCategory.value?.compositionColumns ?? []).map(
+      (column) => MATERIAL_DESCRIPTION_FIELD_LABELS[column] ?? column
+    )
+  })
   const isTabConfigured = (tab: ArchiveTab): boolean => {
     if (tab === 'base') return Boolean(formModel.materialName && formModel.baseUnitId)
     if (tab === 'purchase') return Boolean(formModel.purchaseUnitId || formModel.purchaserId)
@@ -423,8 +579,10 @@
           label: '编码策略',
           key: 'codeRuleId',
           type: 'slot',
-          help: '选择规则后可生成新编码；也可直接录入符合企业规范的编码。'
+          help: '选择规则后在保存事务中自动生成编码；未选择规则时允许手工维护。'
         },
+        { label: '旧物料编码', key: 'oldMaterialCode', type: 'input', props: { maxlength: 60 } },
+        { label: '图片', key: 'imageUrls', type: 'slot', span: 12 },
         {
           label: '物料名称',
           key: 'materialName',
@@ -452,8 +610,8 @@
           options: getDictMap.value.mdmMaterialSource ?? []
         },
         commonUnitItem('基本单位', 'baseUnitId'),
-        commonUnitItem('辅助单位一', 'auxiliaryUnitId'),
-        commonUnitItem('辅助单位二', 'auxiliaryUnit2Id'),
+        commonUnitItem('辅助单位', 'auxiliaryUnitId'),
+        commonUnitItem('辅助单位(2)', 'auxiliaryUnit2Id'),
         { key: 'characteristics', label: '规格与特征', type: 'divider', span: 24 },
         { label: '规格型号', key: 'specificationModel', type: 'input', props: { maxlength: 160 } },
         { label: '图号', key: 'drawingNo', type: 'input', props: { maxlength: 100 } },
@@ -469,6 +627,13 @@
           options: groupOptions.value,
           props: { clearable: true, filterable: true }
         },
+        {
+          label: '物料组',
+          key: 'materialGroupId',
+          type: 'select',
+          options: materialGroupSelectOptions.value,
+          props: { clearable: true, filterable: true, placeholder: '选择物料组' }
+        },
         ...(selectedAttributeGroup.value?.attributes
           .filter((attribute) => attribute.enabled)
           .map<FormItem>((attribute) => ({
@@ -479,6 +644,56 @@
             props: { clearable: !attribute.required, maxlength: 120 },
             help: attribute.required ? '该属性由当前属性组设为必填' : undefined
           })) ?? []),
+        { key: 'auxiliary', label: '辅助信息', type: 'divider', span: 24 },
+        {
+          label: '毛重',
+          key: 'grossWeight',
+          type: 'number',
+          props: { min: 0, precision: 4, class: '!w-full' }
+        },
+        {
+          label: '净重',
+          key: 'netWeight',
+          type: 'number',
+          props: { min: 0, precision: 4, class: '!w-full' }
+        },
+        {
+          label: '长度',
+          key: 'length',
+          type: 'number',
+          props: { min: 0, precision: 4, class: '!w-full' }
+        },
+        {
+          label: '宽度',
+          key: 'width',
+          type: 'number',
+          props: { min: 0, precision: 4, class: '!w-full' }
+        },
+        {
+          label: '厚度',
+          key: 'thickness',
+          type: 'number',
+          props: { min: 0, precision: 4, class: '!w-full' }
+        },
+        { label: '面积', key: 'area', type: 'slot', help: '默认按长度 × 宽度计算，也可手工修改。' },
+        {
+          label: '容积',
+          key: 'volume',
+          type: 'number',
+          props: { min: 0, precision: 4, class: '!w-full' }
+        },
+        {
+          label: '生效日期',
+          key: 'effectiveDate',
+          type: 'date',
+          props: { valueFormat: 'YYYY-MM-DD', class: '!w-full' }
+        },
+        {
+          label: '失效日期',
+          key: 'expirationDate',
+          type: 'date',
+          props: { valueFormat: 'YYYY-MM-DD', class: '!w-full' }
+        },
         { key: 'governance', label: '治理信息', type: 'divider', span: 24 },
         {
           label: '状态',
@@ -493,11 +708,11 @@
           props: { min: 0, max: 999999, precision: 0, class: '!w-full' }
         },
         {
-          label: '物料说明',
+          label: '物料描述',
           key: 'description',
-          type: 'input',
+          type: 'slot',
           span: 24,
-          props: { type: 'textarea', rows: 3, maxlength: 1000, showWordLimit: true, resize: 'none' }
+          help: '根据物料分类中的“描述组成字段 + 描述连接符”实时生成并保存。'
         }
       ]
     if (activeTab.value === 'purchase')
@@ -506,18 +721,62 @@
         commonUnitItem('采购单位', 'purchaseUnitId'),
         { label: '采购员', key: 'purchaserId', type: 'slot' },
         { label: '计划员', key: 'plannerId', type: 'slot' },
-        { label: '批量策略', key: 'batchPolicy', type: 'input', props: { maxlength: 80 } },
         {
-          label: '最小批量',
-          key: 'minBatch',
+          label: '采购组织',
+          key: 'purchaseOrganization',
+          type: 'select',
+          options: getDictMap.value.mdmMaterialPurchaseOrganization ?? [],
+          props: { clearable: true }
+        },
+        {
+          label: '默认供应商',
+          key: 'defaultSupplierId',
+          type: 'select',
+          options: supplierSelectOptions.value,
+          props: { clearable: true, filterable: true }
+        },
+        {
+          label: '收货超采比率%',
+          key: 'overReceiptPercent',
           type: 'number',
           props: { min: 0, precision: 4, class: '!w-full' }
         },
         {
-          label: '最大批量',
-          key: 'maxBatch',
+          label: '收货欠收比率%',
+          key: 'underReceiptPercent',
           type: 'number',
           props: { min: 0, precision: 4, class: '!w-full' }
+        },
+        {
+          label: '超采数量',
+          key: 'overPurchaseQuantity',
+          type: 'number',
+          props: { min: 0, precision: 4, class: '!w-full' }
+        },
+        { key: 'purchaseLead', label: '物料提前期', type: 'divider', span: 24 },
+        {
+          label: '固定提前期(天)',
+          key: 'purchaseFixedLeadDays',
+          type: 'number',
+          props: { min: 0, precision: 0, class: '!w-full' }
+        },
+        {
+          label: '前处理时间(天)',
+          key: 'purchasePreprocessDays',
+          type: 'number',
+          props: { min: 0, precision: 0, class: '!w-full' }
+        },
+        {
+          label: '后处理时间(天)',
+          key: 'purchasePostprocessDays',
+          type: 'number',
+          props: { min: 0, precision: 0, class: '!w-full' }
+        },
+        {
+          label: '检验提前期(天)',
+          key: 'inspectionLeadDays',
+          type: 'number',
+          props: { min: 0, precision: 0, class: '!w-full' }
         }
       ]
     if (activeTab.value === 'sales')
@@ -525,35 +784,353 @@
         { key: 'salesView', label: '销售执行口径', type: 'divider', span: 24 },
         commonUnitItem('销售单位', 'salesUnitId'),
         { label: '销售员', key: 'salespersonId', type: 'slot' },
-        { label: '销售组织', key: 'salesOrganization', type: 'input', props: { maxlength: 100 } }
+        {
+          label: '销售组织',
+          key: 'salesOrganization',
+          type: 'select',
+          options: getDictMap.value.mdmMaterialSalesOrganization ?? [],
+          props: { clearable: true }
+        },
+        { key: 'salesLead', label: '物料提前期', type: 'divider', span: 24 },
+        {
+          label: '发货提前期(天)',
+          key: 'shippingLeadDays',
+          type: 'number',
+          props: { min: 0, precision: 0, class: '!w-full' }
+        },
+        {
+          label: '发货延迟(天)',
+          key: 'shippingDelayDays',
+          type: 'number',
+          props: { min: 0, precision: 0, class: '!w-full' }
+        },
+        {
+          label: '发货超发比率%',
+          key: 'overDeliveryPercent',
+          type: 'number',
+          props: { min: 0, precision: 4, class: '!w-full' }
+        },
+        {
+          label: '发货欠发比率%',
+          key: 'underDeliveryPercent',
+          type: 'number',
+          props: { min: 0, precision: 4, class: '!w-full' }
+        }
       ]
     if (activeTab.value === 'inventory')
       return [
         { key: 'inventoryView', label: '库存执行口径', type: 'divider', span: 24 },
         commonUnitItem('库存单位', 'inventoryUnitId'),
+        { label: '仓管员', key: 'custodianId', type: 'slot' },
         {
-          label: '默认库位',
-          key: 'storageLocationId',
+          label: 'ABC分类',
+          key: 'abcClassification',
           type: 'select',
-          options: scopedStorageOptions.value.map((item) => ({
-            label: item.code ? `${item.name} · ${item.code}` : item.name,
-            value: item.id
-          })),
+          options: getDictMap.value.mdmMaterialAbcClassification ?? [],
+          props: { clearable: true }
+        },
+        { label: '允许负库存', key: 'allowNegativeInventory', type: 'switch' },
+        {
+          label: '最小包装量',
+          key: 'minimumPackQuantity',
+          type: 'number',
+          props: { min: 0, precision: 4, class: '!w-full' }
+        },
+        {
+          label: '默认仓库',
+          key: 'defaultWarehouseId',
+          type: 'select',
+          options: warehouseSelectOptions.value,
           props: { clearable: true, filterable: true }
         },
-        { label: '保管员', key: 'custodianId', type: 'slot' }
+        {
+          label: '默认仓位',
+          key: 'storageLocationId',
+          type: 'select',
+          options: namedOptions(storageOptions.value),
+          props: { clearable: true, filterable: true }
+        },
+        { key: 'stockMonitor', label: '库存监控', type: 'divider', span: 24 },
+        { label: '启用最小库存预警', key: 'minStockAlertEnabled', type: 'switch' },
+        {
+          label: '最小库存',
+          key: 'minStock',
+          type: 'number',
+          props: {
+            min: 0,
+            precision: 4,
+            class: '!w-full',
+            disabled: !formModel.minStockAlertEnabled
+          }
+        },
+        { label: '启用安全库存预警', key: 'safetyStockAlertEnabled', type: 'switch' },
+        {
+          label: '安全库存',
+          key: 'safetyStock',
+          type: 'number',
+          props: {
+            min: 0,
+            precision: 4,
+            class: '!w-full',
+            disabled: !formModel.safetyStockAlertEnabled
+          }
+        },
+        { label: '启用再订货点预警', key: 'reorderPointAlertEnabled', type: 'switch' },
+        {
+          label: '再订货点',
+          key: 'reorderPoint',
+          type: 'number',
+          props: {
+            min: 0,
+            precision: 4,
+            class: '!w-full',
+            disabled: !formModel.reorderPointAlertEnabled
+          }
+        },
+        {
+          label: '再订货批量',
+          key: 'reorderQuantity',
+          type: 'number',
+          props: {
+            min: 0,
+            precision: 4,
+            class: '!w-full',
+            disabled: !formModel.reorderPointAlertEnabled
+          }
+        },
+        {
+          label: '物料消耗量(天)',
+          key: 'dailyConsumption',
+          type: 'number',
+          props: {
+            min: 0,
+            precision: 4,
+            class: '!w-full',
+            disabled: !formModel.reorderPointAlertEnabled
+          }
+        },
+        { label: '启用最大库存预警', key: 'maxStockAlertEnabled', type: 'switch' },
+        {
+          label: '最大库存',
+          key: 'maxStock',
+          type: 'number',
+          props: {
+            min: 0,
+            precision: 4,
+            class: '!w-full',
+            disabled: !formModel.maxStockAlertEnabled
+          }
+        },
+        {
+          label: '出库规则配置',
+          key: 'outboundRuleId',
+          type: 'select',
+          options: outboundRuleSelectOptions.value,
+          props: { clearable: true, filterable: true }
+        },
+        { key: 'batch', label: '批号', type: 'divider', span: 24 },
+        { label: '启用批号管理', key: 'batchManagementEnabled', type: 'switch' },
+        {
+          label: '批号规则',
+          key: 'batchRuleId',
+          type: 'select',
+          options: batchRuleSelectOptions.value,
+          props: { clearable: true, filterable: true, disabled: !formModel.batchManagementEnabled }
+        },
+        { key: 'serial', label: '序列号', type: 'divider', span: 24 },
+        { label: '启用序列号管理', key: 'serialManagementEnabled', type: 'switch' },
+        {
+          label: '序列号规则',
+          key: 'serialRuleId',
+          type: 'select',
+          options: serialRuleSelectOptions.value,
+          props: { clearable: true, filterable: true, disabled: !formModel.serialManagementEnabled }
+        },
+        {
+          label: '序列号生成时点',
+          key: 'serialGenerationTiming',
+          type: 'select',
+          options: getDictMap.value.mdmMaterialSerialGenerationTiming ?? [],
+          props: { clearable: true, disabled: !formModel.serialManagementEnabled }
+        },
+        { key: 'shelfLife', label: '保质期', type: 'divider', span: 24 },
+        { label: '保质期管理', key: 'shelfLifeManagementEnabled', type: 'switch' },
+        commonUnitItem('保质期单位', 'shelfLifeUnitId'),
+        {
+          label: '保质期',
+          key: 'shelfLife',
+          type: 'number',
+          props: {
+            min: 0,
+            precision: 4,
+            class: '!w-full',
+            disabled: !formModel.shelfLifeManagementEnabled
+          }
+        },
+        {
+          label: '计算方向',
+          key: 'shelfLifeCalculationDirection',
+          type: 'select',
+          options: getDictMap.value.mdmMaterialShelfCalculationDirection ?? [],
+          props: { clearable: true, disabled: !formModel.shelfLifeManagementEnabled }
+        },
+        {
+          label: '到期日计算方式',
+          key: 'expiryCalculationMethod',
+          type: 'select',
+          options: getDictMap.value.mdmMaterialExpiryCalculationMethod ?? [],
+          props: { clearable: true, disabled: !formModel.shelfLifeManagementEnabled }
+        },
+        commonUnitItem('提前期单位', 'advancePeriodUnitId'),
+        {
+          label: '入库失效提前期',
+          key: 'inboundExpiryLead',
+          type: 'number',
+          props: {
+            min: 0,
+            precision: 4,
+            class: '!w-full',
+            disabled: !formModel.shelfLifeManagementEnabled
+          }
+        },
+        {
+          label: '出库失效提前期',
+          key: 'outboundExpiryLead',
+          type: 'number',
+          props: {
+            min: 0,
+            precision: 4,
+            class: '!w-full',
+            disabled: !formModel.shelfLifeManagementEnabled
+          }
+        },
+        { label: '启用预警', key: 'expiryAlertEnabled', type: 'switch' },
+        {
+          label: '预警提前期(天)',
+          key: 'expiryAlertDays',
+          type: 'number',
+          props: { min: 0, precision: 0, class: '!w-full', disabled: !formModel.expiryAlertEnabled }
+        },
+        { key: 'barcode', label: '条码 / 二维码', type: 'divider', span: 24 },
+        { label: '启用条码管理', key: 'barcodeManagementEnabled', type: 'switch' },
+        {
+          label: '条码',
+          key: 'barcode',
+          type: 'input',
+          props: { maxlength: 160, disabled: !formModel.barcodeManagementEnabled }
+        }
       ]
     if (activeTab.value === 'production')
       return [
         { key: 'productionView', label: '生产计划口径', type: 'divider', span: 24 },
         commonUnitItem('生产单位', 'productionUnitId'),
+        { label: '调度员', key: 'dispatcherId', type: 'slot' },
+        { label: '计划员', key: 'productionPlannerId', type: 'slot' },
+        { label: '关键件', key: 'keyComponent', type: 'switch' },
         {
-          label: 'MRP 类型',
-          key: 'mrpType',
+          label: '入库仓库',
+          key: 'inboundWarehouseId',
           type: 'select',
-          options: getDictMap.value.mdmMaterialMrpType ?? []
+          options: warehouseSelectOptions.value,
+          props: { clearable: true, filterable: true }
         },
-        { label: '调度员', key: 'dispatcherId', type: 'slot' }
+        {
+          label: '批量大小',
+          key: 'batchPolicy',
+          type: 'select',
+          options: getDictMap.value.mdmMaterialBatchPolicy ?? [],
+          props: { clearable: true }
+        },
+        {
+          label: '最大批量',
+          key: 'maxBatch',
+          type: 'number',
+          props: { min: 0, precision: 4, class: '!w-full' }
+        },
+        {
+          label: '最小批量',
+          key: 'minBatch',
+          type: 'number',
+          props: { min: 0, precision: 4, class: '!w-full' }
+        },
+        {
+          label: '固定批量',
+          key: 'fixedBatch',
+          type: 'number',
+          props: { min: 0, precision: 4, class: '!w-full' }
+        },
+        { key: 'productionLead', label: '物料提前期', type: 'divider', span: 24 },
+        {
+          label: '固定提前期(天)',
+          key: 'productionFixedLeadDays',
+          type: 'number',
+          props: { min: 0, precision: 0, class: '!w-full' }
+        },
+        {
+          label: '前处理时间(天)',
+          key: 'productionPreprocessDays',
+          type: 'number',
+          props: { min: 0, precision: 0, class: '!w-full' }
+        },
+        {
+          label: '自制生产时间(天)',
+          key: 'selfMadeProductionDays',
+          type: 'number',
+          props: { min: 0, precision: 0, class: '!w-full' }
+        },
+        {
+          label: '后处理时间(天)',
+          key: 'productionPostprocessDays',
+          type: 'number',
+          props: { min: 0, precision: 0, class: '!w-full' }
+        },
+        {
+          label: '检验提前期(天)',
+          key: 'productionInspectionLeadDays',
+          type: 'number',
+          props: { min: 0, precision: 0, class: '!w-full' }
+        },
+        { key: 'issueControl', label: '发料控制', type: 'divider', span: 24 },
+        {
+          label: '发料仓库',
+          key: 'issuingWarehouseId',
+          type: 'select',
+          options: warehouseSelectOptions.value,
+          props: { clearable: true, filterable: true }
+        },
+        {
+          label: '领送料方式',
+          key: 'materialIssueMethod',
+          type: 'select',
+          options: getDictMap.value.mdmMaterialIssueMethod ?? [],
+          props: { clearable: true }
+        },
+        {
+          label: '倒冲',
+          key: 'backflushMethod',
+          type: 'select',
+          options: getDictMap.value.mdmMaterialBackflushMethod ?? [],
+          props: { clearable: true }
+        },
+        {
+          label: '超发控制方式',
+          key: 'overIssueControlMethod',
+          type: 'select',
+          options: getDictMap.value.mdmMaterialOverIssueControl ?? [],
+          props: { clearable: true }
+        },
+        {
+          label: '领料上限允差%',
+          key: 'issueTolerancePercent',
+          type: 'number',
+          props: { min: 0, precision: 4, class: '!w-full' }
+        },
+        {
+          label: '最小发料批量',
+          key: 'minimumIssueBatch',
+          type: 'number',
+          props: { min: 0, precision: 4, class: '!w-full' }
+        }
       ]
     if (activeTab.value === 'finance')
       return [
@@ -583,12 +1160,21 @@
       'commonEnabledStatus',
       'mdmMaterialMrpType',
       'mdmMaterialValuationMethod',
-      'mdmCurrency'
+      'mdmCurrency',
+      'mdmMaterialPurchaseOrganization',
+      'mdmMaterialSalesOrganization',
+      'mdmMaterialAbcClassification',
+      'mdmMaterialSerialGenerationTiming',
+      'mdmMaterialShelfCalculationDirection',
+      'mdmMaterialExpiryCalculationMethod',
+      'mdmMaterialBatchPolicy',
+      'mdmMaterialIssueMethod',
+      'mdmMaterialBackflushMethod',
+      'mdmMaterialOverIssueControl'
     ].map((code) => userStore.ensureDictLoaded(code))
   )
   const formRules: FormRules<Record<string, unknown>> = {
     tenantId: [{ required: true, message: '请选择目标租户', trigger: 'change' }],
-    materialCode: [{ required: true, message: '请输入或生成物料编码', trigger: 'blur' }],
     materialName: [{ required: true, message: '请输入物料名称', trigger: 'blur' }],
     categoryId: [{ required: true, message: '请选择物料分类', trigger: 'change' }],
     materialTypeId: [{ required: true, message: '请选择物料类型', trigger: 'change' }],
@@ -597,30 +1183,61 @@
   const addConversion = (): void => {
     formModel.unitConversions.push({ sourceUnitId: '', sourceFactor: 1, baseFactor: 1, remark: '' })
   }
-  const handleGenerateCode = async (): Promise<void> => {
-    if (!formModel.codeRuleId) return
-    generating.value = true
-    try {
-      formModel.materialCode = await generateMaterialCode({
-        ruleId: formModel.codeRuleId,
-        materialTypeId: formModel.materialTypeId || undefined,
-        categoryId: formModel.categoryId || undefined
-      })
-    } finally {
-      generating.value = false
-    }
+  const recalculateArea = (): void => {
+    formModel.area =
+      formModel.length != null && formModel.width != null
+        ? Number((formModel.length * formModel.width).toFixed(4))
+        : null
   }
   const handleSubmit = async (): Promise<boolean> => {
     try {
       activeTab.value = 'base'
       await nextTick()
       await formRef.value?.validate()
+      if (!formModel.codeRuleId && !formModel.materialCode.trim()) {
+        activeTab.value = 'base'
+        ElMessage.warning('请选择编码策略，或手工输入物料编码')
+        return false
+      }
+      if (formModel.batchManagementEnabled && !formModel.batchRuleId) {
+        activeTab.value = 'inventory'
+        ElMessage.warning('启用批号管理后，请选择批号规则')
+        return false
+      }
+      if (
+        formModel.serialManagementEnabled &&
+        (!formModel.serialRuleId || !formModel.serialGenerationTiming)
+      ) {
+        activeTab.value = 'inventory'
+        ElMessage.warning('启用序列号管理后，请选择序列号规则和生成时点')
+        return false
+      }
+      if (
+        formModel.shelfLifeManagementEnabled &&
+        (!formModel.shelfLifeUnitId ||
+          formModel.shelfLife == null ||
+          !formModel.shelfLifeCalculationDirection ||
+          !formModel.expiryCalculationMethod)
+      ) {
+        activeTab.value = 'inventory'
+        ElMessage.warning('启用保质期管理后，请完整填写保质期单位、保质期和计算规则')
+        return false
+      }
       const type = materialTypes.value.find((item) => item.id === formModel.materialTypeId)
       const baseUnit = units.value.find((item) => item.id === formModel.baseUnitId)
       if (!type || !baseUnit) return false
       formModel.materialType = type.typeCode
       formModel.basicUnit = baseUnit.unitCode
-      const payload = omit(formModel, ['id', 'codeRuleId']) as MaterialArchiveInput
+      const payload = omit(formModel, [
+        'id',
+        'category',
+        'materialTypeRef',
+        'baseUnit',
+        'auxiliaryUnit',
+        'auxiliaryUnit2',
+        'attributeGroup',
+        'materialGroup'
+      ]) as MaterialArchiveInput
       await saveMaterialArchive(payload, formModel.id)
       emit('success')
       return true
@@ -638,6 +1255,11 @@
     attributeGroups.value = data.attributeGroups
     codeRules.value = data.codeRules
     storageOptions.value = data.storageOptions
+    materialGroupOptions.value = data.materialGroupOptions
+    supplierOptions.value = data.supplierOptions
+    warehouseOptions.value = data.warehouseOptions
+    outboundRuleOptions.value = data.outboundRuleOptions
+    supplyRuleOptions.value = data.supplyRuleOptions
     if (data.row) Object.assign(formModel, cloneDeep(data.row))
     formModel.tenantId = data.row?.tenantId || data.tenantId
     if (data.copy) {
@@ -645,8 +1267,10 @@
       formModel.materialCode = ''
       formModel.materialName = `${formModel.materialName}（副本）`
     }
+    if (!formModel.id && !formModel.codeRuleId)
+      formModel.codeRuleId = scopedCodeRules.value[0]?.id ?? null
     await dialogRef.value?.handleOpen(data, {
-      title: `${data.copy ? '复制' : data.row ? '编辑' : '新增'}物料档案`,
+      title: `${data.copy ? '复制' : data.row ? '编辑' : '新增'}物料编码`,
       subtitle: '统一物料身份与各业务域默认视图',
       confirmText: '保存物料',
       contentMaxHeight: '74vh',
@@ -654,6 +1278,13 @@
       onOpen: () => formRef.value?.clearValidate()
     })
   }
+  watch(
+    materialDescription,
+    (value) => {
+      formModel.description = value
+    },
+    { immediate: true }
+  )
   watch(
     () => formModel.tenantId,
     (value, previous) => {
@@ -664,7 +1295,7 @@
       formModel.auxiliaryUnitId = null
       formModel.auxiliaryUnit2Id = null
       formModel.attributeGroupId = null
-      formModel.codeRuleId = undefined
+      formModel.codeRuleId = null
       formModel.storageLocationId = null
       formModel.unitConversions = []
       formModel.purchaserId = null
@@ -672,6 +1303,15 @@
       formModel.salespersonId = null
       formModel.custodianId = null
       formModel.dispatcherId = null
+      formModel.productionPlannerId = null
+      formModel.materialGroupId = null
+      formModel.defaultSupplierId = null
+      formModel.defaultWarehouseId = null
+      formModel.inboundWarehouseId = null
+      formModel.issuingWarehouseId = null
+      formModel.outboundRuleId = null
+      formModel.batchRuleId = null
+      formModel.serialRuleId = null
     }
   )
   watch(
@@ -684,6 +1324,10 @@
       formModel.productionUnitId ||= unitId
       formModel.costUnitId ||= unitId
     }
+  )
+  watch(
+    () => [formModel.length, formModel.width] as const,
+    () => recalculateArea()
   )
   defineExpose({ handleOpen })
 </script>
@@ -820,6 +1464,43 @@
     grid-template-columns: minmax(0, 1fr) auto;
     gap: 8px;
     width: 100%;
+  }
+
+  .material-archive-dialog__description {
+    display: grid;
+    gap: 8px;
+    width: 100%;
+  }
+
+  .material-archive-dialog__description :deep(.el-textarea__inner) {
+    color: var(--el-text-color-primary);
+    background: color-mix(in srgb, var(--theme-color) 4%, var(--default-box-color));
+  }
+
+  .material-archive-dialog__description-rule {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    align-items: center;
+    min-height: 28px;
+    padding: 6px 8px;
+    color: var(--el-text-color-secondary);
+    background: var(--art-gray-100);
+    border-radius: var(--el-border-radius-base);
+  }
+
+  .material-archive-dialog__description-rule > span {
+    display: inline-flex;
+    gap: 5px;
+    align-items: center;
+    margin-right: 2px;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--theme-color);
+  }
+
+  .material-archive-dialog__description-rule small {
+    font-size: 11px;
   }
 
   .conversion-builder {

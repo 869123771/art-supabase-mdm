@@ -28,7 +28,7 @@ export interface MaterialType extends MaterialReferenceBase {
   typeName: string
   codePrefix: string
   textColor: string
-  tagType: string
+  tagType: Api.Common.TagType
 }
 
 export interface MaterialAttributeDefinition {
@@ -44,7 +44,7 @@ export interface MaterialAttributeGroup extends MaterialReferenceBase {
   groupName: string
   attributes: MaterialAttributeDefinition[]
   textColor: string
-  tagType: string
+  tagType: Api.Common.TagType
 }
 
 export type MaterialCodeSegmentSource = 'fixed' | 'material_type' | 'material_category' | 'date'
@@ -81,9 +81,10 @@ export interface MaterialReferenceQuery {
   status?: MdmMaterialStatus
 }
 
-export interface MaterialCategory extends MaterialReferenceBase {
+export interface MaterialCategory extends Omit<MaterialReferenceBase, 'remark'> {
   parentId?: string | null
   categoryCode: string
+  codePrefix: string
   categoryName: string
   materialTypeId?: string | null
   materialType?: Pick<MaterialType, 'id' | 'typeCode' | 'typeName'> | null
@@ -107,10 +108,17 @@ export interface MaterialCategory extends MaterialReferenceBase {
   children?: MaterialCategory[]
 }
 
+export type MaterialCategoryInput = Omit<
+  MaterialCategory,
+  'id' | 'materialType' | 'children' | 'createBy' | 'createTime' | 'updateBy' | 'updateTime'
+>
+
 export interface MaterialArchive extends MaterialReferenceBase {
   categoryId: string
   category?: Pick<MaterialCategory, 'id' | 'categoryCode' | 'categoryName'> | null
   materialCode: string
+  codeRuleId?: string | null
+  oldMaterialCode?: string | null
   materialName: string
   specificationModel?: string | null
   drawingNo?: string | null
@@ -122,9 +130,14 @@ export interface MaterialArchive extends MaterialReferenceBase {
   baseUnitId?: string | null
   baseUnit?: Pick<UnitOfMeasure, 'id' | 'unitCode' | 'unitName' | 'symbol'> | null
   auxiliaryUnitId?: string | null
+  auxiliaryUnit?: Pick<UnitOfMeasure, 'id' | 'unitCode' | 'unitName' | 'symbol'> | null
   auxiliaryUnit2Id?: string | null
+  auxiliaryUnit2?: Pick<UnitOfMeasure, 'id' | 'unitCode' | 'unitName' | 'symbol'> | null
   attributeGroupId?: string | null
+  attributeGroup?: Pick<MaterialAttributeGroup, 'id' | 'groupCode' | 'groupName'> | null
   attributeValues: Record<string, string>
+  materialGroupId?: string | null
+  materialGroup?: { id: string; groupCode: string; groupName: string } | null
   brand?: string | null
   manufacturer?: string | null
   materialComposition?: string | null
@@ -132,21 +145,90 @@ export interface MaterialArchive extends MaterialReferenceBase {
   color?: string | null
   imageUrls: string[]
   description?: string | null
+  grossWeight?: number | null
+  netWeight?: number | null
+  length?: number | null
+  width?: number | null
+  thickness?: number | null
+  area?: number | null
+  volume?: number | null
+  effectiveDate?: string | null
+  expirationDate?: string | null
   purchaseUnitId?: string | null
   purchaserId?: string | null
   plannerId?: string | null
+  purchaseOrganization?: string | null
+  defaultSupplierId?: string | null
+  overReceiptPercent?: number | null
+  underReceiptPercent?: number | null
+  overPurchaseQuantity?: number | null
+  purchaseFixedLeadDays?: number | null
+  purchasePreprocessDays?: number | null
+  purchasePostprocessDays?: number | null
+  inspectionLeadDays?: number | null
   batchPolicy?: string | null
   minBatch?: number | null
   maxBatch?: number | null
   salesUnitId?: string | null
   salespersonId?: string | null
   salesOrganization?: string | null
+  shippingLeadDays?: number | null
+  shippingDelayDays?: number | null
+  overDeliveryPercent?: number | null
+  underDeliveryPercent?: number | null
   inventoryUnitId?: string | null
   storageLocationId?: string | null
   custodianId?: string | null
+  abcClassification?: string | null
+  allowNegativeInventory: boolean
+  minimumPackQuantity?: number | null
+  defaultWarehouseId?: string | null
+  minStockAlertEnabled: boolean
+  minStock?: number | null
+  safetyStockAlertEnabled: boolean
+  safetyStock?: number | null
+  reorderPointAlertEnabled: boolean
+  reorderPoint?: number | null
+  reorderQuantity?: number | null
+  dailyConsumption?: number | null
+  maxStockAlertEnabled: boolean
+  maxStock?: number | null
+  outboundRuleId?: string | null
+  batchManagementEnabled: boolean
+  batchRuleId?: string | null
+  serialManagementEnabled: boolean
+  serialRuleId?: string | null
+  serialGenerationTiming?: string | null
+  shelfLifeManagementEnabled: boolean
+  shelfLifeUnitId?: string | null
+  shelfLife?: number | null
+  shelfLifeCalculationDirection?: string | null
+  expiryCalculationMethod?: string | null
+  advancePeriodUnitId?: string | null
+  inboundExpiryLead?: number | null
+  outboundExpiryLead?: number | null
+  expiryAlertEnabled: boolean
+  expiryAlertDays?: number | null
+  barcodeManagementEnabled: boolean
+  barcode?: string | null
   productionUnitId?: string | null
   mrpType?: string | null
   dispatcherId?: string | null
+  productionPlannerId?: string | null
+  keyComponent: boolean
+  inboundWarehouseId?: string | null
+  fixedBatch?: number | null
+  productionFixedLeadDays?: number | null
+  productionPreprocessDays?: number | null
+  selfMadeProductionDays?: number | null
+  productionPostprocessDays?: number | null
+  productionInspectionLeadDays?: number | null
+  issuingWarehouseId?: string | null
+  materialIssueMethod?: string | null
+  backflushMethod?: string | null
+  overIssueControlMethod?: string | null
+  issueTolerancePercent?: number | null
+  minimumIssueBatch?: number | null
   costUnitId?: string | null
   valuationMethod?: string | null
   currencyCode: string
@@ -164,6 +246,10 @@ export type MaterialArchiveInput = Omit<
   | 'category'
   | 'materialTypeRef'
   | 'baseUnit'
+  | 'auxiliaryUnit'
+  | 'auxiliaryUnit2'
+  | 'attributeGroup'
+  | 'materialGroup'
   | 'createBy'
   | 'createTime'
   | 'updateBy'

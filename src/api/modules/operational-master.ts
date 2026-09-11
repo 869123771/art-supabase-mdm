@@ -26,13 +26,23 @@ const resources: Record<OperationalMasterKind, ResourceDefinition> = {
     table: 'mdm_customer',
     codeColumn: 'customer_code',
     nameColumn: 'customer_name',
-    keywordColumns: ['customer_code', 'customer_name', 'contact_name', 'contact_phone']
+    keywordColumns: [
+      'customer_code',
+      'customer_name',
+      'contact_name',
+      'contact_phone',
+      'contact_department',
+      'contact_position',
+      'contact_email',
+      'contact_qq',
+      'invoice_title'
+    ]
   },
   project: {
     table: 'mdm_project',
     codeColumn: 'project_code',
     nameColumn: 'project_name',
-    keywordColumns: ['project_code', 'project_name', 'contact_name', 'region']
+    keywordColumns: ['project_code', 'project_name', 'contact_name', 'contact_phone', 'region']
   },
   'document-type': {
     table: 'mdm_document_type',

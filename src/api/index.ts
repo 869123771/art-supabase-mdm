@@ -17,8 +17,10 @@ export {
   type MdmDomainSummary
 } from './modules/catalog'
 export * from './modules/production'
+export * from './modules/shift-scheduling'
 export * from './modules/workspaces'
 export * from './modules/material'
+export * from './modules/inventory'
 export * from './modules/bom'
 export * from './modules/esop'
 export * from './modules/equipment'

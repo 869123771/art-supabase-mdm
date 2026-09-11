@@ -259,7 +259,7 @@
           label: '导出',
           permission: `${config.value.routeName}:Export`,
           exportColumns: config.value.fields
-            .filter((field) => field.table)
+            .filter((field) => field.table || field.exportable)
             .map((field) => ({ key: String(field.key), title: field.label }))
         }
       ]
@@ -269,7 +269,13 @@
           label: '导入',
           permission: `${config.value.routeName}:Import`,
           importColumns: config.value.fields
-            .filter((field) => field.key !== 'groupId' && !field.reference && field.type !== 'slot')
+            .filter(
+              (field) =>
+                field.key !== 'groupId' &&
+                !field.reference &&
+                field.type !== 'slot' &&
+                !field.systemGenerated
+            )
             .map((field) => ({
               key: String(field.key),
               title: field.label,

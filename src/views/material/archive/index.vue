@@ -1,11 +1,11 @@
 <template>
-  <ArtPermissionGuard permission="MdmMaterialArchive:View" resource-name="物料档案">
+  <ArtPermissionGuard permission="MdmMaterialArchive:View" resource-name="物料编码">
     <div class="material-archive-page business-workspace-page art-full-height">
       <BusinessWorkspaceHeader
-        eyebrow="MATERIAL RECORD"
-        title="物料档案"
-        description="以唯一物料编码为核心，集中管理基础身份与采购、销售、库存、生产、财务业务视图。"
-        icon="ri:archive-drawer-line"
+        eyebrow="MATERIAL CODING"
+        title="物料编码"
+        description="按物料分类统一维护编码、描述、属性与采购、销售、库存、生产业务视图。"
+        icon="ri:barcode-box-line"
         :tags="[
           { label: '统一物料身份', type: 'primary' },
           { label: '多业务视图', type: 'success' },
@@ -15,27 +15,40 @@
       >
         <template #actions><BusinessTableWorkspaceActions :table="tableRef" /></template>
       </BusinessWorkspaceHeader>
-      <ArtTableQuery
-        ref="tableRef"
-        v-model="search"
-        :api-fn="fetchData"
-        :search-items="searchItems"
-        :columns-factory="columnsFactory"
-        :header-actions="headerActions"
-        header-actions-placement="workspace"
-        :search-bar-props="{ span: 5, labelWidth: 82, showExpand: false, isExpand: true }"
-        :table-props="{
-          rowKey: 'id',
-          tableLayout: 'fixed',
-          emptyText: '暂无物料档案',
-          emptyDescription: '点击新增物料，建立第一条受治理的物料身份。'
-        }"
-        focusable
-      />
+      <div class="material-archive-page__workspace">
+        <CategoryTreePanel
+          :categories="categories"
+          :selected-id="selectedCategoryId"
+          :loading="optionsLoading"
+          :error="optionsError"
+          navigation-only
+          @select="selectCategory"
+          @refresh="loadOptions"
+        />
+        <div class="material-archive-page__table">
+          <ArtTableQuery
+            ref="tableRef"
+            v-model="search"
+            :api-fn="fetchData"
+            :search-items="searchItems"
+            :columns-factory="columnsFactory"
+            :header-actions="headerActions"
+            header-actions-placement="workspace"
+            :search-bar-props="{ span: 6, labelWidth: 82, showExpand: false, isExpand: true }"
+            :table-props="{
+              rowKey: 'id',
+              tableLayout: 'fixed',
+              emptyText: '暂无物料编码',
+              emptyDescription: '点击新增物料，建立第一条受治理的物料编码。'
+            }"
+            focusable
+          />
+        </div>
+      </div>
       <ArchiveDialog ref="dialogRef" @success="refresh" />
       <ArtDrawer
         ref="detailDrawerRef"
-        title="物料档案"
+        title="物料编码"
         subtitle="统一身份、业务视图与计量换算"
         size="lg"
         :show-footer="false"
@@ -102,7 +115,7 @@
                     },
                     {
                       key: 'description',
-                      label: '说明',
+                      label: '物料描述',
                       field: 'description',
                       span: 2
                     }
@@ -218,7 +231,7 @@
 
 <script setup lang="tsx">
   import dayjs from 'dayjs'
-  import { ElTag } from 'element-plus'
+  import { ElImage, ElTag } from 'element-plus'
   import { useArtFeedback } from '@/hooks/core/useArtFeedback'
   import { useUserStore } from '@/store/modules/user'
   import { useTenantScopeStore } from '@/store/modules/tenantScope'
@@ -245,8 +258,13 @@
     deleteMaterialArchives,
     fetchMaterialArchives,
     fetchMaterialCategories,
+    fetchMaterialGroupOptions,
+    fetchMaterialOutboundRuleOptions,
     fetchMaterialReferenceOptions,
+    fetchMaterialSupplierOptions,
+    fetchMaterialSupplyRuleOptions,
     fetchMaterialStorageOptions,
+    fetchMaterialWarehouseOptions,
     setMaterialArchivesEnabled,
     type MaterialArchive,
     type MaterialArchiveQuery,
@@ -258,6 +276,7 @@
     type UnitOfMeasure
   } from '@mdm/api'
   import ArchiveDialog, { type ArchiveDialogOpenData } from './modules/archive-dialog.vue'
+  import CategoryTreePanel from '../category/modules/category-tree-panel.vue'
 
   defineOptions({ name: 'MdmMaterialArchive' })
   interface DialogExpose {
@@ -280,10 +299,17 @@
   const attributeGroups = ref<MaterialAttributeGroup[]>([])
   const codeRules = ref<MaterialCodeRule[]>([])
   const storageOptions = ref<MaterialContextOption[]>([])
+  const materialGroupOptions = ref<MaterialContextOption[]>([])
+  const supplierOptions = ref<MaterialContextOption[]>([])
+  const warehouseOptions = ref<MaterialContextOption[]>([])
+  const outboundRuleOptions = ref<MaterialContextOption[]>([])
+  const supplyRuleOptions = ref<MaterialContextOption[]>([])
+  const selectedCategoryId = ref('')
+  const optionsLoading = ref(false)
+  const optionsError = ref('')
   const overview = reactive({ total: 0, enabled: 0, purchase: 0 })
   const search = reactive({
     keyword: '',
-    categoryId: undefined as string | undefined,
     materialTypeId: undefined as string | undefined,
     status: undefined as 'enabled' | 'disabled' | undefined
   })
@@ -315,17 +341,7 @@
       label: '关键字',
       key: 'keyword',
       type: 'input',
-      props: { clearable: true, placeholder: '编码、名称、规格或说明' }
-    },
-    {
-      label: '物料分类',
-      key: 'categoryId',
-      type: 'select',
-      props: {
-        clearable: true,
-        filterable: true,
-        options: categories.value.map((item) => ({ label: item.categoryName, value: item.id }))
-      }
+      props: { clearable: true, placeholder: '编码、名称、规格或物料描述' }
     },
     {
       label: '物料类型',
@@ -361,10 +377,24 @@
     units: units.value,
     attributeGroups: attributeGroups.value,
     codeRules: codeRules.value,
-    storageOptions: storageOptions.value
+    storageOptions: storageOptions.value,
+    materialGroupOptions: materialGroupOptions.value,
+    supplierOptions: supplierOptions.value,
+    warehouseOptions: warehouseOptions.value,
+    outboundRuleOptions: outboundRuleOptions.value,
+    supplyRuleOptions: supplyRuleOptions.value
   })
   const openDialog = (row?: MaterialArchive, copy = false): void =>
     void dialogRef.value?.handleOpen(dialogData(row, copy))
+  const isMaterialArchiveRecord = (
+    value: Record<string, unknown> | undefined
+  ): value is Record<string, unknown> & MaterialArchive =>
+    Boolean(
+      value &&
+      typeof value.id === 'string' &&
+      typeof value.materialCode === 'string' &&
+      typeof value.materialName === 'string'
+    )
   const headerActions: ArtTableQueryHeaderAction[] = [
     {
       permission: 'MdmMaterialArchive:Add',
@@ -379,8 +409,10 @@
       icon: 'ri:file-copy-line',
       selectionRequired: true,
       disabled: ({ selectedCount }: ArtTableQueryHeaderActionContext) => selectedCount !== 1,
-      onClick: ({ selectedRows }: ArtTableQueryHeaderActionContext) =>
-        openDialog(selectedRows[0] as unknown as MaterialArchive, true)
+      onClick: ({ selectedRows }: ArtTableQueryHeaderActionContext) => {
+        const selectedRecord = selectedRows[0]
+        if (isMaterialArchiveRecord(selectedRecord)) openDialog(selectedRecord, true)
+      }
     },
     {
       permission: 'MdmMaterialArchive:Enable',
@@ -554,6 +586,27 @@
       </span>
     </div>
   )
+  const attributeSummary = (row: MaterialArchive) => {
+    const definitions =
+      attributeGroups.value.find((item) => item.id === row.attributeGroupId)?.attributes ?? []
+    const labels = new Map(definitions.map((item) => [item.key, item.name]))
+    const entries = Object.entries(row.attributeValues ?? {}).filter(([, value]) => Boolean(value))
+    if (!entries.length) return <span class="material-archive-page__empty-cell">—</span>
+    return (
+      <div
+        class="material-archive-page__attributes"
+        title={entries.map(([key, value]) => `${labels.get(key) || key}: ${value}`).join('；')}
+      >
+        {entries.slice(0, 4).map(([key, value]) => (
+          <span key={key}>
+            <b>{labels.get(key) || key}</b>
+            <em>{value}</em>
+          </span>
+        ))}
+        {entries.length > 4 ? <small>+{entries.length - 4}</small> : null}
+      </div>
+    )
+  }
   const showDetail = async (row: MaterialArchive): Promise<void> => {
     detailRow.value = row
     detailTab.value = 'base'
@@ -566,6 +619,26 @@
   const columnsFactory = (): ColumnOption<MaterialArchive>[] => [
     { type: 'selection', width: 48 },
     { type: 'globalIndex', label: '序号', width: 72, fixed: 'left' },
+    {
+      prop: 'imageUrls',
+      label: '图片',
+      width: 76,
+      formatter: (row) =>
+        row.imageUrls?.[0] ? (
+          <ElImage
+            class="material-archive-page__image"
+            src={row.imageUrls[0]}
+            previewSrcList={row.imageUrls}
+            previewTeleported
+            fit="cover"
+            alt={`${row.materialName}图片`}
+          />
+        ) : (
+          <span class="material-archive-page__image material-archive-page__image--empty">
+            <ArtSvgIcon icon="ri:image-line" />
+          </span>
+        )
+    },
     {
       prop: 'materialName',
       label: '物料主身份',
@@ -584,6 +657,12 @@
         </div>
       )
     },
+    { prop: 'description', label: '物料描述', minWidth: 240, showOverflowTooltip: true },
+    { prop: 'materialTypeId', label: '物料类型', minWidth: 130, formatter: materialTypeLabel },
+    { prop: 'drawingNo', label: '图号', minWidth: 130, showOverflowTooltip: true },
+    { prop: 'materialComposition', label: '材质', minWidth: 120, showOverflowTooltip: true },
+    { prop: 'brand', label: '品牌', minWidth: 110, showOverflowTooltip: true },
+    { prop: 'color', label: '颜色', minWidth: 100, showOverflowTooltip: true },
     {
       prop: 'basicUnit',
       label: '基本单位',
@@ -592,7 +671,7 @@
     },
     {
       prop: 'materialSource',
-      label: '业务来源',
+      label: '物料来源',
       width: 108,
       formatter: (row) => (
         <ElTag
@@ -609,6 +688,25 @@
         </ElTag>
       )
     },
+    {
+      prop: 'auxiliaryUnitId',
+      label: '辅助单位',
+      minWidth: 112,
+      formatter: (row) => row.auxiliaryUnit?.unitName || unitLabel(row.auxiliaryUnitId)
+    },
+    {
+      prop: 'auxiliaryUnit2Id',
+      label: '辅助单位(2)',
+      minWidth: 124,
+      formatter: (row) => row.auxiliaryUnit2?.unitName || unitLabel(row.auxiliaryUnit2Id)
+    },
+    {
+      prop: 'attributeGroupId',
+      label: '属性组',
+      minWidth: 120,
+      formatter: (row) => row.attributeGroup?.groupName || '—'
+    },
+    { prop: 'attributeValues', label: '属性', minWidth: 360, formatter: attributeSummary },
     {
       prop: 'status',
       label: '状态',
@@ -672,27 +770,79 @@
     await deleteMaterialArchives([row.id])
     await tableRef.value?.getData()
   }
+  const descendantCategoryIds = (id: string): string[] => {
+    const ids = new Set<string>([id])
+    let changed = true
+    while (changed) {
+      changed = false
+      categories.value.forEach((item) => {
+        if (item.parentId && ids.has(item.parentId) && !ids.has(item.id)) {
+          ids.add(item.id)
+          changed = true
+        }
+      })
+    }
+    return [...ids]
+  }
+  const selectCategory = async (id: string): Promise<void> => {
+    selectedCategoryId.value = id
+    await tableRef.value?.getData()
+  }
   const loadOptions = async (): Promise<void> => {
-    const [categoryRows, typeRows, unitRows, groupRows, ruleRows, locationRows] = await Promise.all(
-      [
+    optionsLoading.value = true
+    optionsError.value = ''
+    try {
+      const [
+        categoryRows,
+        typeRows,
+        unitRows,
+        groupRows,
+        ruleRows,
+        locationRows,
+        masterGroupRows,
+        supplierRows,
+        warehouseRows,
+        outboundRows,
+        supplyRows
+      ] = await Promise.all([
         fetchMaterialCategories(tenantId.value),
         fetchMaterialReferenceOptions<MaterialType>('material-type', tenantId.value),
         fetchMaterialReferenceOptions<UnitOfMeasure>('unit-of-measure', tenantId.value),
         fetchMaterialReferenceOptions<MaterialAttributeGroup>('attribute-group', tenantId.value),
         fetchMaterialReferenceOptions<MaterialCodeRule>('code-rule', tenantId.value),
-        fetchMaterialStorageOptions(tenantId.value)
-      ]
-    )
-    categories.value = categoryRows
-    materialTypes.value = typeRows
-    units.value = unitRows
-    attributeGroups.value = groupRows
-    codeRules.value = ruleRows
-    storageOptions.value = locationRows
+        fetchMaterialStorageOptions(tenantId.value),
+        fetchMaterialGroupOptions(tenantId.value),
+        fetchMaterialSupplierOptions(tenantId.value),
+        fetchMaterialWarehouseOptions(tenantId.value),
+        fetchMaterialOutboundRuleOptions(tenantId.value),
+        fetchMaterialSupplyRuleOptions(tenantId.value)
+      ])
+      categories.value = categoryRows
+      materialTypes.value = typeRows
+      units.value = unitRows
+      attributeGroups.value = groupRows
+      codeRules.value = ruleRows
+      storageOptions.value = locationRows
+      materialGroupOptions.value = masterGroupRows
+      supplierOptions.value = supplierRows
+      warehouseOptions.value = warehouseRows
+      outboundRuleOptions.value = outboundRows
+      supplyRuleOptions.value = supplyRows
+    } catch (error) {
+      optionsError.value = error instanceof Error ? error.message : '物料选项加载失败'
+    } finally {
+      optionsLoading.value = false
+    }
   }
   const fetchData = async (params: QueryParams) => {
     if (!categories.value.length && tenantId.value) await loadOptions()
-    const result = await fetchMaterialArchives({ ...params, tenantId: tenantId.value })
+    const result = await fetchMaterialArchives({
+      ...params,
+      tenantId: tenantId.value,
+      categoryIds: selectedCategoryId.value
+        ? descendantCategoryIds(selectedCategoryId.value)
+        : undefined
+    })
     overview.total = result.total
     overview.enabled = result.data.filter((item) => item.status === 'enabled').length
     overview.purchase = result.data.filter((item) => item.materialSource === 'purchase').length
@@ -709,6 +859,79 @@
     flex-direction: column;
     gap: 14px;
     min-height: 0;
+  }
+
+  .material-archive-page__workspace {
+    display: grid;
+    flex: 1;
+    grid-template-columns: minmax(260px, 300px) minmax(0, 1fr);
+    gap: 14px;
+    min-height: 0;
+  }
+
+  .material-archive-page__table {
+    min-width: 0;
+    min-height: 0;
+  }
+
+  .material-archive-page__table > :deep(*) {
+    min-height: 0;
+  }
+
+  :deep(.material-archive-page__image) {
+    display: grid;
+    place-items: center;
+    width: 42px;
+    height: 42px;
+    overflow: hidden;
+    color: var(--el-text-color-placeholder);
+    background: var(--el-fill-color-lighter);
+    border: 1px solid var(--el-border-color-lighter);
+    border-radius: var(--el-border-radius-base);
+  }
+
+  :deep(.material-archive-page__attributes) {
+    display: flex;
+    gap: 5px;
+    align-items: center;
+    overflow: hidden;
+    white-space: nowrap;
+  }
+
+  :deep(.material-archive-page__attributes > span) {
+    display: inline-flex;
+    overflow: hidden;
+    border: 1px solid var(--el-border-color);
+    border-radius: var(--el-border-radius-small);
+  }
+
+  :deep(.material-archive-page__attributes b),
+  :deep(.material-archive-page__attributes em) {
+    padding: 2px 6px;
+    overflow: hidden;
+    font-size: 11px;
+    font-style: normal;
+    font-weight: 500;
+    text-overflow: ellipsis;
+  }
+
+  :deep(.material-archive-page__attributes b) {
+    color: var(--el-text-color-secondary);
+    background: var(--el-fill-color);
+  }
+
+  :deep(.material-archive-page__attributes em) {
+    max-width: 92px;
+    color: var(--el-text-color-primary);
+    background: var(--el-bg-color);
+  }
+
+  :deep(.material-archive-page__attributes small) {
+    color: var(--theme-color);
+  }
+
+  :deep(.material-archive-page__empty-cell) {
+    color: var(--el-text-color-placeholder);
   }
 
   :deep(.material-archive-page__identity) {
@@ -975,6 +1198,13 @@
   }
 
   @media (width <= 620px) {
+    .material-archive-page__workspace {
+      grid-template-columns: 1fr;
+    }
+
+    .material-archive-page__workspace > :first-child {
+      max-height: 300px;
+    }
     .material-detail__hero {
       grid-template-columns: auto minmax(0, 1fr);
     }

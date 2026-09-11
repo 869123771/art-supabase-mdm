@@ -41,6 +41,10 @@ export function buildOperationalMasterWriteInput(
     payload.region = context.regionPath.filter(Boolean).join('/') || null
   }
 
+  if (context.kind === 'project' && !model.id) {
+    delete payload.projectCode
+  }
+
   const payloadRecord = payload as Record<string, unknown>
   for (const fieldKey of context.fieldKeys) {
     const key = String(fieldKey)

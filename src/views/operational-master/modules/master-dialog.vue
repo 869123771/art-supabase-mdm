@@ -32,7 +32,7 @@
           v-model="form.model"
           :items="formItems"
           :rules="formRules"
-          :span="12"
+          :span="config.formSpan ?? 12"
           :gutter="24"
           label-position="top"
           :show-reset="false"
@@ -113,6 +113,7 @@
   import ArtEntitySummary from '@/components/core/surfaces/art-entity-summary/index.vue'
   import { useTenantScopeFormPolicy } from '@/hooks/core/useTenantScopeFormPolicy'
   import { useUserStore } from '@/store/modules/user'
+  import { validateEmail, validatePhone, validateTelPhone } from '@/utils/form/validator'
   import type {
     MasterGroup,
     OperationalMasterInput,
@@ -267,22 +268,24 @@
         key: String(field.key),
         label: field.label,
         type: field.type ?? 'input',
-        span: field.span ?? 12,
+        span: field.span ?? config.value.formSpan ?? 12,
         options,
         props: {
           clearable: isSelectable && !field.required,
           filterable: isSelectable,
           multiple: field.multiple,
-          maxlength: field.type === 'textarea' ? 1000 : 160,
+          maxlength: field.maxlength ?? (field.type === 'textarea' ? 1000 : 160),
           rows: field.type === 'textarea' ? 3 : undefined,
           resize: field.type === 'textarea' ? 'none' : undefined,
           showWordLimit: field.type === 'textarea',
           controlsPosition: field.type === 'number' ? 'right' : undefined,
           placeholder: field.placeholder || `${isSelectable ? '请选择' : '请输入'}${field.label}`,
+          readonly: field.systemGenerated,
           class: field.type === 'number' ? '!w-full' : undefined
         },
-        help:
-          isGroup && !groupOptions.value.length
+        help: field.systemGenerated
+          ? '由系统按 PJ + 年月 + 3 位流水号生成，每月从 001 重新开始。'
+          : isGroup && !groupOptions.value.length
             ? `暂无${config.value.groupTitle || '业务分组'}，可先在左侧分组区新增。`
             : undefined
       }
@@ -343,6 +346,23 @@
         }
       ]
     }
+    for (const field of config.value.fields.filter((item) => item.validation)) {
+      const validator = (_rule: unknown, value: unknown, callback: (error?: Error) => void) => {
+        const text = String(value ?? '').trim()
+        if (!text) return callback()
+        if (field.validation === 'email' && !validateEmail(text)) {
+          return callback(new Error('请输入正确的邮箱地址'))
+        }
+        if (field.validation === 'phone' && !validatePhone(text) && !validateTelPhone(text)) {
+          return callback(new Error('请输入正确的手机号或座机号'))
+        }
+        return callback()
+      }
+      rules[String(field.key)] = [
+        ...(rules[String(field.key)] ?? []),
+        { validator, trigger: 'blur' }
+      ]
+    }
     return rules
   })
 
@@ -361,7 +381,12 @@
       else if (!(field.key in model)) model[field.key] = null as never
     }
     if (data.row) Object.assign(model, cloneDeep(data.row))
-    if (data.copy) model.id = ''
+    if (data.copy) {
+      model.id = ''
+      for (const field of data.config.fields.filter((item) => item.systemGenerated)) {
+        model[field.key] = null as never
+      }
+    }
     return model
   }
 

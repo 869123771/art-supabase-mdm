@@ -1,0 +1,233 @@
+<template>
+  <ArtDialog ref="dialogRef" size="lg">
+    <div class="warehouse-dialog">
+      <ArtEntitySummary
+        icon="ri:store-2-line"
+        eyebrow="WAREHOUSE MASTER"
+        :title="form.model.warehouseName || '新仓库'"
+        :description="warehouseDescription"
+      >
+        <template #aside>
+          <ElTag :type="form.model.status === 'enabled' ? 'success' : 'info'" effect="light">
+            {{ form.model.status === 'enabled' ? '启用' : '停用' }}
+          </ElTag>
+        </template>
+      </ArtEntitySummary>
+
+      <ArtForm
+        ref="formRef"
+        v-model="form.model"
+        :items="formItems"
+        :rules="formRules"
+        :span="12"
+        :gutter="24"
+        label-position="top"
+        :show-reset="false"
+        :show-submit="false"
+      >
+        <template #responsibleEmployeeId>
+          <ArtEmployeeSelect
+            :model-value="form.model.responsibleEmployeeId || undefined"
+            :selected-data="form.selectedEmployee"
+            :tenant-id="form.tenantId"
+            title="选择仓库负责人"
+            subtitle="人员来源于当前租户的员工花名册"
+            placeholder="从员工花名册选择负责人"
+            :display-fields="['organization', 'jobTitle', 'employmentStatus']"
+            @update:model-value="form.model.responsibleEmployeeId = $event || null"
+            @update:selected-data="form.selectedEmployee = $event"
+          />
+        </template>
+      </ArtForm>
+    </div>
+  </ArtDialog>
+</template>
+
+<script setup lang="ts">
+  import { cloneDeep } from 'lodash-es'
+  import type { EmployeeIntegrationItem } from '@/api/integration/employees'
+  import ArtEmployeeSelect from '@/components/business/art-employee-select/index.vue'
+  import ArtDialog from '@/components/core/dialogs/art-dialog/index.vue'
+  import type { ArtDialogExpose } from '@/components/core/dialogs/art-dialog/types'
+  import ArtForm, { type FormItem } from '@/components/core/forms/art-form/index.vue'
+  import ArtEntitySummary from '@/components/core/surfaces/art-entity-summary/index.vue'
+  import {
+    saveWarehouse,
+    type WarehouseGroup,
+    type WarehouseInput,
+    type WarehouseRecord
+  } from '@mdm/api'
+
+  export interface WarehouseDialogOpenData {
+    row?: WarehouseRecord
+    copy?: boolean
+    tenantId: string
+    groups: WarehouseGroup[]
+    selectedGroupId?: string
+  }
+
+  const emit = defineEmits<{ success: [mode: 'add' | 'edit'] }>()
+  const dialogRef = ref<ArtDialogExpose<WarehouseDialogOpenData>>()
+  const formRef = ref<InstanceType<typeof ArtForm>>()
+  const initialForm = (): WarehouseInput & { id?: string } => ({
+    id: undefined,
+    groupId: null,
+    warehouseCode: '',
+    warehouseName: '',
+    responsibleEmployeeId: null,
+    enableLocations: false,
+    remark: '',
+    status: 'enabled'
+  })
+  const form = reactive({
+    model: initialForm(),
+    tenantId: '',
+    groups: [] as WarehouseGroup[],
+    selectedEmployee: [] as EmployeeIntegrationItem[]
+  })
+  const warehouseDescription = computed(() =>
+    form.model.warehouseCode
+      ? `仓库编码：${form.model.warehouseCode}`
+      : '建立可被采购、库存和出库业务稳定引用的仓库身份。'
+  )
+  const formItems = computed<FormItem[]>(() => [
+    {
+      key: 'identity',
+      label: '仓库身份',
+      type: 'divider',
+      span: 24
+    },
+    {
+      label: '仓库编码',
+      key: 'warehouseCode',
+      type: 'input',
+      props: { maxlength: 40, placeholder: '如 WH_FINISHED_01' },
+      help: '以字母开头，仅支持字母、数字、下划线和短横线。'
+    },
+    {
+      label: '仓库名称',
+      key: 'warehouseName',
+      type: 'input',
+      props: { maxlength: 100, placeholder: '如 一号成品仓' }
+    },
+    {
+      label: '仓库分组',
+      key: 'groupId',
+      type: 'select',
+      options: form.groups
+        .filter((item) => item.enabled)
+        .map((item) => ({ label: `${item.name} · ${item.code}`, value: item.id })),
+      props: { clearable: true, filterable: true, placeholder: '选择仓库分组' }
+    },
+    {
+      label: '仓库负责人',
+      key: 'responsibleEmployeeId',
+      type: 'slot'
+    },
+    {
+      key: 'operation',
+      label: '业务控制',
+      type: 'divider',
+      span: 24
+    },
+    {
+      label: '启用仓位',
+      key: 'enableLocations',
+      type: 'switch',
+      props: { activeText: '启用', inactiveText: '关闭' },
+      help: '开启后，该仓库可继续维护库区与仓位层级。'
+    },
+    {
+      label: '启用状态',
+      key: 'status',
+      type: 'segment',
+      options: [
+        { label: '启用', value: 'enabled' },
+        { label: '禁用', value: 'disabled' }
+      ]
+    },
+    {
+      label: '备注',
+      key: 'remark',
+      type: 'input',
+      span: 24,
+      props: { type: 'textarea', rows: 3, maxlength: 500, showWordLimit: true, resize: 'none' }
+    }
+  ])
+  const formRules = {
+    warehouseCode: [
+      { required: true, message: '请输入仓库编码', trigger: 'blur' },
+      { pattern: /^[A-Za-z][A-Za-z0-9_-]*$/, message: '编码格式不正确', trigger: 'blur' }
+    ],
+    warehouseName: [{ required: true, message: '请输入仓库名称', trigger: 'blur' }]
+  }
+
+  const submit = async (): Promise<boolean> => {
+    try {
+      await formRef.value?.validate()
+      await saveWarehouse(
+        {
+          groupId: form.model.groupId || null,
+          warehouseCode: form.model.warehouseCode.trim().toUpperCase(),
+          warehouseName: form.model.warehouseName.trim(),
+          responsibleEmployeeId: form.model.responsibleEmployeeId || null,
+          enableLocations: form.model.enableLocations,
+          remark: form.model.remark.trim(),
+          status: form.model.status
+        },
+        form.model.id
+      )
+      emit('success', form.model.id ? 'edit' : 'add')
+      return true
+    } catch {
+      return false
+    }
+  }
+
+  async function handleOpen(data: WarehouseDialogOpenData): Promise<void> {
+    Object.assign(form.model, initialForm())
+    Object.assign(form, {
+      tenantId: data.row?.tenantId || data.tenantId,
+      groups: cloneDeep(data.groups)
+    })
+    form.selectedEmployee = []
+    if (data.row) {
+      Object.assign(form.model, cloneDeep(data.row))
+      if (data.row.responsible) {
+        form.selectedEmployee = [
+          {
+            id: data.row.responsible.id,
+            tenantId: data.row.responsible.tenantId,
+            employeeNo: data.row.responsible.employeeNo,
+            employeeName: data.row.responsible.employeeName,
+            jobTitle: data.row.responsible.jobTitle,
+            employmentStatus: data.row.responsible.employmentStatus || 'active',
+            organization: data.row.responsible.organization || undefined
+          }
+        ]
+      }
+    } else form.model.groupId = data.selectedGroupId || null
+    if (data.copy) {
+      form.model.id = undefined
+      form.model.warehouseCode = ''
+      form.model.warehouseName = `${form.model.warehouseName}（副本）`
+    }
+    await dialogRef.value?.handleOpen(data, {
+      title: data.copy ? '复制仓库' : form.model.id ? '编辑仓库' : '新增仓库',
+      subtitle: '维护仓库身份、负责人和仓位启用策略',
+      confirmText: form.model.id ? '保存更改' : '创建仓库',
+      contentMaxHeight: 'min(70vh, calc(100vh - 200px))',
+      onConfirm: submit,
+      onOpen: () => formRef.value?.clearValidate()
+    })
+  }
+
+  defineExpose({ handleOpen })
+</script>
+
+<style scoped lang="scss">
+  .warehouse-dialog {
+    display: grid;
+    gap: 18px;
+  }
+</style>

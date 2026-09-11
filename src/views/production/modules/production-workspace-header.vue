@@ -17,6 +17,8 @@
 </template>
 
 <script setup lang="ts">
+  import './production-workspace.scss'
+
   import BusinessWorkspaceHeader, {
     type BusinessWorkspaceMetric
   } from '@/components/business/business-workspace-header/index.vue'

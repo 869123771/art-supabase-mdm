@@ -62,7 +62,8 @@
 
 <script setup lang="tsx">
   import { computed, reactive, ref, watch } from 'vue'
-  import { ElAvatar, ElButton, ElMessage, ElTag, ElTooltip } from 'element-plus'
+  import { ElAvatar, ElButton, ElMessage, ElTag } from 'element-plus'
+  import ArtTooltip from '@/components/core/feedback/art-tooltip/index.vue'
   import type { ColumnOption } from '@/types'
   import type { SearchFormItem } from '@/components/core/forms/art-search-bar/index.vue'
   import type {
@@ -302,7 +303,7 @@
         <div class="personnel-work-center__centers">
           <div class="personnel-work-center__center-list">
             {visibleCenters(row).map((center) => (
-              <ElTooltip
+              <ArtTooltip
                 key={center.id}
                 content={`${center.code} · ${center.name} · ${center.departmentName}`}
                 placement="top"
@@ -317,7 +318,7 @@
                 >
                   {center.code} · {center.name}
                 </ElTag>
-              </ElTooltip>
+              </ArtTooltip>
             ))}
             {row.commonWorkCenters.length > 4 ? (
               <ElButton link type="primary" onClick={() => openConfiguration('edit', row)}>
@@ -449,8 +450,6 @@
 </script>
 
 <style scoped lang="scss">
-  @use '../modules/production-workspace';
-
   .personnel-work-center {
     :deep(.personnel-work-center__department),
     :deep(.personnel-work-center__employee) {

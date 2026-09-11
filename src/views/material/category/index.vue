@@ -14,23 +14,39 @@
       >
         <template #actions><BusinessTableWorkspaceActions :table="tableRef" /></template>
       </BusinessWorkspaceHeader>
-      <ArtTableQuery
-        ref="tableRef"
-        v-model="search"
-        :api-fn="fetchData"
-        :search-items="searchItems"
-        :columns-factory="columnsFactory"
-        :header-actions="headerActions"
-        header-actions-placement="workspace"
-        :search-bar-props="{ span: 8, labelWidth: 82, showExpand: false }"
-        :table-props="{
-          rowKey: 'id',
-          tableLayout: 'fixed',
-          emptyText: '暂无物料分类',
-          emptyDescription: '点击新增分类，建立企业物料分类体系。'
-        }"
-        focusable
-      />
+      <div class="material-category-page__workspace">
+        <CategoryTreePanel
+          :categories="records"
+          :selected-id="selectedCategoryId"
+          :loading="treeLoading"
+          :error="treeError"
+          @select="selectCategory"
+          @refresh="refresh"
+          @add="openChildDialog"
+          @edit="openDialog"
+        />
+        <div class="material-category-page__table-pane">
+          <ArtTableQuery
+            ref="tableRef"
+            v-model="search"
+            :api-fn="fetchData"
+            :search-items="searchItems"
+            :columns-factory="columnsFactory"
+            :header-actions="headerActions"
+            header-actions-placement="workspace"
+            :search-bar-props="{ span: 8, labelWidth: 82, showExpand: false }"
+            :table-props="{
+              rowKey: 'id',
+              tableLayout: 'fixed',
+              emptyText: selectedCategoryId ? '当前分类下暂无数据' : '暂无物料分类',
+              emptyDescription: selectedCategoryId
+                ? '可在左侧节点新增下级分类，或清除层级筛选。'
+                : '点击新增分类，建立企业物料分类体系。'
+            }"
+            focusable
+          />
+        </div>
+      </div>
       <CategoryDialog ref="dialogRef" @success="refresh" />
     </div>
   </ArtPermissionGuard>
@@ -48,6 +64,8 @@
     type BusinessWorkspaceMetric
   } from '@/components/business/business-workspace-header/index.vue'
   import BusinessTableWorkspaceActions from '@/components/business/business-table-workspace-actions/index.vue'
+  import BusinessTableRowActions from '@/components/business/business-table-row-actions/index.vue'
+  import TreeUtils from '@/utils/tree'
   import type { SearchFormItem } from '@/components/core/forms/art-search-bar/index.vue'
   import type {
     ArtTableQueryExpose,
@@ -66,6 +84,7 @@
     type MaterialContextOption
   } from '@mdm/api'
   import CategoryDialog, { type CategoryDialogOpenData } from './modules/category-dialog.vue'
+  import CategoryTreePanel from './modules/category-tree-panel.vue'
 
   defineOptions({ name: 'MdmMaterialCategory' })
   interface DialogExpose {
@@ -81,6 +100,10 @@
   const records = ref<MaterialCategory[]>([])
   const materialTypes = ref<MaterialType[]>([])
   const sites = ref<MaterialContextOption[]>([])
+  const selectedCategoryId = ref('')
+  const treeLoading = ref(false)
+  const treeError = ref('')
+  const treeUtils = new TreeUtils({ parentKey: 'parentId' })
   const search = reactive({ keyword: '', status: undefined as 'enabled' | 'disabled' | undefined })
   const metrics = computed<BusinessWorkspaceMetric[]>(() => [
     {
@@ -122,7 +145,7 @@
     }
   ])
   void userStore.ensureDictLoaded('commonEnabledStatus')
-  const openDialog = (row?: MaterialCategory, copy = false): void =>
+  const openDialog = (row?: MaterialCategory, copy = false, parentId?: string): void =>
     void dialogRef.value?.handleOpen({
       row,
       copy,
@@ -133,8 +156,14 @@
       tenantOptions: tenantOptions.value.map((tenant) => ({
         label: tenant.tenantName || tenant.tenantCode,
         value: tenant.id
-      }))
+      })),
+      parentId
     })
+  const openChildDialog = (parentId?: string): void => openDialog(undefined, false, parentId)
+  const selectCategory = async (id: string): Promise<void> => {
+    selectedCategoryId.value = id
+    await tableRef.value?.getData()
+  }
   const headerActions: ArtTableQueryHeaderAction[] = [
     {
       permission: 'MdmMaterialCategory:Add',
@@ -149,8 +178,11 @@
       icon: 'ri:file-copy-line',
       selectionRequired: true,
       disabled: ({ selectedCount }: ArtTableQueryHeaderActionContext) => selectedCount !== 1,
-      onClick: ({ selectedRows }: ArtTableQueryHeaderActionContext) =>
-        openDialog(selectedRows[0] as unknown as MaterialCategory, true)
+      onClick: ({ selectedRows }: ArtTableQueryHeaderActionContext) => {
+        const selectedId = selectedRows[0]?.id
+        const selectedRecord = records.value.find((item) => item.id === selectedId)
+        if (selectedRecord) openDialog(selectedRecord, true)
+      }
     },
     {
       permission: 'MdmMaterialCategory:Enable',
@@ -199,8 +231,9 @@
   )
   const columnsFactory = (): ColumnOption<MaterialCategory>[] => [
     { type: 'selection', width: 48 },
-    { prop: 'sort', label: '顺序', width: 76, align: 'center', sortable: true },
+    { prop: 'sort', label: '顺序', width: 86, align: 'center', sortable: true },
     { prop: 'categoryName', label: '分类', minWidth: 210, fixed: 'left', formatter: identity },
+    { prop: 'codePrefix', label: '编码前缀', minWidth: 120 },
     { prop: 'parentId', label: '上级分类', minWidth: 150, formatter: parentName },
     {
       prop: 'materialTypeId',
@@ -264,7 +297,7 @@
       width: 170,
       fixed: 'right',
       formatter: (row) => (
-        <div class="material-category-page__actions">
+        <BusinessTableRowActions>
           <ArtButtonTable
             permission="MdmMaterialCategory:Edit"
             type="edit"
@@ -279,28 +312,53 @@
               await tableRef.value?.getData()
             }}
           />
-        </div>
+        </BusinessTableRowActions>
       )
     }
   ]
   const fetchData = async (params: Api.Common.PaginationParams & typeof search) => {
-    records.value = await fetchMaterialCategories(tenantId.value)
-    materialTypes.value = await fetchMaterialReferenceOptions<MaterialType>(
-      'material-type',
-      tenantId.value
-    )
-    sites.value = await fetchMaterialSiteOptions(tenantId.value)
-    const keyword = params.keyword?.trim().toLowerCase()
-    const filtered = records.value.filter(
-      (item) =>
-        (!params.status || item.status === params.status) &&
-        (!keyword ||
-          [item.categoryCode, item.categoryName, item.description].some((value) =>
-            value?.toLowerCase().includes(keyword)
-          ))
-    )
-    const start = (params.current - 1) * params.size
-    return { records: filtered.slice(start, start + params.size), total: filtered.length }
+    treeLoading.value = true
+    treeError.value = ''
+    try {
+      const [categoryRecords, typeRecords, siteRecords] = await Promise.all([
+        fetchMaterialCategories(tenantId.value),
+        fetchMaterialReferenceOptions<MaterialType>('material-type', tenantId.value),
+        fetchMaterialSiteOptions(tenantId.value)
+      ])
+      records.value = categoryRecords
+      materialTypes.value = typeRecords
+      sites.value = siteRecords
+      if (
+        selectedCategoryId.value &&
+        !records.value.some((item) => item.id === selectedCategoryId.value)
+      ) {
+        selectedCategoryId.value = ''
+      }
+      const scopedIds = selectedCategoryId.value
+        ? new Set(
+            treeUtils
+              .getDescendants(treeUtils.listToTree(records.value), selectedCategoryId.value, true)
+              .map((item) => item.id)
+          )
+        : null
+      const keyword = params.keyword?.trim().toLowerCase()
+      const filtered = records.value.filter(
+        (item) =>
+          (!scopedIds || scopedIds.has(item.id)) &&
+          (!params.status || item.status === params.status) &&
+          (!keyword ||
+            [item.categoryCode, item.codePrefix, item.categoryName, item.description].some(
+              (value) => value?.toLowerCase().includes(keyword)
+            ))
+      )
+      const start = (params.current - 1) * params.size
+      return { records: filtered.slice(start, start + params.size), total: filtered.length }
+    } catch (error) {
+      treeError.value = error instanceof Error ? error.message : '分类层级加载失败，请重试'
+      throw error
+    } finally {
+      treeLoading.value = false
+    }
   }
   const refresh = async (): Promise<void> => {
     await tableRef.value?.getData()
@@ -312,6 +370,19 @@
     display: flex;
     flex-direction: column;
     gap: 14px;
+    min-height: 0;
+  }
+
+  .material-category-page__workspace {
+    display: grid;
+    flex: 1;
+    grid-template-columns: minmax(280px, 320px) minmax(0, 1fr);
+    gap: 14px;
+    min-height: 0;
+  }
+
+  .material-category-page__table-pane {
+    min-width: 0;
     min-height: 0;
   }
 
@@ -333,9 +404,16 @@
     color: var(--el-text-color-secondary);
   }
 
-  :deep(.material-category-page__actions) {
-    display: flex;
-    gap: 4px;
-    align-items: center;
+  @media (width <= 1080px) {
+    .material-category-page__workspace {
+      grid-template-columns: minmax(240px, 280px) minmax(0, 1fr);
+    }
+  }
+
+  @media (width <= 820px) {
+    .material-category-page__workspace {
+      grid-template-columns: 1fr;
+      grid-template-rows: minmax(260px, 38vh) minmax(520px, 1fr);
+    }
   }
 </style>

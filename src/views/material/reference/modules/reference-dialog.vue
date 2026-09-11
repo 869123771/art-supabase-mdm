@@ -1,7 +1,28 @@
 <template>
   <ArtDialog ref="dialogRef" size="xl">
     <div class="material-reference-dialog">
-      <div class="material-reference-dialog__context" role="note">
+      <ArtEntitySummary
+        v-if="currentKind === 'attribute-group'"
+        class="material-reference-dialog__identity"
+        icon="ri:list-settings-line"
+        eyebrow="ATTRIBUTE GROUP"
+        :title="formModel.groupName || '新属性组'"
+        :description="formModel.groupCode || '保存前请填写属性组编码与名称'"
+      >
+        <template #aside>
+          <div class="material-reference-dialog__attribute-metrics" aria-label="属性配置统计">
+            <span
+              ><strong>{{ formModel.attributes.length }}</strong
+              ><small>属性</small></span
+            >
+            <span
+              ><strong>{{ attributeValueCount }}</strong
+              ><small>候选值</small></span
+            >
+          </div>
+        </template>
+      </ArtEntitySummary>
+      <div v-else class="material-reference-dialog__context" role="note">
         <span aria-hidden="true"><ArtSvgIcon :icon="config.icon" /></span>
         <div>
           <strong>{{ config.dialogTitle }}</strong>
@@ -21,53 +42,140 @@
         :show-submit="false"
       >
         <template #attributes>
-          <div class="material-reference-dialog__builder">
-            <div
-              v-for="(attribute, index) in formModel.attributes"
-              :key="attribute.key"
-              class="material-reference-dialog__builder-row"
-            >
-              <ElInput v-model="attribute.name" maxlength="40" placeholder="属性名称，如颜色" />
-              <ElInput
-                :model-value="attribute.values.join('、')"
-                placeholder="候选值，以顿号分隔"
-                @update:model-value="
-                  attribute.values = String($event)
-                    .split(/[、,，]/)
-                    .map((item) => item.trim())
-                    .filter(Boolean)
-                "
-              />
-              <ElCheckbox v-model="attribute.required">必填</ElCheckbox>
-              <ElSwitch
-                v-model="attribute.enabled"
-                inline-prompt
-                active-text="启"
-                inactive-text="停"
-              />
-              <div class="material-reference-dialog__row-actions">
-                <ArtIconButton
-                  icon="ri:arrow-up-line"
-                  label="上移属性"
-                  :disabled="index === 0"
-                  @click="moveItem(formModel.attributes, Number(index), -1)"
-                />
-                <ArtIconButton
-                  icon="ri:arrow-down-line"
-                  label="下移属性"
-                  :disabled="index === formModel.attributes.length - 1"
-                  @click="moveItem(formModel.attributes, Number(index), 1)"
-                />
-                <ArtIconButton
-                  icon="ri:delete-bin-line"
-                  label="删除属性"
-                  @click="formModel.attributes.splice(Number(index), 1)"
-                />
+          <div class="material-reference-dialog__attribute-detail">
+            <div class="material-reference-dialog__attribute-toolbar">
+              <div>
+                <span>{{ attributeSummary }}</span>
+                <small>候选值支持回车添加；属性与候选值均可用箭头调整描述顺序。</small>
               </div>
+              <ElButton
+                type="primary"
+                plain
+                :disabled="formModel.attributes.length >= 50"
+                @click="addAttribute"
+              >
+                <ArtSvgIcon icon="ri:add-line" />新增属性
+              </ElButton>
             </div>
-            <ElButton plain @click="addAttribute"
-              ><ArtSvgIcon icon="ri:add-line" />添加属性</ElButton
+            <div
+              v-if="formModel.attributes.length"
+              class="material-reference-dialog__attribute-table"
+              role="table"
+              aria-label="属性明细"
             >
+              <ElScrollbar max-height="min(46vh, 500px)" always>
+                <div class="material-reference-dialog__attribute-grid">
+                  <div class="material-reference-dialog__attribute-header" role="row">
+                    <span role="columnheader">顺序</span>
+                    <span role="columnheader">属性名</span>
+                    <span role="columnheader">候选值</span>
+                    <span role="columnheader">配置</span>
+                    <span role="columnheader">操作</span>
+                  </div>
+                  <div
+                    v-for="(attribute, index) in formModel.attributes"
+                    :key="attribute.key"
+                    class="material-reference-dialog__attribute-row"
+                    role="row"
+                  >
+                    <div class="material-reference-dialog__attribute-order" role="cell">
+                      <span>{{ Number(index) + 1 }}</span>
+                      <div class="material-reference-dialog__row-actions">
+                        <ArtIconButton
+                          icon="ri:arrow-up-line"
+                          label="上移属性"
+                          :disabled="index === 0"
+                          @click="moveItem(formModel.attributes, Number(index), -1)"
+                        />
+                        <ArtIconButton
+                          icon="ri:arrow-down-line"
+                          label="下移属性"
+                          :disabled="index === formModel.attributes.length - 1"
+                          @click="moveItem(formModel.attributes, Number(index), 1)"
+                        />
+                      </div>
+                    </div>
+                    <div role="cell">
+                      <ElInput
+                        v-model="attribute.name"
+                        maxlength="40"
+                        placeholder="如 颜色"
+                        :aria-label="`第 ${Number(index) + 1} 项属性名`"
+                      />
+                    </div>
+                    <div class="material-reference-dialog__value-cell" role="cell">
+                      <div
+                        v-if="attribute.values.length"
+                        class="material-reference-dialog__value-list"
+                      >
+                        <span
+                          v-for="(value, valueIndex) in attribute.values"
+                          :key="`${attribute.key}-${value}`"
+                          class="material-reference-dialog__value-chip"
+                        >
+                          <span :title="value">{{ value }}</span>
+                          <ArtIconButton
+                            icon="ri:arrow-left-s-line"
+                            :label="`前移属性值 ${value}`"
+                            :disabled="valueIndex === 0"
+                            @click="moveItem(attribute.values, Number(valueIndex), -1)"
+                          />
+                          <ArtIconButton
+                            icon="ri:arrow-right-s-line"
+                            :label="`后移属性值 ${value}`"
+                            :disabled="valueIndex === attribute.values.length - 1"
+                            @click="moveItem(attribute.values, Number(valueIndex), 1)"
+                          />
+                          <ArtIconButton
+                            icon="ri:close-line"
+                            :label="`删除属性值 ${value}`"
+                            @click="attribute.values.splice(Number(valueIndex), 1)"
+                          />
+                        </span>
+                      </div>
+                      <span v-else class="material-reference-dialog__value-empty">
+                        暂无候选值，可直接输入后回车
+                      </span>
+                      <div class="material-reference-dialog__value-add">
+                        <ElInput
+                          v-model="valueDrafts[attribute.key]"
+                          maxlength="120"
+                          clearable
+                          placeholder="输入候选值"
+                          :aria-label="`为${attribute.name || '当前属性'}添加候选值`"
+                          @keyup.enter="addAttributeValue(attribute)"
+                        />
+                        <ElButton plain @click="addAttributeValue(attribute)">
+                          <ArtSvgIcon icon="ri:add-line" />添加
+                        </ElButton>
+                      </div>
+                    </div>
+                    <div class="material-reference-dialog__attribute-flags" role="cell">
+                      <ElCheckbox v-model="attribute.required">必填</ElCheckbox>
+                      <ElSwitch
+                        v-model="attribute.enabled"
+                        inline-prompt
+                        active-text="启"
+                        inactive-text="停"
+                        :aria-label="`${attribute.name || '当前属性'}启用状态`"
+                      />
+                    </div>
+                    <div role="cell">
+                      <ArtIconButton
+                        icon="ri:delete-bin-line"
+                        label="删除属性"
+                        @click="removeAttribute(Number(index))"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </ElScrollbar>
+            </div>
+            <div v-else class="material-reference-dialog__attribute-empty">
+              <ArtSvgIcon icon="ri:list-check-3" />
+              <strong>尚未添加属性</strong>
+              <span>点击“新增属性”建立属性名，再逐项维护候选值。</span>
+            </div>
           </div>
         </template>
 
@@ -79,8 +187,8 @@
               class="material-reference-dialog__builder-row is-segment"
             >
               <ElSelect v-model="segment.source" aria-label="号段来源">
-                <ElOption label="物料类型" value="material_type" />
-                <ElOption label="物料分类" value="material_category" />
+                <ElOption label="物料类型前缀" value="material_type" />
+                <ElOption label="物料分类前缀" value="material_category" />
                 <ElOption label="固定字符" value="fixed" />
                 <ElOption label="日期" value="date" />
               </ElSelect>
@@ -99,7 +207,7 @@
                 <ElOption label="YYYYMM" value="YYYYMM" />
                 <ElOption label="YYYYMMDD" value="YYYYMMDD" />
               </ElSelect>
-              <span v-else class="material-reference-dialog__segment-note">保存时取业务编码</span>
+              <span v-else class="material-reference-dialog__segment-note">生成时取业务前缀</span>
               <div class="material-reference-dialog__row-actions">
                 <ArtIconButton
                   icon="ri:arrow-up-line"
@@ -124,7 +232,12 @@
               ><ArtSvgIcon icon="ri:add-line" />添加号段</ElButton
             >
             <div class="material-reference-dialog__preview">
-              <span>编码预览</span><strong translate="no">{{ rulePreview }}</strong>
+              <span>编码预览</span>
+              <strong translate="no" :class="{ 'is-overflow': rulePreview.overflow }">
+                {{ rulePreview.code }}
+              </strong>
+              <small v-if="rulePreview.overflow">超出 {{ rulePreview.overflow }} 位</small>
+              <small v-else>共 {{ rulePreview.code.length }} 位</small>
             </div>
           </div>
         </template>
@@ -134,13 +247,14 @@
 </template>
 
 <script setup lang="ts">
-  import type { FormRules } from 'element-plus'
+  import { ElMessage, type FormRules } from 'element-plus'
   import { cloneDeep } from 'lodash-es'
   import ArtDialog from '@/components/core/dialogs/art-dialog/index.vue'
   import type { ArtDialogExpose } from '@/components/core/dialogs/art-dialog/types'
   import ArtForm, { type FormItem } from '@/components/core/forms/art-form/index.vue'
   import ArtIconButton from '@/components/core/widget/art-icon-button/index.vue'
   import ArtSvgIcon from '@/components/core/base/art-svg-icon/index.vue'
+  import ArtEntitySummary from '@/components/core/surfaces/art-entity-summary/index.vue'
   import { useUserStore } from '@/store/modules/user'
   import {
     fetchMaterialReferenceOptions,
@@ -151,6 +265,7 @@
     type MaterialReferenceRecord,
     type UnitOfMeasure
   } from '@mdm/api'
+  import { buildMaterialCodePreview } from './material-code-preview'
 
   interface ReferenceFormModel {
     id?: string
@@ -170,7 +285,7 @@
     groupName: string
     attributes: MaterialAttributeDefinition[]
     textColor: string
-    tagType: string
+    tagType: Api.Common.TagType
     ruleCode: string
     ruleName: string
     strategy: 'material_type' | 'material_category'
@@ -205,6 +320,7 @@
   const currentKind = ref<MaterialReferenceKind>('unit-of-measure')
   const tenantOptions = ref<Array<{ label: string; value: string }>>([])
   const unitOptions = ref<UnitOfMeasure[]>([])
+  const valueDrafts = reactive<Record<string, string>>({})
   const initialForm = (): ReferenceFormModel => ({
     id: undefined,
     tenantId: '',
@@ -400,11 +516,7 @@
           {
             label: '标签样式',
             key: 'tagType',
-            type: 'select',
-            options: ['primary', 'success', 'warning', 'danger', 'info'].map((value) => ({
-              label: value,
-              value
-            }))
+            type: 'tagStyleSelect'
           },
           ...baseItems()
         ]
@@ -447,10 +559,11 @@
           options: getDictMap.value.mdmMaterialCodeStrategy ?? []
         },
         {
-          label: '固定前缀',
+          label: '固定字段',
           key: 'prefix',
           type: 'input',
-          props: { maxlength: 20, placeholder: '可选' }
+          props: { maxlength: 20, placeholder: '可选，将放在补零位之后' },
+          help: '编码不足总长度时，系统会在该固定字段前补 0。'
         },
         {
           label: '流水位数',
@@ -485,6 +598,24 @@
       typeName: [{ required: true, message: '请输入类型名称', trigger: 'blur' }],
       groupCode: [{ required: true, message: '请输入属性组编码', trigger: 'blur' }],
       groupName: [{ required: true, message: '请输入属性组名称', trigger: 'blur' }],
+      attributes: [
+        {
+          validator: (_rule, value, callback) => {
+            const attributes = value as MaterialAttributeDefinition[]
+            if (attributes.some((item) => !item.name.trim())) {
+              callback(new Error('请完善所有属性名'))
+              return
+            }
+            const normalizedNames = attributes.map((item) => item.name.trim().toLowerCase())
+            if (new Set(normalizedNames).size !== normalizedNames.length) {
+              callback(new Error('属性名不能重复'))
+              return
+            }
+            callback()
+          },
+          trigger: 'change'
+        }
+      ],
       ruleCode: [{ required: true, message: '请输入规则编码', trigger: 'blur' }],
       ruleName: [{ required: true, message: '请输入规则名称', trigger: 'blur' }]
     }
@@ -494,34 +625,56 @@
       userStore.ensureDictLoaded(code)
     )
   )
-  const rulePreview = computed(() => {
-    const values = form.model.segments.map((segment) =>
-      segment.source === 'fixed'
-        ? segment.value || 'FIX'
-        : segment.source === 'date'
-          ? segment.format || 'YYYYMMDD'
-          : segment.source === 'material_type'
-            ? 'TYPE'
-            : 'CATEGORY'
-    )
-    return `${form.model.prefix}${values.join('')}${'0'.repeat(Math.max(2, form.model.sequenceDigits - 1))}1`.slice(
-      0,
-      form.model.codeLength
-    )
-  })
+  const rulePreview = computed(() =>
+    buildMaterialCodePreview({
+      fixedField: form.model.prefix,
+      segments: form.model.segments,
+      sequenceDigits: form.model.sequenceDigits,
+      codeLength: form.model.codeLength,
+      sequenceValue: form.model.nextValue
+    })
+  )
+  const attributeValueCount = computed(() =>
+    form.model.attributes.reduce((total, attribute) => total + attribute.values.length, 0)
+  )
+  const attributeSummary = computed(() =>
+    form.model.attributes.length
+      ? `共 ${form.model.attributes.length} 个属性、${attributeValueCount.value} 个候选值`
+      : '从第一项属性开始建立结构化值域'
+  )
   function moveItem<T>(items: T[], index: number, offset: number): void {
     const target = index + offset
     if (target < 0 || target >= items.length) return
     ;[items[index], items[target]] = [items[target], items[index]]
   }
   const addAttribute = (): void => {
+    const key = crypto.randomUUID()
     form.model.attributes.push({
-      key: crypto.randomUUID(),
+      key,
       name: '',
       values: [],
       required: false,
       enabled: true
     })
+    valueDrafts[key] = ''
+  }
+  const addAttributeValue = (attribute: MaterialAttributeDefinition): void => {
+    const value = (valueDrafts[attribute.key] ?? '').trim()
+    if (!value) return
+    if (attribute.values.some((item) => item.toLowerCase() === value.toLowerCase())) {
+      ElMessage.warning('该属性值已存在')
+      return
+    }
+    if (attribute.values.length >= 100) {
+      ElMessage.warning('单个属性最多维护 100 个属性值')
+      return
+    }
+    attribute.values.push(value)
+    valueDrafts[attribute.key] = ''
+  }
+  const removeAttribute = (index: number): void => {
+    const [removed] = form.model.attributes.splice(index, 1)
+    if (removed) delete valueDrafts[removed.key]
   }
   const addSegment = (): void => {
     if (form.model.segments.length < 5) form.model.segments.push({ source: 'fixed', value: '' })
@@ -575,12 +728,16 @@
       sequenceDigits: form.model.sequenceDigits,
       codeLength: form.model.codeLength,
       nextValue: form.model.nextValue,
-      exampleCode: rulePreview.value
+      exampleCode: rulePreview.value.code
     }
   }
   const handleSubmit = async (): Promise<boolean> => {
     try {
       await formRef.value?.validate()
+      if (currentKind.value === 'code-rule' && rulePreview.value.overflow) {
+        ElMessage.warning(`编码预览超出总长度 ${rulePreview.value.overflow} 位，请调整号段或总长度`)
+        return false
+      }
       await saveMaterialReference(currentKind.value, payloadForKind(), form.model.id)
       emit('success', form.model.id ? 'edit' : 'add')
       return true
@@ -590,6 +747,7 @@
   }
   const handleOpen = async (data: ReferenceDialogOpenData): Promise<void> => {
     Object.assign(form.model, initialForm())
+    Object.keys(valueDrafts).forEach((key) => delete valueDrafts[key])
     currentKind.value = data.kind
     tenantOptions.value = data.tenantOptions
     form.model.tenantId = data.row?.tenantId || data.tenantId
@@ -598,15 +756,28 @@
         ? await fetchMaterialReferenceOptions<UnitOfMeasure>('unit-of-measure', form.model.tenantId)
         : []
     if (data.row) Object.assign(form.model, cloneDeep(data.row))
+    form.model.attributes.forEach((attribute) => {
+      valueDrafts[attribute.key] = ''
+    })
     if (data.copy) {
       form.model.id = undefined
       form.model.nextValue = 1
     }
+    const entityLabel = config.value.dialogTitle.replace(/^维护|建立|配置|编排/, '')
     await dialogRef.value?.handleOpen(data, {
-      title: `${data.copy ? '复制' : data.row ? '编辑' : '新增'}${config.value.dialogTitle.replace(/^维护|建立|配置|编排/, '')}`,
+      title: `${data.copy ? '复制' : data.row ? '编辑' : '新增'}${entityLabel}`,
       subtitle: config.value.dialogDescription,
-      confirmText: '保存',
-      contentMaxHeight: '72vh',
+      size:
+        currentKind.value === 'material-type'
+          ? 'md'
+          : currentKind.value === 'unit-of-measure'
+            ? 'lg'
+            : 'xl',
+      confirmText: data.copy ? '复制并新增' : data.row ? '保存更改' : `创建${entityLabel}`,
+      contentMaxHeight:
+        currentKind.value === 'material-type'
+          ? 'min(62vh, calc(100vh - 220px))'
+          : 'min(72vh, calc(100vh - 200px))',
       onConfirm: handleSubmit,
       onOpen: () => formRef.value?.clearValidate()
     })
@@ -628,6 +799,34 @@
 
 <style scoped lang="scss">
   .material-reference-dialog {
+    &__identity {
+      margin-bottom: var(--art-space-4);
+    }
+
+    &__attribute-metrics {
+      display: flex;
+      gap: var(--art-space-4);
+      align-items: center;
+
+      span {
+        display: grid;
+        grid-template-columns: auto auto;
+        gap: 4px;
+        align-items: baseline;
+      }
+
+      strong {
+        font-size: 18px;
+        font-variant-numeric: tabular-nums;
+        color: var(--theme-color);
+      }
+
+      small {
+        font-size: 11px;
+        color: var(--el-text-color-secondary);
+      }
+    }
+
     &__context {
       display: grid;
       grid-template-columns: 42px minmax(0, 1fr);
@@ -649,8 +848,10 @@
         border-radius: var(--el-border-radius-base);
       }
 
-      strong {
-        color: var(--el-text-color-primary);
+      span {
+        font-size: 13px;
+        font-weight: 600;
+        color: var(--el-text-color-regular);
       }
 
       p {
@@ -664,6 +865,174 @@
       display: grid;
       gap: 10px;
       width: 100%;
+    }
+
+    &__attribute-detail {
+      display: grid;
+      gap: 12px;
+      width: 100%;
+    }
+
+    &__attribute-toolbar {
+      display: flex;
+      gap: 16px;
+      align-items: center;
+      justify-content: space-between;
+
+      > div {
+        display: grid;
+        gap: 3px;
+      }
+
+      strong {
+        color: var(--el-text-color-primary);
+      }
+
+      small {
+        color: var(--el-text-color-secondary);
+      }
+    }
+
+    &__attribute-table {
+      overflow: hidden;
+      border: 1px solid var(--el-border-color-lighter);
+      border-radius: var(--el-border-radius-base);
+
+      :deep(.el-scrollbar__bar.is-horizontal) {
+        height: 8px;
+      }
+    }
+
+    &__attribute-grid {
+      min-width: 920px;
+    }
+
+    &__attribute-header,
+    &__attribute-row {
+      display: grid;
+      grid-template-columns: 96px minmax(140px, 0.7fr) minmax(360px, 1.8fr) 132px 48px;
+      gap: 12px;
+      align-items: center;
+      padding: 10px 12px;
+    }
+
+    &__attribute-header {
+      position: sticky;
+      top: 0;
+      z-index: 1;
+      min-height: 44px;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--el-text-color-secondary);
+      background: var(--art-gray-100);
+      border-bottom: 1px solid var(--el-border-color-lighter);
+    }
+
+    &__attribute-row {
+      align-items: start;
+      background: var(--default-box-color);
+
+      + .material-reference-dialog__attribute-row {
+        border-top: 1px solid var(--el-border-color-lighter);
+      }
+    }
+
+    &__attribute-order,
+    &__attribute-flags,
+    &__row-actions {
+      display: flex;
+      gap: 4px;
+      align-items: center;
+    }
+
+    &__attribute-order > span {
+      display: grid;
+      flex: none;
+      place-items: center;
+      width: 26px;
+      height: 26px;
+      font-size: 11px;
+      font-variant-numeric: tabular-nums;
+      color: var(--theme-color);
+      background: color-mix(in srgb, var(--theme-color) 8%, var(--default-box-color));
+      border-radius: 50%;
+    }
+
+    &__attribute-flags {
+      justify-content: space-between;
+      min-height: 32px;
+    }
+
+    &__value-cell {
+      display: grid;
+      gap: 8px;
+      min-width: 0;
+    }
+
+    &__value-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+
+    &__value-empty {
+      min-height: 20px;
+      font-size: 11px;
+      font-weight: 400;
+      line-height: 20px;
+      color: var(--el-text-color-placeholder);
+    }
+
+    &__value-chip {
+      display: inline-flex;
+      align-items: center;
+      min-height: 30px;
+      padding: 1px 2px 1px 9px;
+      color: var(--el-text-color-regular);
+      background: color-mix(in srgb, var(--theme-color) 7%, var(--default-box-color));
+      border: 1px solid color-mix(in srgb, var(--theme-color) 18%, var(--el-border-color));
+      border-radius: var(--el-border-radius-base);
+
+      > span:first-child {
+        max-width: 160px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+    }
+
+    &__value-add {
+      display: grid;
+      grid-template-columns: minmax(150px, 220px) auto;
+      gap: 6px;
+      justify-content: start;
+    }
+
+    &__attribute-empty {
+      display: grid;
+      place-items: center;
+      min-height: 150px;
+      padding: 24px;
+      color: var(--el-text-color-secondary);
+      text-align: center;
+      background: var(--art-gray-100);
+      border: 1px dashed var(--el-border-color);
+      border-radius: var(--el-border-radius-base);
+
+      svg {
+        margin-bottom: 8px;
+        font-size: 28px;
+        color: var(--theme-color);
+      }
+
+      strong {
+        color: var(--el-text-color-primary);
+      }
+
+      span {
+        margin-top: 4px;
+        font-size: 12px;
+      }
     }
 
     &__builder-row {
@@ -680,17 +1049,13 @@
       }
     }
 
-    &__row-actions {
-      display: flex;
-      gap: 4px;
-    }
-
     &__segment-note {
       color: var(--el-text-color-secondary);
     }
 
     &__preview {
-      display: flex;
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr) auto;
       gap: 14px;
       align-items: center;
       padding: 12px 14px;
@@ -701,10 +1066,28 @@
       strong {
         color: var(--theme-color);
         letter-spacing: 0.08em;
+
+        &.is-overflow {
+          color: var(--el-color-danger);
+        }
+      }
+
+      small {
+        font-variant-numeric: tabular-nums;
+        color: var(--el-text-color-secondary);
       }
     }
 
     @media (width <= 760px) {
+      &__attribute-toolbar {
+        flex-direction: column;
+        align-items: stretch;
+
+        .el-button {
+          align-self: flex-start;
+        }
+      }
+
       &__builder-row,
       &__builder-row.is-segment {
         grid-template-columns: 1fr;

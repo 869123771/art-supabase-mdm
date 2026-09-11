@@ -43,6 +43,7 @@
   import ArtButtonTable from '@/components/core/forms/art-button-table/index.vue'
   import ArtPermissionGuard from '@/components/core/feedback/art-permission-guard/index.vue'
   import BusinessTableWorkspaceActions from '@/components/business/business-table-workspace-actions/index.vue'
+  import BusinessTableRowActions from '@/components/business/business-table-row-actions/index.vue'
   import type { SearchFormItem } from '@/components/core/forms/art-search-bar/index.vue'
   import type {
     ArtTableQueryExpose,
@@ -252,6 +253,8 @@
         label: '启用',
         icon: 'ri:checkbox-circle-line',
         selectionRequired: true,
+        disabled: ({ selectedCount }: ArtTableQueryHeaderActionContext) =>
+          config.value.kind === 'code-rule' && selectedCount !== 1,
         onClick: async ({ selectedRows, api }: ArtTableQueryHeaderActionContext) => {
           await setMaterialReferencesEnabled(
             config.value.kind,
@@ -350,7 +353,16 @@
           label: '标签样式',
           width: 120,
           align: 'center',
-          formatter: (row) => <ElTag>{(row as MaterialType).tagType}</ElTag>
+          formatter: (row) => (
+            <ElTag
+              type={(row as MaterialType).tagType || undefined}
+              effect="light"
+              size="small"
+              round
+            >
+              {(row as MaterialType).tagType}
+            </ElTag>
+          )
         }
       )
     else if (config.value.kind === 'attribute-group')
@@ -367,14 +379,14 @@
             )
         },
         {
-          prop: 'attributes',
+          prop: 'attributeCount',
           label: '属性数量',
           width: 110,
           align: 'center',
           formatter: (row) => `${(row as MaterialAttributeGroup).attributes.length} 项`
         },
         {
-          prop: 'attributes',
+          prop: 'attributeSummary',
           label: '值域摘要',
           minWidth: 260,
           showOverflowTooltip: true,
@@ -435,7 +447,7 @@
         width: 170,
         fixed: 'right',
         formatter: (row) => (
-          <div class="material-reference-page__actions">
+          <BusinessTableRowActions>
             <ArtButtonTable
               permission={permission('Edit')}
               type="edit"
@@ -452,7 +464,7 @@
                 await tableRef.value?.getData()
               }}
             />
-          </div>
+          </BusinessTableRowActions>
         )
       }
     )
@@ -506,12 +518,6 @@
         font-size: 11px;
         color: var(--el-text-color-secondary);
       }
-    }
-
-    &__actions {
-      display: flex;
-      gap: 4px;
-      align-items: center;
     }
   }
 </style>
