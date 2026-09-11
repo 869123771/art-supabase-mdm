@@ -858,14 +858,20 @@
     grid-template-columns: minmax(260px, 300px) minmax(0, 1fr);
     gap: 14px;
     min-height: 0;
+    overflow: hidden;
   }
 
   .material-archive-page__table {
+    display: flex;
+    flex-direction: column;
     min-width: 0;
     min-height: 0;
+    overflow: hidden;
   }
 
-  .material-archive-page__table > :deep(*) {
+  .material-archive-page__table > :deep(.art-table-query) {
+    flex: 1 1 0;
+    height: 100%;
     min-height: 0;
   }
 
@@ -900,10 +906,10 @@
   :deep(.material-archive-page__attributes em) {
     padding: 2px 6px;
     overflow: hidden;
+    text-overflow: ellipsis;
     font-size: 11px;
     font-style: normal;
     font-weight: 500;
-    text-overflow: ellipsis;
   }
 
   :deep(.material-archive-page__attributes b) {
@@ -1196,6 +1202,7 @@
     .material-archive-page__workspace > :first-child {
       max-height: 300px;
     }
+
     .material-detail__hero {
       grid-template-columns: auto minmax(0, 1fr);
     }

@@ -81,10 +81,11 @@
                 :min="0"
                 :precision="4"
                 controls-position="right"
+                placeholder="请输入面积"
                 class="!w-full"
               />
-              <ElButton plain @click="recalculateArea"
-                ><ArtSvgIcon icon="ri:calculator-line" />长×宽</ElButton
+              <ElButton plain aria-label="按长度和宽度计算面积" @click="recalculateArea"
+                ><ArtSvgIcon icon="ri:calculator-line" />按长×宽计算</ElButton
               >
             </div>
           </template>
@@ -559,7 +560,21 @@
     options: unitOptions.value,
     props: { clearable: true, filterable: true }
   })
-  const formItems = computed<FormItem[]>(() => {
+  const enhanceFormItems = (items: FormItem[]): FormItem[] =>
+    items.map((item) =>
+      item.type === 'number'
+        ? {
+            ...item,
+            props: {
+              controlsPosition: 'right',
+              class: '!w-full',
+              placeholder: `请输入${item.label}`,
+              ...item.props
+            }
+          }
+        : item
+    )
+  const rawFormItems = computed<FormItem[]>(() => {
     if (activeTab.value === 'base')
       return [
         {
@@ -1154,6 +1169,7 @@
       { label: '换算关系', key: 'unitConversions', type: 'slot', span: 24 }
     ]
   })
+  const formItems = computed<FormItem[]>(() => enhanceFormItems(rawFormItems.value))
   void Promise.all(
     [
       'mdmMaterialSource',
@@ -1333,6 +1349,26 @@
 </script>
 
 <style scoped lang="scss">
+  .material-archive-dialog {
+    min-width: 0;
+
+    &__area-field {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: var(--art-space-2);
+      align-items: center;
+      width: 100%;
+
+      .el-button {
+        min-width: 126px;
+      }
+    }
+
+    :deep(.material-archive-dialog__form .el-input-number) {
+      width: 100%;
+    }
+  }
+
   .material-archive-dialog__tabs {
     margin-top: -4px;
   }
@@ -1527,6 +1563,14 @@
   }
 
   @media (width <= 820px) {
+    .material-archive-dialog__area-field {
+      grid-template-columns: 1fr;
+
+      .el-button {
+        width: 100%;
+      }
+    }
+
     .material-archive-dialog__rule-field,
     .conversion-builder__row {
       grid-template-columns: 1fr;
