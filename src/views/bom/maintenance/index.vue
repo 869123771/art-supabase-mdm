@@ -22,7 +22,17 @@
           subtitle="选择分组筛选右侧 BOM"
         >
           <template #actions>
-            <ArtIconButton icon="ri:refresh-line" label="刷新分组" @click="loadGroups" />
+            <div class="bom-maintenance-page__group-actions">
+              <ElButton
+                v-auth="'MdmBomMaintenance:ManageGroup'"
+                type="primary"
+                plain
+                size="small"
+                @click="createRootGroup"
+                ><ArtSvgIcon icon="ri:add-line" />新增分组</ElButton
+              >
+              <ArtIconButton icon="ri:refresh-line" label="刷新分组" @click="loadGroups" />
+            </div>
           </template>
           <ElInput
             v-model="groupKeyword"
@@ -89,6 +99,7 @@
 
 <script setup lang="tsx">
   import dayjs from 'dayjs'
+  import { ElMessageBox } from 'element-plus'
   import type { ColumnOption } from '@/types'
   import { useArtFeedback } from '@/hooks/core/useArtFeedback'
   import { useTenantScopeStore } from '@/store/modules/tenantScope'
@@ -119,6 +130,7 @@
     fetchBomGroups,
     fetchBoms,
     fetchMaterialReferenceOptions,
+    saveBomGroup,
     transitionBom,
     type BomGroup,
     type BomQuery,
@@ -214,6 +226,18 @@
   }
   const loadGroups = async () => {
     groups.value = await fetchBomGroups(tenantId.value)
+  }
+  const createRootGroup = async () => {
+    const { value: code } = await ElMessageBox.prompt('请输入唯一的分组编码', '新增 BOM 分组', {
+      inputPattern: /^[A-Za-z0-9_-]{1,60}$/,
+      inputErrorMessage: '编码仅支持字母、数字、下划线和短横线'
+    })
+    const { value: name } = await ElMessageBox.prompt('请输入分组名称', '新增 BOM 分组', {
+      inputPattern: /^.{1,100}$/,
+      inputErrorMessage: '请输入 1–100 个字符的分组名称'
+    })
+    await saveBomGroup(tenantId.value, { code, name, parentId: null, sort: 10, enabled: true })
+    await loadGroups()
   }
   const filterGroupNode = (value: string, data: Record<string, unknown>) => {
     const group = data as unknown as BomGroup
@@ -510,6 +534,12 @@
   .bom-maintenance-page__group-scroll {
     height: calc(100% - 46px);
     margin-top: 10px;
+  }
+
+  .bom-maintenance-page__group-actions {
+    display: flex;
+    gap: 6px;
+    align-items: center;
   }
 
   .bom-maintenance-page__all-group {
