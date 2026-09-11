@@ -1,7 +1,14 @@
 import { omit } from 'lodash-es'
 import { useSupabase } from '@/hooks'
 import { buildOrIlikeFilter } from '@/utils/supabase/search'
-import type { BomInput, BomQuery, BomRecord, BomStatus, BomStructureNode } from './bom.types'
+import type {
+  BomGroup,
+  BomInput,
+  BomQuery,
+  BomRecord,
+  BomStatus,
+  BomStructureNode
+} from './bom.types'
 
 export * from './bom.types'
 
@@ -21,17 +28,39 @@ const writeOptions = {
 }
 
 export async function fetchBoms(params: BomQuery, options?: { signal?: AbortSignal }) {
+  let materialIds: string[] = []
+  if (params.keyword) {
+    let materialQuery = supabase
+      .from('mdm_material')
+      .select('id')
+      .or(
+        buildOrIlikeFilter(
+          ['material_code', 'material_name', 'specification_model', 'drawing_no', 'description'],
+          params.keyword
+        )
+      )
+      .limit(200)
+    if (params.tenantId) materialQuery = materialQuery.eq('tenant_id', params.tenantId)
+    const { data } = await responseHandle<Array<{ id: string }>>(() => materialQuery, readOptions)
+    materialIds = (data ?? []).map((row) => row.id)
+  }
   let query = supabase
     .from('mdm_bom')
     .select(
-      '*,material:mdm_material!mdm_bom_material_fkey(id,material_code,material_name,specification_model,base_unit_id),baseUnit:mdm_unit_of_measure!mdm_bom_unit_fkey(id,unit_code,unit_name,symbol),items:mdm_bom_item(id,tenant_id,bom_id,component_material_id,sequence_no,quantity,unit_id,scrap_rate,position_no,operation_name,effective_from,effective_to,remark,component:mdm_material!mdm_bom_item_material_fkey(id,material_code,material_name,specification_model,base_unit_id),unit:mdm_unit_of_measure!mdm_bom_item_unit_fkey(id,unit_code,unit_name,symbol))',
+      '*,group:mdm_master_group!mdm_bom_group_fk(id,code,name),material:mdm_material!mdm_bom_material_fkey(id,tenant_id,material_code,material_name,specification_model,drawing_no,description,material_source,base_unit_id,production_unit_id,default_warehouse_id,material_issue_method,backflush_method,over_issue_control_method,baseUnit:mdm_unit_of_measure!mdm_material_base_unit_fkey(id,unit_code,unit_name,symbol),productionUnit:mdm_unit_of_measure!mdm_material_production_unit_id_fkey(id,unit_code,unit_name,symbol),defaultWarehouse:mdm_warehouse!mdm_material_default_warehouse_fkey(id,warehouse_code,warehouse_name)),baseUnit:mdm_unit_of_measure!mdm_bom_unit_fkey(id,unit_code,unit_name,symbol),items:mdm_bom_item(id,tenant_id,bom_id,component_material_id,sequence_no,quantity,unit_id,scrap_rate,mrp_enabled,default_issue_warehouse_id,issue_method,backflush_method,over_issue_control_method,project_text,position_no,operation_name,effective_from,effective_to,remark,component:mdm_material!mdm_bom_item_material_fkey(id,tenant_id,material_code,material_name,specification_model,drawing_no,description,material_source,base_unit_id,production_unit_id,default_warehouse_id,material_issue_method,backflush_method,over_issue_control_method,baseUnit:mdm_unit_of_measure!mdm_material_base_unit_fkey(id,unit_code,unit_name,symbol),productionUnit:mdm_unit_of_measure!mdm_material_production_unit_id_fkey(id,unit_code,unit_name,symbol),defaultWarehouse:mdm_warehouse!mdm_material_default_warehouse_fkey(id,warehouse_code,warehouse_name)),unit:mdm_unit_of_measure!mdm_bom_item_unit_fkey(id,unit_code,unit_name,symbol),defaultIssueWarehouse:mdm_warehouse!mdm_bom_item_default_issue_warehouse_fk(id,warehouse_code,warehouse_name))',
       { count: 'exact' }
     )
-    .eq('tenant_id', params.tenantId)
     .order('sort')
     .order('update_time', { ascending: false })
-  if (params.keyword)
-    query = query.or(buildOrIlikeFilter(['bom_code', 'version', 'description'], params.keyword))
+  if (params.tenantId) query = query.eq('tenant_id', params.tenantId)
+  if (params.keyword) {
+    const baseFilter = buildOrIlikeFilter(['bom_code', 'version', 'description'], params.keyword)
+    query = query.or(
+      materialIds.length ? `${baseFilter},material_id.in.(${materialIds.join(',')})` : baseFilter
+    )
+  }
+  if (params.materialId) query = query.eq('material_id', params.materialId)
+  if (params.groupIds?.length) query = query.in('group_id', params.groupIds)
   if (params.purpose) query = query.eq('purpose', params.purpose)
   if (params.status) query = query.eq('status', params.status)
   query = query.range((params.current - 1) * params.size, params.current * params.size - 1)
@@ -44,6 +73,35 @@ export async function fetchBoms(params: BomQuery, options?: { signal?: AbortSign
     items: [...(row.items ?? [])].sort((a, b) => a.sequenceNo - b.sequenceNo)
   }))
   return { data: rows, total: total ?? 0, current: params.current, size: params.size }
+}
+
+export async function fetchBomGroups(tenantId?: string | null): Promise<BomGroup[]> {
+  let query = supabase
+    .from('mdm_master_group')
+    .select('id,tenant_id,code,name,parent_id,sort,enabled,description')
+    .eq('domain', 'bom')
+    .order('sort')
+  if (tenantId) query = query.eq('tenant_id', tenantId)
+  const { data } = await responseHandle<BomGroup[]>(() => query, readOptions)
+  return data ?? []
+}
+
+export async function saveBomGroup(tenantId: string, payload: Partial<BomGroup>): Promise<void> {
+  await responseHandle(
+    () =>
+      supabase.rpc('mdm_save_bom_group_secure', {
+        p_tenant_id: tenantId,
+        p_payload: keysToSnakeDeep(payload)
+      }),
+    { ...writeOptions, message: 'BOM 分组已保存' }
+  )
+}
+
+export async function deleteBomGroup(id: string): Promise<void> {
+  await responseHandle(() => supabase.rpc('mdm_delete_bom_group_secure', { p_group_id: id }), {
+    ...writeOptions,
+    message: 'BOM 分组已删除'
+  })
 }
 
 export async function saveBom(payload: BomInput): Promise<string> {

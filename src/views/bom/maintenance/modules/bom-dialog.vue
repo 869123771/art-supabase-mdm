@@ -4,7 +4,7 @@
       <ArtEntitySummary
         icon="ri:git-merge-line"
         eyebrow="BILL OF MATERIALS"
-        :title="selectedParent[0]?.materialName || '选择父项物料建立 BOM'"
+        :title="formatBomMaterialDescription(selectedParent[0]) || '选择父项物料建立 BOM'"
         :description="[form.bomCode || '待定义编码', form.version].filter(Boolean).join(' · ')"
       >
         <template #aside>
@@ -30,7 +30,7 @@
             :selected-data="selectedParent"
             :api-fn="fetchMaterials"
             :columns="materialColumns"
-            label-key="materialName"
+            :label-key="(row) => formatBomMaterialDescription(row as MaterialArchive)"
             description-key="materialCode"
             title="选择 BOM 父项物料"
             subtitle="父项物料决定 BOM 的基本计量口径"
@@ -49,7 +49,7 @@
               :selected-data="selectedComponents"
               :api-fn="fetchMaterials"
               :columns="materialColumns"
-              label-key="materialName"
+              :label-key="(row) => formatBomMaterialDescription(row as MaterialArchive)"
               description-key="materialCode"
               title="批量添加组件物料"
               subtitle="已存在的组件不会重复加入"
@@ -67,11 +67,13 @@
         </header>
         <ArtTable
           ref="componentTableRef"
+          class="bom-dialog__component-table"
           :data="form.items"
           :columns="componentColumns"
           row-key="componentMaterialId"
           :pagination="false"
           scrollbar-always-on
+          table-layout="fixed"
           max-height="360"
           empty-text="暂无 BOM 组件"
           empty-description="点击“添加组件”建立父项与子项的装配关系。"
@@ -87,12 +89,15 @@
 
 <script setup lang="tsx">
   import { cloneDeep } from 'lodash-es'
+  import dayjs from 'dayjs'
   import {
+    ElDatePicker,
     ElInput,
     ElInputNumber,
     ElMessage,
     ElOption,
     ElSelect,
+    ElSwitch,
     type FormRules
   } from 'element-plus'
   import ArtDialog from '@/components/core/dialogs/art-dialog/index.vue'
@@ -114,11 +119,13 @@
   import {
     fetchMaterialArchives,
     saveBom,
+    type BomGroup,
     type BomInput,
     type BomRecord,
     type MaterialArchive,
     type UnitOfMeasure
   } from '@mdm/api'
+  import { formatBomMaterialDescription } from '../../modules/material-description'
 
   export interface BomDialogOpenData {
     row?: BomRecord
@@ -126,6 +133,7 @@
     tenantId: string
     tenantOptions: Array<{ label: string; value: string }>
     units: UnitOfMeasure[]
+    groups: BomGroup[]
   }
   interface FormExpose {
     validate: () => Promise<boolean>
@@ -141,6 +149,7 @@
   const componentTableRef = ref<ArtTableExpose>()
   const tenantOptions = ref<Array<{ label: string; value: string }>>([])
   const units = ref<UnitOfMeasure[]>([])
+  const groups = ref<BomGroup[]>([])
   const selectedParent = ref<MaterialArchive[]>([])
   const selectedComponents = ref<MaterialArchive[]>([])
   const selectedComponentIds = ref<Array<string | number>>([])
@@ -149,13 +158,14 @@
     tenantId: '',
     bomCode: '',
     materialId: '',
-    version: 'V1.0',
+    version: '',
     purpose: 'production',
     status: 'design',
     baseQuantity: 1,
     baseUnitId: '',
-    effectiveFrom: null,
-    effectiveTo: null,
+    groupId: null,
+    effectiveFrom: dayjs().format('YYYY-MM-DD'),
+    effectiveTo: '9999-12-31',
     description: '',
     sort: 10,
     items: []
@@ -166,7 +176,8 @@
   const materialColumns = [
     { prop: 'materialCode', label: '物料编码', minWidth: 150 },
     { prop: 'materialName', label: '物料名称', minWidth: 180 },
-    { prop: 'specificationModel', label: '规格型号', minWidth: 150 }
+    { prop: 'specificationModel', label: '规格型号', minWidth: 150 },
+    { prop: 'drawingNo', label: '图号', minWidth: 130 }
   ]
   const formItems = computed<FormItem[]>(() => [
     {
@@ -186,13 +197,20 @@
       key: 'bomCode',
       label: 'BOM 编码',
       type: 'input',
-      props: { maxlength: 60, placeholder: '例如 BOM-FG-001-V10' }
+      props: { disabled: true, placeholder: '保存后按月度 3 位流水规则自动生成' }
     },
     {
       key: 'version',
       label: '版本',
       type: 'input',
       props: { maxlength: 30, placeholder: '例如 V1.0' }
+    },
+    {
+      key: 'groupId',
+      label: 'BOM 分组',
+      type: 'select',
+      options: groups.value.map((group) => ({ label: group.name, value: group.id })),
+      props: { clearable: true, placeholder: '请选择 BOM 分组' }
     },
     {
       key: 'purpose',
@@ -211,17 +229,17 @@
       key: 'baseQuantity',
       label: '基准数量',
       type: 'number',
-      props: { min: 0.000001, precision: 6, class: '!w-full' }
+      props: { min: 1, precision: 0, class: '!w-full' }
     },
     {
       key: 'baseUnitId',
-      label: '基准单位',
+      label: '生产单位',
       type: 'select',
       options: scopedUnits.value.map((unit) => ({
         label: `${unit.unitName} · ${unit.unitCode}`,
         value: unit.id
       })),
-      props: { filterable: true, placeholder: '请选择基准单位' }
+      props: { disabled: true, placeholder: '由父项物料自动带入' }
     },
     {
       key: 'effectiveFrom',
@@ -246,13 +264,14 @@
   const rules: FormRules<Record<string, unknown>> = {
     tenantId: [{ required: true, message: '请选择目标租户', trigger: 'change' }],
     materialId: [{ required: true, message: '请选择父项物料', trigger: 'change' }],
-    bomCode: [{ required: true, message: '请输入 BOM 编码', trigger: 'blur' }],
-    version: [{ required: true, message: '请输入版本', trigger: 'blur' }],
     baseUnitId: [{ required: true, message: '请选择基准单位', trigger: 'change' }]
   }
   void Promise.all([
     userStore.ensureDictLoaded('mdmBomPurpose'),
-    userStore.ensureDictLoaded('mdmBomStatus')
+    userStore.ensureDictLoaded('mdmBomStatus'),
+    userStore.ensureDictLoaded('mdmMaterialIssueMethod'),
+    userStore.ensureDictLoaded('mdmMaterialBackflushMethod'),
+    userStore.ensureDictLoaded('mdmMaterialOverIssueControl')
   ])
   const fetchMaterials = (params: DataSelectFetchParams) =>
     fetchMaterialArchives({
@@ -265,7 +284,7 @@
   const materialById = (id: string) =>
     [...selectedParent.value, ...selectedComponents.value].find((item) => item.id === id)
   const componentRowLabel = (row: BomComponentInput, rowIndex: number): string => {
-    const materialName = materialById(row.componentMaterialId)?.materialName
+    const materialName = formatBomMaterialDescription(materialById(row.componentMaterialId))
     return `第 ${rowIndex + 1} 行${materialName ? `“${materialName}”` : '组件'}`
   }
   const componentIndex = (row: BomComponentInput) => form.items.indexOf(row)
@@ -277,7 +296,7 @@
       width: 260,
       formatter: (row) => {
         const material = materialById(row.componentMaterialId)
-        const materialName = material?.materialName || '未识别物料'
+        const materialName = formatBomMaterialDescription(material) || '未识别物料'
         const materialDetail =
           [material?.materialCode, material?.specificationModel].filter(Boolean).join(' · ') || '—'
         return (
@@ -295,7 +314,7 @@
     },
     {
       prop: 'sequenceNo',
-      label: '顺序',
+      label: '行号',
       width: 84,
       align: 'center',
       formatter: (row) => (
@@ -308,6 +327,31 @@
           class="bom-dialog__number-input"
         />
       )
+    },
+    {
+      prop: 'mrpEnabled',
+      label: 'MRP 运算',
+      width: 94,
+      align: 'center',
+      formatter: (row) => <ElSwitch v-model={row.mrpEnabled} aria-label="MRP 运算" />
+    },
+    {
+      prop: 'materialCode',
+      label: '物料编码',
+      width: 150,
+      formatter: (row) => materialById(row.componentMaterialId)?.materialCode || '—'
+    },
+    {
+      prop: 'specificationModel',
+      label: '规格型号',
+      width: 140,
+      formatter: (row) => materialById(row.componentMaterialId)?.specificationModel || '—'
+    },
+    {
+      prop: 'materialSource',
+      label: '物料来源',
+      width: 110,
+      formatter: (row) => materialById(row.componentMaterialId)?.materialSource || '—'
     },
     {
       prop: 'quantity',
@@ -333,7 +377,7 @@
     },
     {
       prop: 'unitId',
-      label: '单位',
+      label: '计量单位',
       required: true,
       requiredMessage: ({ row, rowIndex }) => `${componentRowLabel(row, rowIndex)}未选择单位`,
       width: 110,
@@ -343,6 +387,69 @@
             <ElOption key={unit.id} label={unit.unitName} value={unit.id} />
           ))}
         </ElSelect>
+      )
+    },
+    {
+      prop: 'defaultIssueWarehouseId',
+      label: '默认发料仓库',
+      width: 150,
+      formatter: (row) =>
+        materialById(row.componentMaterialId)?.defaultWarehouse?.warehouseName || '—'
+    },
+    {
+      prop: 'issueMethod',
+      label: '领送料方式',
+      width: 140,
+      formatter: (row) => (
+        <ElSelect v-model={row.issueMethod}>
+          {(getDictMap.value.mdmMaterialIssueMethod ?? []).map((item) => (
+            <ElOption key={item.value} label={item.label} value={item.value} />
+          ))}
+        </ElSelect>
+      )
+    },
+    {
+      prop: 'backflushMethod',
+      label: '倒冲',
+      width: 120,
+      formatter: (row) => (
+        <ElSelect v-model={row.backflushMethod}>
+          {(getDictMap.value.mdmMaterialBackflushMethod ?? []).map((item) => (
+            <ElOption key={item.value} label={item.label} value={item.value} />
+          ))}
+        </ElSelect>
+      )
+    },
+    {
+      prop: 'overIssueControlMethod',
+      label: '超发控制方式',
+      width: 160,
+      formatter: (row) => (
+        <ElSelect v-model={row.overIssueControlMethod} clearable>
+          {(getDictMap.value.mdmMaterialOverIssueControl ?? []).map((item) => (
+            <ElOption key={item.value} label={item.label} value={item.value} />
+          ))}
+        </ElSelect>
+      )
+    },
+    {
+      prop: 'effectiveFrom',
+      label: '生效日期',
+      width: 140,
+      formatter: (row) => <ElDatePicker v-model={row.effectiveFrom} value-format="YYYY-MM-DD" />
+    },
+    {
+      prop: 'effectiveTo',
+      label: '失效日期',
+      width: 140,
+      formatter: (row) => <ElDatePicker v-model={row.effectiveTo} value-format="YYYY-MM-DD" />
+    },
+    {
+      prop: 'projectText',
+      label: '项目文本',
+      width: 180,
+      formatter: (row) => (
+        <ElInput v-model={row.projectText} maxlength={200} placeholder="填写项目文本" />
       )
     },
     {
@@ -407,7 +514,7 @@
   const handleParentChange = (_value: unknown, rows: DataSelectRecord[]) => {
     const row = rows[0] as MaterialArchive | undefined
     selectedParent.value = row ? [row] : []
-    form.baseUnitId = row?.baseUnitId || ''
+    form.baseUnitId = row?.productionUnitId || row?.baseUnitId || ''
   }
   const handleComponentsConfirm = (_value: unknown, rows: DataSelectRecord[]) => {
     const materials = rows as MaterialArchive[]
@@ -422,10 +529,16 @@
           quantity: 1,
           unitId: item.baseUnitId || '',
           scrapRate: 0,
+          mrpEnabled: true,
+          defaultIssueWarehouseId: item.defaultWarehouseId || null,
+          issueMethod: item.materialIssueMethod || 'production_pick',
+          backflushMethod: item.backflushMethod || 'none',
+          overIssueControlMethod: item.overIssueControlMethod || null,
+          projectText: '',
           positionNo: '',
           operationName: '',
-          effectiveFrom: null,
-          effectiveTo: null,
+          effectiveFrom: dayjs().format('YYYY-MM-DD'),
+          effectiveTo: '9999-12-31',
           remark: ''
         }
     )
@@ -465,6 +578,7 @@
     Object.assign(form, initialForm())
     tenantOptions.value = data.tenantOptions
     units.value = data.units
+    groups.value = data.groups
     selectedParent.value = data.row?.material ? [data.row.material as MaterialArchive] : []
     selectedComponents.value = (data.row?.items.map((item) => item.component).filter(Boolean) ||
       []) as MaterialArchive[]
@@ -473,8 +587,8 @@
     form.tenantId = data.row?.tenantId || data.tenantId
     if (data.copy) {
       form.id = undefined
-      form.bomCode = `${form.bomCode}-COPY`
-      form.version = 'V1.0'
+      form.bomCode = ''
+      form.version = ''
       form.status = 'design'
     }
     await dialogRef.value?.handleOpen(data, {
@@ -607,6 +721,16 @@
   :deep(.bom-dialog__number-input .el-input__inner) {
     font-variant-numeric: tabular-nums;
     text-align: center;
+  }
+
+  :deep(.bom-dialog__component-table .el-table__header),
+  :deep(.bom-dialog__component-table .el-table__body) {
+    min-width: 2320px !important;
+  }
+
+  :deep(.bom-dialog__component-table .el-scrollbar__bar.is-horizontal) {
+    display: block !important;
+    opacity: 1;
   }
 
   @media (width <= 820px) {

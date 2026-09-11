@@ -24,17 +24,18 @@ export function buildMasterGroupWriteInput(
   model: MasterGroupFormModel,
   context: MasterGroupWriteContext
 ): MasterGroupInput {
-  const { tenantId, ...fields } = model
   const payload: MasterGroupInput = {
-    ...fields,
-    parentId: fields.parentId || null,
-    code: fields.code.trim().toUpperCase(),
-    name: fields.name.trim(),
-    remark: fields.remark.trim()
+    domain: model.domain,
+    parentId: model.parentId || null,
+    code: model.code.trim().toUpperCase(),
+    name: model.name.trim(),
+    sort: model.sort,
+    enabled: model.enabled,
+    remark: model.remark.trim()
   }
 
   if (!context.editing && context.isPlatformScope) {
-    payload.tenantId = tenantId.trim()
+    payload.tenantId = model.tenantId.trim()
   }
 
   return payload

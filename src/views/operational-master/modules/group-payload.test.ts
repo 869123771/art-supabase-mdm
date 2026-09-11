@@ -57,3 +57,28 @@ test('editing never allows tenant ownership to move', () => {
 
   assert.equal('tenantId' in payload, false)
 })
+
+test('editing strips tree-only and read-only fields from a selected group node', () => {
+  const selectedTreeNode = {
+    ...model,
+    id: '0b37f11a-439c-4d9a-988b-6ecbb1d60235',
+    createTime: '2026-09-11T00:00:00.000Z',
+    updateTime: '2026-09-11T00:00:00.000Z',
+    children: [{ ...model, id: 'c6fa9764-fdb0-43e0-a7c8-b075f8f49133' }]
+  }
+
+  const payload = buildMasterGroupWriteInput(selectedTreeNode, {
+    editing: true,
+    isPlatformScope: true
+  })
+
+  assert.deepEqual(payload, {
+    domain: 'customer',
+    parentId: null,
+    code: 'HUAWEI',
+    name: '华为',
+    sort: 10,
+    enabled: true,
+    remark: '重点客户'
+  })
+})

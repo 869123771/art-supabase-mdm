@@ -285,7 +285,7 @@ export async function fetchMaterialArchives(
   let query = supabase
     .from('mdm_material')
     .select(
-      '*,category:mdm_material_category(id,category_code,category_name),materialTypeRef:mdm_material_type(id,type_code,type_name),baseUnit:mdm_unit_of_measure!mdm_material_base_unit_fkey(id,unit_code,unit_name,symbol),auxiliaryUnit:mdm_unit_of_measure!mdm_material_aux_unit_fkey(id,unit_code,unit_name,symbol),auxiliaryUnit2:mdm_unit_of_measure!mdm_material_aux_unit_2_fkey(id,unit_code,unit_name,symbol),attributeGroup:mdm_material_attribute_group!mdm_material_attribute_group_fkey(id,group_code,group_name),materialGroup:mdm_master_group!mdm_material_group_fkey(id,groupCode:code,groupName:name)',
+      '*,category:mdm_material_category(id,category_code,category_name),materialTypeRef:mdm_material_type(id,type_code,type_name),baseUnit:mdm_unit_of_measure!mdm_material_base_unit_fkey(id,unit_code,unit_name,symbol),productionUnit:mdm_unit_of_measure!mdm_material_production_unit_id_fkey(id,unit_code,unit_name,symbol),auxiliaryUnit:mdm_unit_of_measure!mdm_material_aux_unit_fkey(id,unit_code,unit_name,symbol),auxiliaryUnit2:mdm_unit_of_measure!mdm_material_aux_unit_2_fkey(id,unit_code,unit_name,symbol),attributeGroup:mdm_material_attribute_group!mdm_material_attribute_group_fkey(id,group_code,group_name),materialGroup:mdm_master_group!mdm_material_group_fkey(id,groupCode:code,groupName:name),defaultWarehouse:mdm_warehouse!mdm_material_default_warehouse_fkey(id,warehouse_code,warehouse_name)',
       { count: 'exact' }
     )
     .eq('tenant_id', params.tenantId)
@@ -294,7 +294,7 @@ export async function fetchMaterialArchives(
   if (params.keyword)
     query = query.or(
       buildOrIlikeFilter(
-        ['material_code', 'material_name', 'specification_model', 'description'],
+        ['material_code', 'material_name', 'specification_model', 'drawing_no', 'description'],
         params.keyword
       )
     )

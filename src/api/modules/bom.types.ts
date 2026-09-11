@@ -3,20 +3,57 @@ import type { MaterialArchive, UnitOfMeasure } from './material.types'
 export type BomPurpose = 'production' | 'design' | 'process' | 'sales' | 'spare_part'
 export type BomStatus = 'design' | 'review' | 'effective' | 'changing' | 'archived' | 'void'
 
+export type BomMaterialReference = Pick<
+  MaterialArchive,
+  | 'id'
+  | 'tenantId'
+  | 'materialCode'
+  | 'materialName'
+  | 'specificationModel'
+  | 'drawingNo'
+  | 'description'
+  | 'materialSource'
+  | 'baseUnitId'
+  | 'productionUnitId'
+  | 'defaultWarehouseId'
+  | 'materialIssueMethod'
+  | 'backflushMethod'
+  | 'overIssueControlMethod'
+  | 'baseUnit'
+  | 'productionUnit'
+  | 'defaultWarehouse'
+>
+
+export interface BomGroup {
+  id: string
+  tenantId: string
+  code: string
+  name: string
+  parentId?: string | null
+  sort: number
+  enabled: boolean
+  description?: string | null
+  children?: BomGroup[]
+}
+
 export interface BomItem {
   id: string
   tenantId: string
   bomId: string
   componentMaterialId: string
-  component?: Pick<
-    MaterialArchive,
-    'id' | 'materialCode' | 'materialName' | 'specificationModel' | 'baseUnitId'
-  > | null
+  component?: BomMaterialReference | null
   sequenceNo: number
   quantity: number
   unitId: string
   unit?: Pick<UnitOfMeasure, 'id' | 'unitCode' | 'unitName' | 'symbol'> | null
   scrapRate: number
+  mrpEnabled: boolean
+  defaultIssueWarehouseId?: string | null
+  defaultIssueWarehouse?: { id: string; warehouseCode: string; warehouseName: string } | null
+  issueMethod: string
+  backflushMethod: string
+  overIssueControlMethod?: string | null
+  projectText?: string | null
   positionNo?: string | null
   operationName?: string | null
   effectiveFrom?: string | null
@@ -29,10 +66,9 @@ export interface BomRecord {
   tenantId: string
   bomCode: string
   materialId: string
-  material?: Pick<
-    MaterialArchive,
-    'id' | 'materialCode' | 'materialName' | 'specificationModel' | 'baseUnitId'
-  > | null
+  material?: BomMaterialReference | null
+  groupId?: string | null
+  group?: Pick<BomGroup, 'id' | 'code' | 'name'> | null
   version: string
   purpose: BomPurpose
   status: BomStatus
@@ -53,8 +89,10 @@ export interface BomRecord {
 export interface BomQuery {
   current: number
   size: number
-  tenantId: string
+  tenantId?: string | null
   keyword?: string
+  materialId?: string
+  groupIds?: string[]
   purpose?: BomPurpose
   status?: BomStatus
 }
@@ -62,8 +100,9 @@ export interface BomQuery {
 export interface BomInput {
   id?: string
   tenantId: string
-  bomCode: string
+  bomCode?: string
   materialId: string
+  groupId?: string | null
   version: string
   purpose: BomPurpose
   baseQuantity: number
@@ -80,6 +119,12 @@ export interface BomInput {
       | 'quantity'
       | 'unitId'
       | 'scrapRate'
+      | 'mrpEnabled'
+      | 'defaultIssueWarehouseId'
+      | 'issueMethod'
+      | 'backflushMethod'
+      | 'overIssueControlMethod'
+      | 'projectText'
       | 'positionNo'
       | 'operationName'
       | 'effectiveFrom'

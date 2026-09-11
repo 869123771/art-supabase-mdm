@@ -129,6 +129,7 @@ export interface MaterialArchive extends MaterialReferenceBase {
   materialTypeRef?: Pick<MaterialType, 'id' | 'typeCode' | 'typeName'> | null
   baseUnitId?: string | null
   baseUnit?: Pick<UnitOfMeasure, 'id' | 'unitCode' | 'unitName' | 'symbol'> | null
+  productionUnit?: Pick<UnitOfMeasure, 'id' | 'unitCode' | 'unitName' | 'symbol'> | null
   auxiliaryUnitId?: string | null
   auxiliaryUnit?: Pick<UnitOfMeasure, 'id' | 'unitCode' | 'unitName' | 'symbol'> | null
   auxiliaryUnit2Id?: string | null
@@ -183,6 +184,7 @@ export interface MaterialArchive extends MaterialReferenceBase {
   allowNegativeInventory: boolean
   minimumPackQuantity?: number | null
   defaultWarehouseId?: string | null
+  defaultWarehouse?: { id: string; warehouseCode: string; warehouseName: string } | null
   minStockAlertEnabled: boolean
   minStock?: number | null
   safetyStockAlertEnabled: boolean

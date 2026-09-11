@@ -15,24 +15,72 @@
       >
         <template #actions><BusinessTableWorkspaceActions :table="tableRef" /></template>
       </BusinessWorkspaceHeader>
-      <ArtTableQuery
-        ref="tableRef"
-        v-model="search"
-        :api-fn="fetchData"
-        :search-items="searchItems"
-        :columns-factory="columnsFactory"
-        :header-actions="headerActions"
-        header-actions-placement="workspace"
-        :search-bar-props="{ span: 6, labelWidth: 82, showExpand: false, isExpand: true }"
-        :table-props="{
-          rowKey: 'id',
-          tableLayout: 'fixed',
-          emptyText: '暂无 BOM',
-          emptyDescription: '从父项物料开始创建第一版受控 BOM。'
-        }"
-        :on-success="handleTableSuccess"
-        focusable
-      />
+      <div class="bom-maintenance-page__workspace">
+        <ArtSectionCard
+          class="bom-maintenance-page__groups"
+          title="BOM 分组"
+          subtitle="选择分组筛选右侧 BOM"
+        >
+          <template #actions>
+            <ArtIconButton icon="ri:refresh-line" label="刷新分组" @click="loadGroups" />
+          </template>
+          <ElInput
+            v-model="groupKeyword"
+            clearable
+            placeholder="搜索分组名称或编码"
+            prefix-icon="Search"
+          />
+          <ElScrollbar class="bom-maintenance-page__group-scroll">
+            <button
+              type="button"
+              class="bom-maintenance-page__all-group"
+              :class="{ 'is-active': !selectedGroupId }"
+              @click="selectGroup()"
+              ><ArtSvgIcon icon="ri:apps-2-line" /><span
+                ><strong>全部分组</strong><small>{{ groups.length }} 个分组节点</small></span
+              ></button
+            >
+            <ElTree
+              ref="groupTreeRef"
+              :data="groupTree"
+              node-key="id"
+              :props="{ label: 'name', children: 'children' }"
+              :filter-node-method="filterGroupNode"
+              default-expand-all
+              highlight-current
+              :expand-on-click-node="false"
+              @node-click="selectGroup"
+            >
+              <template #default="{ data }">
+                <span class="bom-maintenance-page__group-node"
+                  ><ArtSvgIcon icon="ri:folder-3-line" /><span
+                    ><strong>{{ data.name }}</strong
+                    ><small>{{ data.code }}</small></span
+                  ></span
+                >
+              </template>
+            </ElTree>
+          </ElScrollbar>
+        </ArtSectionCard>
+        <ArtTableQuery
+          ref="tableRef"
+          v-model="search"
+          :api-fn="fetchData"
+          :search-items="searchItems"
+          :columns-factory="columnsFactory"
+          :header-actions="headerActions"
+          header-actions-placement="workspace"
+          :search-bar-props="{ span: 6, labelWidth: 82, showExpand: false, isExpand: true }"
+          :table-props="{
+            rowKey: 'id',
+            tableLayout: 'fixed',
+            emptyText: '暂无 BOM',
+            emptyDescription: '从父项物料开始创建第一版受控 BOM。'
+          }"
+          :on-success="handleTableSuccess"
+          focusable
+        />
+      </div>
       <BomDialog ref="dialogRef" @success="refresh" />
       <BomDetailDialog ref="detailDialogRef" />
     </div>
@@ -52,6 +100,9 @@
   } from '@/components/core/forms/art-button-more/index.vue'
   import ArtSvgIcon from '@/components/core/base/art-svg-icon/index.vue'
   import ArtDictDisplay from '@/components/core/base/art-dict-display/index.vue'
+  import ArtIconButton from '@/components/core/widget/art-icon-button/index.vue'
+  import ArtSectionCard from '@/components/core/surfaces/art-section-card/index.vue'
+  import TreeUtils from '@/utils/tree'
   import { useUserStore } from '@/store/modules/user'
   import BusinessWorkspaceHeader, {
     type BusinessWorkspaceMetric
@@ -65,9 +116,11 @@
   } from '@/components/core/tables/art-table-query/index.vue'
   import {
     deleteBom,
+    fetchBomGroups,
     fetchBoms,
     fetchMaterialReferenceOptions,
     transitionBom,
+    type BomGroup,
     type BomQuery,
     type BomRecord,
     type BomStatus,
@@ -75,6 +128,7 @@
   } from '@mdm/api'
   import BomDialog, { type BomDialogOpenData } from './modules/bom-dialog.vue'
   import BomDetailDialog from './modules/bom-detail-dialog.vue'
+  import { formatBomMaterialDescription } from '../modules/material-description'
 
   defineOptions({ name: 'MdmBomMaintenance' })
   const { confirmAction } = useArtFeedback()
@@ -86,6 +140,16 @@
   const dialogRef = ref<InstanceType<typeof BomDialog>>()
   const detailDialogRef = ref<InstanceType<typeof BomDetailDialog>>()
   const units = ref<UnitOfMeasure[]>([])
+  const groups = ref<BomGroup[]>([])
+  const selectedGroupId = ref('')
+  const groupKeyword = ref('')
+  const groupTreeRef = ref<{ filter: (value: string) => void }>()
+  const groupTree = computed(
+    () =>
+      new TreeUtils({ idKey: 'id', parentKey: 'parentId', childrenKey: 'children' }).listToTree(
+        groups.value
+      ) as BomGroup[]
+  )
   const overview = reactive({ total: 0, rows: [] as BomRecord[] })
   const search = reactive({
     keyword: '',
@@ -148,6 +212,27 @@
         tenantId.value
       )
   }
+  const loadGroups = async () => {
+    groups.value = await fetchBomGroups(tenantId.value)
+  }
+  const filterGroupNode = (value: string, data: Record<string, unknown>) => {
+    const group = data as unknown as BomGroup
+    return !value || `${group.name} ${group.code}`.toLowerCase().includes(value.toLowerCase())
+  }
+  const descendantIds = (id: string) => {
+    const result: string[] = []
+    const walk = (nodes: BomGroup[]) =>
+      nodes.forEach((node) => {
+        if (node.id === id || result.includes(node.parentId || '')) result.push(node.id)
+        if (node.children?.length) walk(node.children)
+      })
+    walk(groupTree.value)
+    return result
+  }
+  const selectGroup = (group?: BomGroup) => {
+    selectedGroupId.value = group?.id || ''
+    refresh()
+  }
   const openDialog = async (row?: BomRecord, options?: { copy?: boolean }) => {
     await ensureOptions()
     const data: BomDialogOpenData = {
@@ -158,6 +243,7 @@
         value: tenant.id
       })),
       units: units.value,
+      groups: groups.value,
       ...options
     }
     await dialogRef.value?.handleOpen(data)
@@ -167,7 +253,14 @@
   }
   const fetchData = async (params: BomQuery, options?: { signal?: AbortSignal }) => {
     await ensureOptions()
-    return fetchBoms({ ...params, tenantId: tenantId.value }, options)
+    return fetchBoms(
+      {
+        ...params,
+        tenantId: tenantId.value,
+        groupIds: selectedGroupId.value ? descendantIds(selectedGroupId.value) : undefined
+      },
+      options
+    )
   }
   const handleTableSuccess: ArtTableQueryProps['onSuccess'] = (rows, response) => {
     overview.rows = rows as BomRecord[]
@@ -195,7 +288,7 @@
       </span>
       <span>
         <strong title={row.material?.materialName || ''}>
-          {row.material?.materialName || '父项待关联'}
+          {formatBomMaterialDescription(row.material) || '父项待关联'}
         </strong>
         <small>
           {[row.material?.materialCode, row.material?.specificationModel]
@@ -286,6 +379,12 @@
   const columnsFactory = (): ColumnOption<BomRecord>[] => [
     { type: 'globalIndex', label: '序号', width: 72, fixed: 'left' },
     { prop: 'materialId', label: '父项物料', minWidth: 290, fixed: 'left', formatter: identity },
+    {
+      prop: 'groupId',
+      label: 'BOM 分组',
+      minWidth: 130,
+      formatter: (row) => row.group?.name || '未分组'
+    },
     {
       prop: 'bomCode',
       label: 'BOM 身份',
@@ -382,11 +481,80 @@
     userStore.ensureDictLoaded('mdmBomPurpose'),
     userStore.ensureDictLoaded('mdmBomStatus')
   ])
+  watch(groupKeyword, (value) => groupTreeRef.value?.filter(value))
+  watch(tenantId, () => void loadGroups(), { immediate: true })
 </script>
 
 <style scoped lang="scss">
   .bom-maintenance-page {
     gap: 12px;
+    min-width: 0;
+  }
+
+  .bom-maintenance-page__workspace {
+    display: grid;
+    grid-template-columns: minmax(240px, 286px) minmax(0, 1fr);
+    gap: 12px;
+    flex: 1;
+    min-height: 0;
+  }
+
+  .bom-maintenance-page__workspace > :deep(*) {
+    min-height: 0;
+  }
+
+  .bom-maintenance-page__groups {
+    min-height: 0;
+  }
+
+  .bom-maintenance-page__group-scroll {
+    height: calc(100% - 46px);
+    margin-top: 10px;
+  }
+
+  .bom-maintenance-page__all-group {
+    display: grid;
+    grid-template-columns: 32px minmax(0, 1fr);
+    gap: 10px;
+    align-items: center;
+    width: 100%;
+    padding: 10px;
+    color: var(--el-text-color-regular);
+    text-align: left;
+    background: transparent;
+    border: 0;
+    border-radius: 8px;
+    cursor: pointer;
+  }
+
+  .bom-maintenance-page__all-group.is-active {
+    color: var(--theme-color);
+    background: color-mix(in srgb, var(--theme-color) 9%, var(--el-bg-color));
+  }
+
+  .bom-maintenance-page__all-group span,
+  :deep(.bom-maintenance-page__group-node span) {
+    min-width: 0;
+  }
+
+  .bom-maintenance-page__all-group strong,
+  .bom-maintenance-page__all-group small,
+  :deep(.bom-maintenance-page__group-node strong),
+  :deep(.bom-maintenance-page__group-node small) {
+    display: block;
+  }
+
+  .bom-maintenance-page__all-group small,
+  :deep(.bom-maintenance-page__group-node small) {
+    margin-top: 2px;
+    font-size: 11px;
+    color: var(--el-text-color-secondary);
+  }
+
+  :deep(.bom-maintenance-page__group-node) {
+    display: flex;
+    gap: 8px;
+    align-items: center;
     min-width: 0;
   }
 
@@ -438,5 +606,15 @@
     gap: 4px;
     align-items: center;
     justify-content: center;
+  }
+
+  @media (width <= 980px) {
+    .bom-maintenance-page__workspace {
+      grid-template-columns: 1fr;
+    }
+
+    .bom-maintenance-page__groups {
+      max-height: 280px;
+    }
   }
 </style>
