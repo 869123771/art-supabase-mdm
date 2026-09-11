@@ -631,7 +631,7 @@
             previewSrcList={row.imageUrls}
             previewTeleported
             fit="cover"
-            alt={`${row.materialName}图片`}
+            aria-label={`${row.materialName}图片`}
           />
         ) : (
           <span class="material-archive-page__image material-archive-page__image--empty">
@@ -792,31 +792,22 @@
     optionsLoading.value = true
     optionsError.value = ''
     try {
-      const [
-        categoryRows,
-        typeRows,
-        unitRows,
-        groupRows,
-        ruleRows,
-        locationRows,
-        masterGroupRows,
-        supplierRows,
-        warehouseRows,
-        outboundRows,
-        supplyRows
-      ] = await Promise.all([
+      const [categoryRows, typeRows, unitRows, groupRows, ruleRows] = await Promise.all([
         fetchMaterialCategories(tenantId.value),
         fetchMaterialReferenceOptions<MaterialType>('material-type', tenantId.value),
         fetchMaterialReferenceOptions<UnitOfMeasure>('unit-of-measure', tenantId.value),
         fetchMaterialReferenceOptions<MaterialAttributeGroup>('attribute-group', tenantId.value),
-        fetchMaterialReferenceOptions<MaterialCodeRule>('code-rule', tenantId.value),
-        fetchMaterialStorageOptions(tenantId.value),
-        fetchMaterialGroupOptions(tenantId.value),
-        fetchMaterialSupplierOptions(tenantId.value),
-        fetchMaterialWarehouseOptions(tenantId.value),
-        fetchMaterialOutboundRuleOptions(tenantId.value),
-        fetchMaterialSupplyRuleOptions(tenantId.value)
+        fetchMaterialReferenceOptions<MaterialCodeRule>('code-rule', tenantId.value)
       ])
+      const [locationRows, masterGroupRows, supplierRows, warehouseRows, outboundRows, supplyRows] =
+        await Promise.all([
+          fetchMaterialStorageOptions(tenantId.value).catch(() => []),
+          fetchMaterialGroupOptions(tenantId.value).catch(() => []),
+          fetchMaterialSupplierOptions(tenantId.value).catch(() => []),
+          fetchMaterialWarehouseOptions(tenantId.value).catch(() => []),
+          fetchMaterialOutboundRuleOptions(tenantId.value).catch(() => []),
+          fetchMaterialSupplyRuleOptions(tenantId.value).catch(() => [])
+        ])
       categories.value = categoryRows
       materialTypes.value = typeRows
       units.value = unitRows
