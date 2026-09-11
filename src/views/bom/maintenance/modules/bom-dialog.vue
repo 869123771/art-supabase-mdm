@@ -65,19 +65,20 @@
             </ArtTableMultipleSelect>
           </div>
         </header>
-        <ArtTable
-          ref="componentTableRef"
-          class="bom-dialog__component-table"
-          :data="form.items"
-          :columns="componentColumns"
-          row-key="componentMaterialId"
-          :pagination="false"
-          scrollbar-always-on
-          table-layout="fixed"
-          max-height="360"
-          empty-text="暂无 BOM 组件"
-          empty-description="点击“添加组件”建立父项与子项的装配关系。"
-        />
+        <div class="bom-dialog__table-scroll">
+          <ArtTable
+            ref="componentTableRef"
+            class="bom-dialog__component-table"
+            :data="form.items"
+            :columns="componentColumns"
+            row-key="componentMaterialId"
+            :pagination="false"
+            table-layout="fixed"
+            max-height="360"
+            empty-text="暂无 BOM 组件"
+            empty-description="点击“添加组件”建立父项与子项的装配关系。"
+          />
+        </div>
         <footer
           ><span>共 {{ form.items.length }} 项组件</span
           ><span>有效用量已包含损耗率口径</span></footer
@@ -269,6 +270,7 @@
   void Promise.all([
     userStore.ensureDictLoaded('mdmBomPurpose'),
     userStore.ensureDictLoaded('mdmBomStatus'),
+    userStore.ensureDictLoaded('mdmMaterialSource'),
     userStore.ensureDictLoaded('mdmMaterialIssueMethod'),
     userStore.ensureDictLoaded('mdmMaterialBackflushMethod'),
     userStore.ensureDictLoaded('mdmMaterialOverIssueControl')
@@ -351,7 +353,12 @@
       prop: 'materialSource',
       label: '物料来源',
       width: 110,
-      formatter: (row) => materialById(row.componentMaterialId)?.materialSource || '—'
+      formatter: (row) => (
+        <ArtDictDisplay
+          dictCode="mdmMaterialSource"
+          value={materialById(row.componentMaterialId)?.materialSource || ''}
+        />
+      )
     },
     {
       prop: 'quantity',
@@ -499,7 +506,6 @@
       prop: 'operation',
       label: '操作',
       width: 64,
-      fixed: 'right',
       align: 'center',
       formatter: (row) => (
         <ArtIconButton
@@ -723,14 +729,15 @@
     text-align: center;
   }
 
-  :deep(.bom-dialog__component-table .el-table__header),
-  :deep(.bom-dialog__component-table .el-table__body) {
-    min-width: 2320px !important;
+  .bom-dialog__table-scroll {
+    width: 100%;
+    overflow-x: scroll;
+    scrollbar-gutter: stable;
   }
 
-  :deep(.bom-dialog__component-table .el-scrollbar__bar.is-horizontal) {
-    display: block !important;
-    opacity: 1;
+  .bom-dialog__component-table {
+    width: 2320px;
+    min-width: 2320px;
   }
 
   @media (width <= 820px) {

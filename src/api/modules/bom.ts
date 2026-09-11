@@ -47,7 +47,7 @@ export async function fetchBoms(params: BomQuery, options?: { signal?: AbortSign
   let query = supabase
     .from('mdm_bom')
     .select(
-      '*,group:mdm_master_group!mdm_bom_group_fk(id,code,name),material:mdm_material!mdm_bom_material_fkey(id,tenant_id,material_code,material_name,specification_model,drawing_no,description,material_source,base_unit_id,production_unit_id,default_warehouse_id,material_issue_method,backflush_method,over_issue_control_method,baseUnit:mdm_unit_of_measure!mdm_material_base_unit_fkey(id,unit_code,unit_name,symbol),productionUnit:mdm_unit_of_measure!mdm_material_production_unit_id_fkey(id,unit_code,unit_name,symbol),defaultWarehouse:mdm_warehouse!mdm_material_default_warehouse_fkey(id,warehouse_code,warehouse_name)),baseUnit:mdm_unit_of_measure!mdm_bom_unit_fkey(id,unit_code,unit_name,symbol),items:mdm_bom_item(id,tenant_id,bom_id,component_material_id,sequence_no,quantity,unit_id,scrap_rate,mrp_enabled,default_issue_warehouse_id,issue_method,backflush_method,over_issue_control_method,project_text,position_no,operation_name,effective_from,effective_to,remark,component:mdm_material!mdm_bom_item_material_fkey(id,tenant_id,material_code,material_name,specification_model,drawing_no,description,material_source,base_unit_id,production_unit_id,default_warehouse_id,material_issue_method,backflush_method,over_issue_control_method,baseUnit:mdm_unit_of_measure!mdm_material_base_unit_fkey(id,unit_code,unit_name,symbol),productionUnit:mdm_unit_of_measure!mdm_material_production_unit_id_fkey(id,unit_code,unit_name,symbol),defaultWarehouse:mdm_warehouse!mdm_material_default_warehouse_fkey(id,warehouse_code,warehouse_name)),unit:mdm_unit_of_measure!mdm_bom_item_unit_fkey(id,unit_code,unit_name,symbol),defaultIssueWarehouse:mdm_warehouse!mdm_bom_item_default_issue_warehouse_fk(id,warehouse_code,warehouse_name))',
+      '*,group:mdm_master_group!mdm_bom_group_fkey(id,code,name),material:mdm_material!mdm_bom_material_fkey(id,tenant_id,material_code,material_name,specification_model,drawing_no,description,material_source,base_unit_id,production_unit_id,default_warehouse_id,material_issue_method,backflush_method,over_issue_control_method,baseUnit:mdm_unit_of_measure!mdm_material_base_unit_fkey(id,unit_code,unit_name,symbol),productionUnit:mdm_unit_of_measure!mdm_material_production_unit_id_fkey(id,unit_code,unit_name,symbol),defaultWarehouse:mdm_warehouse!mdm_material_default_warehouse_fkey(id,warehouse_code,warehouse_name)),baseUnit:mdm_unit_of_measure!mdm_bom_unit_fkey(id,unit_code,unit_name,symbol),items:mdm_bom_item(id,tenant_id,bom_id,component_material_id,sequence_no,quantity,unit_id,scrap_rate,mrp_enabled,default_issue_warehouse_id,issue_method,backflush_method,over_issue_control_method,project_text,position_no,operation_name,effective_from,effective_to,remark,component:mdm_material!mdm_bom_item_material_fkey(id,tenant_id,material_code,material_name,specification_model,drawing_no,description,material_source,base_unit_id,production_unit_id,default_warehouse_id,material_issue_method,backflush_method,over_issue_control_method,baseUnit:mdm_unit_of_measure!mdm_material_base_unit_fkey(id,unit_code,unit_name,symbol),productionUnit:mdm_unit_of_measure!mdm_material_production_unit_id_fkey(id,unit_code,unit_name,symbol),defaultWarehouse:mdm_warehouse!mdm_material_default_warehouse_fkey(id,warehouse_code,warehouse_name)),unit:mdm_unit_of_measure!mdm_bom_item_unit_fkey(id,unit_code,unit_name,symbol),defaultIssueWarehouse:mdm_warehouse!mdm_bom_item_default_issue_warehouse_fkey(id,warehouse_code,warehouse_name))',
       { count: 'exact' }
     )
     .order('sort')
@@ -78,7 +78,7 @@ export async function fetchBoms(params: BomQuery, options?: { signal?: AbortSign
 export async function fetchBomGroups(tenantId?: string | null): Promise<BomGroup[]> {
   let query = supabase
     .from('mdm_master_group')
-    .select('id,tenant_id,code,name,parent_id,sort,enabled,description')
+    .select('id,tenant_id,code,name,parent_id,sort,enabled,remark')
     .eq('domain', 'bom')
     .order('sort')
   if (tenantId) query = query.eq('tenant_id', tenantId)
@@ -87,11 +87,12 @@ export async function fetchBomGroups(tenantId?: string | null): Promise<BomGroup
 }
 
 export async function saveBomGroup(tenantId: string, payload: Partial<BomGroup>): Promise<void> {
+  const { id, ...input } = payload
   await responseHandle(
     () =>
       supabase.rpc('mdm_save_bom_group_secure', {
-        p_tenant_id: tenantId,
-        p_payload: keysToSnakeDeep(payload)
+        p_id: id || null,
+        p_payload: keysToSnakeDeep({ ...input, tenantId })
       }),
     { ...writeOptions, message: 'BOM 分组已保存' }
   )

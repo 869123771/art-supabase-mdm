@@ -234,18 +234,26 @@
   const locateBom = async () => {
     tree.value = []
     selectedBom.value = undefined
+    loadError.value = null
     if (!selectedMaterial.value) return
-    const result = await fetchBoms({
-      current: 1,
-      size: 50,
-      tenantId: tenantId.value,
-      materialId: selectedMaterial.value.id
-    })
-    selectedBom.value =
-      result.data.find((row) => row.status === 'effective') ||
-      result.data.find((row) => row.status === 'review') ||
-      result.data[0]
-    await loadStructure()
+    loading.value = true
+    try {
+      const result = await fetchBoms({
+        current: 1,
+        size: 50,
+        tenantId: tenantId.value,
+        materialId: selectedMaterial.value.id
+      })
+      selectedBom.value =
+        result.data.find((row) => row.status === 'effective') ||
+        result.data.find((row) => row.status === 'review') ||
+        result.data[0]
+      if (selectedBom.value) await loadStructure()
+    } catch (error) {
+      loadError.value = error instanceof Error ? error : new Error('BOM 查询失败')
+    } finally {
+      loading.value = false
+    }
   }
   const loadStructure = async () => {
     if (!selectedBom.value) return
@@ -278,42 +286,50 @@
     gap: 12px;
     min-width: 0;
   }
+
   .bom-structure-page__workspace {
     display: grid;
+    flex: 1;
     grid-template-columns: minmax(300px, 360px) minmax(0, 1fr);
     gap: 12px;
-    flex: 1;
     min-height: 0;
   }
+
   .bom-structure-page__navigator,
   .bom-structure-page__detail {
     min-height: 0;
     overflow: hidden;
   }
+
   .bom-structure-page__controls {
     display: grid;
     gap: 14px;
   }
+
   .bom-structure-page__controls label {
     display: grid;
     gap: 6px;
   }
+
   .bom-structure-page__controls label > span {
     font-size: 12px;
     color: var(--el-text-color-secondary);
   }
+
   .bom-structure-page__tree-scroll {
     height: calc(100% - 178px);
+    padding-top: 10px;
     margin-top: 14px;
     border-top: 1px solid var(--el-border-color-lighter);
-    padding-top: 10px;
   }
+
   :deep(.bom-structure-page__tree-node) {
     display: flex;
     gap: 8px;
     align-items: center;
     min-width: 0;
   }
+
   :deep(.bom-structure-page__tree-node strong),
   :deep(.bom-structure-page__tree-node small) {
     display: block;
@@ -321,11 +337,13 @@
     text-overflow: ellipsis;
     white-space: nowrap;
   }
+
   :deep(.bom-structure-page__tree-node small) {
     margin-top: 2px;
     font-size: 11px;
     color: var(--el-text-color-secondary);
   }
+
   .bom-structure-page__root {
     display: grid;
     grid-template-columns: 46px minmax(0, 1fr);
@@ -337,6 +355,7 @@
     border: 1px solid color-mix(in srgb, var(--theme-color) 14%, var(--el-border-color-lighter));
     border-radius: 10px;
   }
+
   .bom-structure-page__root > span {
     display: grid;
     place-items: center;
@@ -346,24 +365,29 @@
     background: var(--el-bg-color);
     border-radius: 10px;
   }
+
   .bom-structure-page__root small,
   .bom-structure-page__root strong,
   .bom-structure-page__root p {
     display: block;
     margin: 0;
   }
+
   .bom-structure-page__root small,
   .bom-structure-page__root p {
-    color: var(--el-text-color-secondary);
     font-size: 12px;
+    color: var(--el-text-color-secondary);
   }
+
   .bom-structure-page__root strong {
     margin: 3px 0;
   }
+
   @media (width <= 980px) {
     .bom-structure-page__workspace {
       grid-template-columns: 1fr;
     }
+
     .bom-structure-page__navigator {
       max-height: 420px;
     }

@@ -32,7 +32,7 @@ export interface BomGroup {
   parentId?: string | null
   sort: number
   enabled: boolean
-  description?: string | null
+  remark?: string | null
   children?: BomGroup[]
 }
 

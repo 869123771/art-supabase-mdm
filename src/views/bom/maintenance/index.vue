@@ -19,18 +19,23 @@
         <ArtSectionCard
           class="bom-maintenance-page__groups"
           title="BOM 分组"
-          subtitle="选择分组筛选右侧 BOM"
+          subtitle="按分组筛选 BOM"
+          :loading="groupLoading"
+          :error="groupError"
+          :empty="!groupLoading && !groupError && !groups.length"
+          empty-title="尚未建立 BOM 分组"
+          empty-description="可先建立顶级分组，再按层级归类 BOM。"
+          retryable
+          @retry="loadGroups"
         >
           <template #actions>
             <div class="bom-maintenance-page__group-actions">
-              <ElButton
+              <ArtIconButton
                 v-auth="'MdmBomMaintenance:ManageGroup'"
-                type="primary"
-                plain
-                size="small"
+                icon="ri:add-line"
+                label="新增分组"
                 @click="createRootGroup"
-                ><ArtSvgIcon icon="ri:add-line" />新增分组</ElButton
-              >
+              />
               <ArtIconButton icon="ri:refresh-line" label="刷新分组" @click="loadGroups" />
             </div>
           </template>
@@ -99,7 +104,6 @@
 
 <script setup lang="tsx">
   import dayjs from 'dayjs'
-  import { ElMessageBox } from 'element-plus'
   import type { ColumnOption } from '@/types'
   import { useArtFeedback } from '@/hooks/core/useArtFeedback'
   import { useTenantScopeStore } from '@/store/modules/tenantScope'
@@ -143,7 +147,7 @@
   import { formatBomMaterialDescription } from '../modules/material-description'
 
   defineOptions({ name: 'MdmBomMaintenance' })
-  const { confirmAction } = useArtFeedback()
+  const { confirmAction, promptText } = useArtFeedback()
   const userStore = useUserStore()
   const { getDictMap } = storeToRefs(userStore)
   const { effectiveTenantId, tenantOptions } = storeToRefs(useTenantScopeStore())
@@ -153,6 +157,8 @@
   const detailDialogRef = ref<InstanceType<typeof BomDetailDialog>>()
   const units = ref<UnitOfMeasure[]>([])
   const groups = ref<BomGroup[]>([])
+  const groupLoading = ref(false)
+  const groupError = ref<Error | null>(null)
   const selectedGroupId = ref('')
   const groupKeyword = ref('')
   const groupTreeRef = ref<{ filter: (value: string) => void }>()
@@ -225,16 +231,25 @@
       )
   }
   const loadGroups = async () => {
-    groups.value = await fetchBomGroups(tenantId.value)
+    groupLoading.value = true
+    groupError.value = null
+    try {
+      groups.value = await fetchBomGroups(tenantId.value)
+    } catch (error) {
+      groups.value = []
+      groupError.value = error instanceof Error ? error : new Error('BOM 分组加载失败')
+    } finally {
+      groupLoading.value = false
+    }
   }
   const createRootGroup = async () => {
-    const { value: code } = await ElMessageBox.prompt('请输入唯一的分组编码', '新增 BOM 分组', {
-      inputPattern: /^[A-Za-z0-9_-]{1,60}$/,
-      inputErrorMessage: '编码仅支持字母、数字、下划线和短横线'
+    const code = await promptText('请输入唯一的分组编码', '新增 BOM 分组', {
+      placeholder: '支持字母、数字、下划线和短横线',
+      maxLength: 60
     })
-    const { value: name } = await ElMessageBox.prompt('请输入分组名称', '新增 BOM 分组', {
-      inputPattern: /^.{1,100}$/,
-      inputErrorMessage: '请输入 1–100 个字符的分组名称'
+    const name = await promptText('请输入分组名称', '新增 BOM 分组', {
+      placeholder: '请输入 1–100 个字符',
+      maxLength: 100
     })
     await saveBomGroup(tenantId.value, { code, name, parentId: null, sort: 10, enabled: true })
     await loadGroups()
@@ -517,9 +532,9 @@
 
   .bom-maintenance-page__workspace {
     display: grid;
+    flex: 1;
     grid-template-columns: minmax(240px, 286px) minmax(0, 1fr);
     gap: 12px;
-    flex: 1;
     min-height: 0;
   }
 
@@ -551,10 +566,10 @@
     padding: 10px;
     color: var(--el-text-color-regular);
     text-align: left;
+    cursor: pointer;
     background: transparent;
     border: 0;
     border-radius: 8px;
-    cursor: pointer;
   }
 
   .bom-maintenance-page__all-group.is-active {
