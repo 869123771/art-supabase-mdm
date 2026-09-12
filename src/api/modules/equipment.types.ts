@@ -18,6 +18,7 @@ export interface ProductionEquipment {
   tenantName: string
   equipmentCode: string
   equipmentName: string
+  photoUrl?: string | null
   categoryId: string
   categoryName: string
   productionDepartmentId?: string | null
@@ -25,6 +26,7 @@ export interface ProductionEquipment {
   locationId?: string | null
   locationName?: string | null
   workCenterId?: string | null
+  workCenterCode?: string | null
   workCenterName?: string | null
   responsibleEmployeeId?: string | null
   responsibleName?: string | null
@@ -64,6 +66,7 @@ export interface ProductionEquipmentInput {
   supplierId?: string | null
   equipmentCode: string
   equipmentName: string
+  photoUrl?: string | null
   equipmentBrand?: string
   model?: string
   manufacturer?: string
@@ -88,6 +91,7 @@ export interface ProductionEquipmentQuery {
   current: number
   size: number
   keyword?: string
+  categoryId?: string
   departmentId?: string
   locationId?: string
   status?: EquipmentStatus

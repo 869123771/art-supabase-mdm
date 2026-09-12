@@ -1,8 +1,9 @@
-import { omit } from 'lodash-es'
 import { useSupabase } from '@/hooks'
 import { buildOrIlikeFilter } from '@/utils/supabase/search'
+import { buildBomWritePayload } from './bom-write-payload'
 import type {
   BomGroup,
+  BomGroupInput,
   BomInput,
   BomQuery,
   BomRecord,
@@ -86,28 +87,30 @@ export async function fetchBomGroups(tenantId?: string | null): Promise<BomGroup
   return data ?? []
 }
 
-export async function saveBomGroup(tenantId: string, payload: Partial<BomGroup>): Promise<void> {
+export async function saveBomGroup(payload: BomGroupInput): Promise<string> {
   const { id, ...input } = payload
-  await responseHandle(
+  const { data } = await responseHandle<string>(
     () =>
       supabase.rpc('mdm_save_bom_group_secure', {
         p_id: id || null,
-        p_payload: keysToSnakeDeep({ ...input, tenantId })
+        p_payload: keysToSnakeDeep(input)
       }),
     { ...writeOptions, message: 'BOM 分组已保存' }
   )
+  return data ?? ''
 }
 
 export async function deleteBomGroup(id: string): Promise<void> {
-  await responseHandle(() => supabase.rpc('mdm_delete_bom_group_secure', { p_group_id: id }), {
+  await responseHandle(() => supabase.rpc('mdm_delete_bom_group_secure', { p_id: id }), {
     ...writeOptions,
     message: 'BOM 分组已删除'
   })
 }
 
 export async function saveBom(payload: BomInput): Promise<string> {
-  const header = keysToSnakeDeep(omit(payload, ['items']))
-  const items = keysToSnakeDeep(payload.items)
+  const writePayload = buildBomWritePayload(payload)
+  const header = keysToSnakeDeep(writePayload.header)
+  const items = keysToSnakeDeep(writePayload.items)
   const { data } = await responseHandle<string>(
     () => supabase.rpc('mdm_save_bom', { p_header: header, p_items: items }),
     writeOptions

@@ -207,7 +207,9 @@
                 <ElOption label="YYYYMM" value="YYYYMM" />
                 <ElOption label="YYYYMMDD" value="YYYYMMDD" />
               </ElSelect>
-              <span v-else class="material-reference-dialog__segment-note">生成时取业务前缀</span>
+              <span v-else class="material-reference-dialog__segment-note">
+                {{ segmentSourceDescription(segment.source) }}
+              </span>
               <div class="material-reference-dialog__row-actions">
                 <ArtIconButton
                   icon="ri:arrow-up-line"
@@ -344,9 +346,9 @@
     ruleName: '',
     strategy: 'material_type',
     prefix: '',
-    segments: [{ source: 'material_type' }],
-    sequenceDigits: 5,
-    codeLength: 20,
+    segments: [{ source: 'material_type' }, { source: 'fixed', value: '-' }],
+    sequenceDigits: 4,
+    codeLength: 8,
     exampleCode: '',
     nextValue: 1,
     status: 'enabled',
@@ -556,14 +558,15 @@
           label: '归类策略',
           key: 'strategy',
           type: 'select',
-          options: getDictMap.value.mdmMaterialCodeStrategy ?? []
+          options: getDictMap.value.mdmMaterialCodeStrategy ?? [],
+          props: { clearable: false, onChange: applyStrategyPreset }
         },
         {
           label: '固定字段',
           key: 'prefix',
           type: 'input',
-          props: { maxlength: 20, placeholder: '可选，将放在补零位之后' },
-          help: '编码不足总长度时，系统会在该固定字段前补 0。'
+          props: { maxlength: 20, placeholder: '兼容历史规则，通常留空' },
+          help: '推荐在号段配置中使用“固定字符”；编码位数不足时，系统会在最后一个固定字符前补 0。'
         },
         {
           label: '流水位数',
@@ -631,7 +634,9 @@
       segments: form.model.segments,
       sequenceDigits: form.model.sequenceDigits,
       codeLength: form.model.codeLength,
-      sequenceValue: form.model.nextValue
+      sequenceValue: form.model.nextValue,
+      materialTypePrefix: 'R',
+      materialCategoryPrefix: 'R101'
     })
   )
   const attributeValueCount = computed(() =>
@@ -678,6 +683,14 @@
   }
   const addSegment = (): void => {
     if (form.model.segments.length < 5) form.model.segments.push({ source: 'fixed', value: '' })
+  }
+  const segmentSourceDescription = (source: MaterialCodeSegment['source']): string =>
+    source === 'material_type' ? '读取所选物料类型的“编码前缀”' : '读取所选物料分类的“编码前缀”'
+  function applyStrategyPreset(strategy: ReferenceFormModel['strategy']): void {
+    form.model.prefix = ''
+    form.model.segments = [{ source: strategy }, { source: 'fixed', value: '-' }]
+    form.model.sequenceDigits = 4
+    form.model.codeLength = strategy === 'material_type' ? 8 : 10
   }
   const payloadForKind = (): Partial<MaterialReferenceRecord> => {
     const shared = {

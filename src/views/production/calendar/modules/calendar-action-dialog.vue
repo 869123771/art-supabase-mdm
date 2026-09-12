@@ -35,6 +35,7 @@
   import type { ArtDialogExpose } from '@/components/core/dialogs/art-dialog/types'
   import {
     setProductionCalendar,
+    replaceProductionCalendarRange,
     referenceShiftPatterns,
     saveCalendarReminder,
     type ShiftPattern,
@@ -42,6 +43,7 @@
     type CalendarReminder
   } from '@mdm/api'
   import { datesInRange, productionToday } from '../../modules/production-model'
+  import { ALL_SHIFT_WEEKDAYS, SHIFT_WEEKDAY_OPTIONS } from '../../modules/shift-schedule-policy'
   type Kind = 'batch' | 'reference' | 'reminder'
   interface OpenData {
     kind: Kind
@@ -64,7 +66,8 @@
     model: {
       patternId: '',
       range: [] as string[],
-      weekdays: [1, 2, 3, 4, 5, 6, 0],
+      weekdays: [...ALL_SHIFT_WEEKDAYS],
+      includeStatutoryHolidays: false,
       sourceId: '',
       enabled: true,
       leadDays: 7
@@ -120,10 +123,16 @@
         label: '适用星期',
         type: 'checkboxGroup',
         hidden: form.dates.length > 0,
-        options: [1, 2, 3, 4, 5, 6, 0].map((value, index) => ({
-          label: ['周一', '周二', '周三', '周四', '周五', '周六', '周日'][index],
-          value
-        }))
+        options: SHIFT_WEEKDAY_OPTIONS.map((option) => ({ ...option })),
+        help: '未勾选的星期会从本次日期范围中清除，不再应用轮班模式。'
+      },
+      {
+        key: 'includeStatutoryHolidays',
+        label: '法定假日',
+        type: 'checkbox',
+        hidden: form.dates.length > 0,
+        slots: { default: () => '法定假日参与排班' },
+        help: '勾选后，所选星期遇到法定假日仍安排轮班；不勾选则自动排除。'
       }
     ]
   })
@@ -163,7 +172,8 @@
         dayjs(productionToday()).add(1, 'day').format('YYYY-MM-DD'),
         dayjs(productionToday()).add(1, 'month').endOf('month').format('YYYY-MM-DD')
       ],
-      weekdays: [1, 2, 3, 4, 5, 6, 0],
+      weekdays: [...ALL_SHIFT_WEEKDAYS],
+      includeStatutoryHolidays: false,
       sourceId: '',
       enabled: data.reminder?.enabled ?? true,
       leadDays: data.reminder?.leadDays ?? 7
@@ -195,23 +205,38 @@
           ElMessage.warning('请选择轮班模式')
           return false
         }
+        if (form.kind === 'batch' && !form.dates.length && !form.model.weekdays.length) {
+          ElMessage.warning('请至少选择一个参与排班的星期')
+          return false
+        }
         if (form.kind === 'reference' && !form.model.sourceId) {
           ElMessage.warning('请选择参考产线')
           return false
         }
-        let dates = form.dates
+        const dates = form.dates
         if (form.kind === 'batch' && !dates.length) {
           try {
-            dates = datesInRange(form.model.range?.[0], form.model.range?.[1], form.model.weekdays)
+            datesInRange(form.model.range?.[0], form.model.range?.[1], form.model.weekdays)
           } catch (error) {
             ElMessage.warning(error instanceof Error ? error.message : '日期范围无效')
             return false
           }
         }
         try {
-          if (form.kind === 'batch')
-            await setProductionCalendar(form.departmentId, form.model.patternId, dates)
-          else if (form.kind === 'reference')
+          if (form.kind === 'batch') {
+            if (dates.length) {
+              await setProductionCalendar(form.departmentId, form.model.patternId, dates)
+            } else {
+              await replaceProductionCalendarRange(
+                form.departmentId,
+                form.model.patternId,
+                form.model.range[0],
+                form.model.range[1],
+                form.model.weekdays,
+                form.model.includeStatutoryHolidays
+              )
+            }
+          } else if (form.kind === 'reference')
             await referenceShiftPatterns(form.model.sourceId, form.departmentId)
           else
             await saveCalendarReminder({

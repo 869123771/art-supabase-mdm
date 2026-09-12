@@ -11,6 +11,7 @@ import type {
   MaterialReferenceQuery,
   MaterialReferenceRecord
 } from './material.types'
+import { alignMaterialArchiveDatabaseKeys } from './material-write-payload'
 
 export * from './material.types'
 
@@ -311,11 +312,14 @@ export async function fetchMaterialArchives(
 }
 
 export async function saveMaterialArchive(payload: MaterialArchiveInput, id?: string) {
+  const databasePayload = alignMaterialArchiveDatabaseKeys(
+    keysToSnakeDeep(payload) as unknown as Record<string, unknown>
+  )
   await responseHandle(
     () =>
       supabase.rpc('mdm_save_material_secure', {
         p_id: id ?? null,
-        p_payload: keysToSnakeDeep(payload)
+        p_payload: databasePayload
       }),
     { ...writeOptions, message: id ? '物料编码已更新' : '物料编码已创建' }
   )

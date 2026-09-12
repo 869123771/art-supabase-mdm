@@ -16,67 +16,17 @@
         <template #actions><BusinessTableWorkspaceActions :table="tableRef" /></template>
       </BusinessWorkspaceHeader>
       <div class="bom-maintenance-page__workspace">
-        <ArtSectionCard
-          class="bom-maintenance-page__groups"
-          title="BOM 分组"
-          subtitle="按分组筛选 BOM"
+        <BomGroupPanel
+          :groups="groups"
+          :selected-id="selectedGroupId"
           :loading="groupLoading"
           :error="groupError"
-          :empty="!groupLoading && !groupError && !groups.length"
-          empty-title="尚未建立 BOM 分组"
-          empty-description="可先建立顶级分组，再按层级归类 BOM。"
-          retryable
-          @retry="loadGroups"
-        >
-          <template #actions>
-            <div class="bom-maintenance-page__group-actions">
-              <ArtIconButton
-                v-auth="'MdmBomMaintenance:ManageGroup'"
-                icon="ri:add-line"
-                label="新增分组"
-                @click="createRootGroup"
-              />
-              <ArtIconButton icon="ri:refresh-line" label="刷新分组" @click="loadGroups" />
-            </div>
-          </template>
-          <ElInput
-            v-model="groupKeyword"
-            clearable
-            placeholder="搜索分组名称或编码"
-            prefix-icon="Search"
-          />
-          <ElScrollbar class="bom-maintenance-page__group-scroll">
-            <button
-              type="button"
-              class="bom-maintenance-page__all-group"
-              :class="{ 'is-active': !selectedGroupId }"
-              @click="selectGroup()"
-              ><ArtSvgIcon icon="ri:apps-2-line" /><span
-                ><strong>全部分组</strong><small>{{ groups.length }} 个分组节点</small></span
-              ></button
-            >
-            <ElTree
-              ref="groupTreeRef"
-              :data="groupTree"
-              node-key="id"
-              :props="{ label: 'name', children: 'children' }"
-              :filter-node-method="filterGroupNode"
-              default-expand-all
-              highlight-current
-              :expand-on-click-node="false"
-              @node-click="selectGroup"
-            >
-              <template #default="{ data }">
-                <span class="bom-maintenance-page__group-node"
-                  ><ArtSvgIcon icon="ri:folder-3-line" /><span
-                    ><strong>{{ data.name }}</strong
-                    ><small>{{ data.code }}</small></span
-                  ></span
-                >
-              </template>
-            </ElTree>
-          </ElScrollbar>
-        </ArtSectionCard>
+          @select="selectGroup"
+          @refresh="loadGroups"
+          @add="openGroupDialog"
+          @edit="editGroup"
+          @remove="removeGroup"
+        />
         <ArtTableQuery
           ref="tableRef"
           v-model="search"
@@ -97,6 +47,7 @@
         />
       </div>
       <BomDialog ref="dialogRef" @success="refresh" />
+      <BomGroupDialog ref="groupDialogRef" @success="handleGroupSaved" />
       <BomDetailDialog ref="detailDialogRef" />
     </div>
   </ArtPermissionGuard>
@@ -115,8 +66,6 @@
   } from '@/components/core/forms/art-button-more/index.vue'
   import ArtSvgIcon from '@/components/core/base/art-svg-icon/index.vue'
   import ArtDictDisplay from '@/components/core/base/art-dict-display/index.vue'
-  import ArtIconButton from '@/components/core/widget/art-icon-button/index.vue'
-  import ArtSectionCard from '@/components/core/surfaces/art-section-card/index.vue'
   import TreeUtils from '@/utils/tree'
   import { useUserStore } from '@/store/modules/user'
   import BusinessWorkspaceHeader, {
@@ -131,10 +80,10 @@
   } from '@/components/core/tables/art-table-query/index.vue'
   import {
     deleteBom,
+    deleteBomGroup,
     fetchBomGroups,
     fetchBoms,
     fetchMaterialReferenceOptions,
-    saveBomGroup,
     transitionBom,
     type BomGroup,
     type BomQuery,
@@ -144,30 +93,27 @@
   } from '@mdm/api'
   import BomDialog, { type BomDialogOpenData } from './modules/bom-dialog.vue'
   import BomDetailDialog from './modules/bom-detail-dialog.vue'
+  import BomGroupDialog from './modules/bom-group-dialog.vue'
+  import BomGroupPanel from './modules/bom-group-panel.vue'
   import { formatBomMaterialDescription } from '../modules/material-description'
 
   defineOptions({ name: 'MdmBomMaintenance' })
-  const { confirmAction, promptText } = useArtFeedback()
+  const { confirmAction } = useArtFeedback()
   const userStore = useUserStore()
   const { getDictMap } = storeToRefs(userStore)
   const { effectiveTenantId, tenantOptions } = storeToRefs(useTenantScopeStore())
   const tenantId = computed(() => effectiveTenantId.value ?? '')
   const tableRef = ref<ArtTableQueryExpose>()
   const dialogRef = ref<InstanceType<typeof BomDialog>>()
+  const groupDialogRef = ref<InstanceType<typeof BomGroupDialog>>()
   const detailDialogRef = ref<InstanceType<typeof BomDetailDialog>>()
   const units = ref<UnitOfMeasure[]>([])
   const groups = ref<BomGroup[]>([])
   const groupLoading = ref(false)
   const groupError = ref<Error | null>(null)
   const selectedGroupId = ref('')
-  const groupKeyword = ref('')
-  const groupTreeRef = ref<{ filter: (value: string) => void }>()
-  const groupTree = computed(
-    () =>
-      new TreeUtils({ idKey: 'id', parentKey: 'parentId', childrenKey: 'children' }).listToTree(
-        groups.value
-      ) as BomGroup[]
-  )
+  const groupTreeUtils = new TreeUtils({ idKey: 'id', parentKey: 'parentId' })
+  const groupTree = computed(() => groupTreeUtils.listToTree(groups.value) as BomGroup[])
   const overview = reactive({ total: 0, rows: [] as BomRecord[] })
   const search = reactive({
     keyword: '',
@@ -242,32 +188,35 @@
       groupLoading.value = false
     }
   }
-  const createRootGroup = async () => {
-    const code = await promptText('请输入唯一的分组编码', '新增 BOM 分组', {
-      placeholder: '支持字母、数字、下划线和短横线',
-      maxLength: 60
-    })
-    const name = await promptText('请输入分组名称', '新增 BOM 分组', {
-      placeholder: '请输入 1–100 个字符',
-      maxLength: 100
-    })
-    await saveBomGroup(tenantId.value, { code, name, parentId: null, sort: 10, enabled: true })
+  const groupDialogData = (options: { row?: BomGroup; parent?: BomGroup } = {}) => ({
+    tenantId: options.row?.tenantId || options.parent?.tenantId || tenantId.value,
+    tenantOptions: tenantOptions.value.map((tenant) => ({
+      label: tenant.tenantName || tenant.tenantCode,
+      value: tenant.id
+    })),
+    groups: groups.value,
+    ...options
+  })
+  const openGroupDialog = async (parent?: BomGroup) =>
+    groupDialogRef.value?.handleOpen(groupDialogData({ parent }))
+  const editGroup = async (row: BomGroup) =>
+    groupDialogRef.value?.handleOpen(groupDialogData({ row }))
+  const handleGroupSaved = async (id: string) => {
     await loadGroups()
+    if (id) selectedGroupId.value = id
+    refresh()
   }
-  const filterGroupNode = (value: string, data: Record<string, unknown>) => {
-    const group = data as unknown as BomGroup
-    return !value || `${group.name} ${group.code}`.toLowerCase().includes(value.toLowerCase())
+  const removeGroup = async (row: BomGroup) => {
+    await confirmAction(`确定删除 BOM 分组“${row.name}”吗？`, '删除 BOM 分组', {
+      type: 'warning'
+    })
+    await deleteBomGroup(row.id)
+    if (selectedGroupId.value === row.id) selectedGroupId.value = ''
+    await loadGroups()
+    refresh()
   }
-  const descendantIds = (id: string) => {
-    const result: string[] = []
-    const walk = (nodes: BomGroup[]) =>
-      nodes.forEach((node) => {
-        if (node.id === id || result.includes(node.parentId || '')) result.push(node.id)
-        if (node.children?.length) walk(node.children)
-      })
-    walk(groupTree.value)
-    return result
-  }
+  const descendantIds = (id: string) =>
+    groupTreeUtils.getDescendants(groupTree.value, id, true).map((group) => group.id)
   const selectGroup = (group?: BomGroup) => {
     selectedGroupId.value = group?.id || ''
     refresh()
@@ -520,7 +469,6 @@
     userStore.ensureDictLoaded('mdmBomPurpose'),
     userStore.ensureDictLoaded('mdmBomStatus')
   ])
-  watch(groupKeyword, (value) => groupTreeRef.value?.filter(value))
   watch(tenantId, () => void loadGroups(), { immediate: true })
 </script>
 
@@ -540,67 +488,6 @@
 
   .bom-maintenance-page__workspace > :deep(*) {
     min-height: 0;
-  }
-
-  .bom-maintenance-page__groups {
-    min-height: 0;
-  }
-
-  .bom-maintenance-page__group-scroll {
-    height: calc(100% - 46px);
-    margin-top: 10px;
-  }
-
-  .bom-maintenance-page__group-actions {
-    display: flex;
-    gap: 6px;
-    align-items: center;
-  }
-
-  .bom-maintenance-page__all-group {
-    display: grid;
-    grid-template-columns: 32px minmax(0, 1fr);
-    gap: 10px;
-    align-items: center;
-    width: 100%;
-    padding: 10px;
-    color: var(--el-text-color-regular);
-    text-align: left;
-    cursor: pointer;
-    background: transparent;
-    border: 0;
-    border-radius: 8px;
-  }
-
-  .bom-maintenance-page__all-group.is-active {
-    color: var(--theme-color);
-    background: color-mix(in srgb, var(--theme-color) 9%, var(--el-bg-color));
-  }
-
-  .bom-maintenance-page__all-group span,
-  :deep(.bom-maintenance-page__group-node span) {
-    min-width: 0;
-  }
-
-  .bom-maintenance-page__all-group strong,
-  .bom-maintenance-page__all-group small,
-  :deep(.bom-maintenance-page__group-node strong),
-  :deep(.bom-maintenance-page__group-node small) {
-    display: block;
-  }
-
-  .bom-maintenance-page__all-group small,
-  :deep(.bom-maintenance-page__group-node small) {
-    margin-top: 2px;
-    font-size: 11px;
-    color: var(--el-text-color-secondary);
-  }
-
-  :deep(.bom-maintenance-page__group-node) {
-    display: flex;
-    gap: 8px;
-    align-items: center;
-    min-width: 0;
   }
 
   :deep(.bom-maintenance-page__identity) {
@@ -658,7 +545,7 @@
       grid-template-columns: 1fr;
     }
 
-    .bom-maintenance-page__groups {
+    :deep(.bom-group-panel) {
       max-height: 280px;
     }
   }

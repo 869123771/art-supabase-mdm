@@ -210,7 +210,7 @@
 <script setup lang="ts">
   import dayjs from 'dayjs'
   import { ElMessage, type FormRules } from 'element-plus'
-  import { cloneDeep, omit } from 'lodash-es'
+  import { cloneDeep } from 'lodash-es'
   import ArtDialog from '@/components/core/dialogs/art-dialog/index.vue'
   import type { ArtDialogExpose } from '@/components/core/dialogs/art-dialog/types'
   import ArtForm, { type FormItem } from '@/components/core/forms/art-form/index.vue'
@@ -230,6 +230,7 @@
     type MaterialType,
     type UnitOfMeasure
   } from '@mdm/api'
+  import { buildMaterialArchiveWriteInput } from './archive-payload'
   import { buildMaterialDescription } from './material-description'
   import { MATERIAL_DESCRIPTION_FIELD_LABELS } from '../../modules/material-description-fields'
 
@@ -450,8 +451,7 @@
     currencyCode: 'CNY',
     unitConversions: [],
     status: 'enabled',
-    sort: 10,
-    remark: ''
+    sort: 10
   })
   const formModel = reactive<ArchiveFormModel>(initialForm())
   const tenantId = computed(() => formModel.tenantId)
@@ -1244,16 +1244,7 @@
       if (!type || !baseUnit) return false
       formModel.materialType = type.typeCode
       formModel.basicUnit = baseUnit.unitCode
-      const payload = omit(formModel, [
-        'id',
-        'category',
-        'materialTypeRef',
-        'baseUnit',
-        'auxiliaryUnit',
-        'auxiliaryUnit2',
-        'attributeGroup',
-        'materialGroup'
-      ]) as MaterialArchiveInput
+      const payload = buildMaterialArchiveWriteInput(formModel)
       await saveMaterialArchive(payload, formModel.id)
       emit('success')
       return true

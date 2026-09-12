@@ -207,6 +207,7 @@
   import {
     deleteShiftSchedule,
     fetchShiftScheduleDepartments,
+    fetchShiftScheduleHolidayDates,
     fetchShiftSchedules,
     type ProductionDepartment,
     type ShiftScheduleDateMode,
@@ -214,6 +215,10 @@
   } from '@mdm/api'
   import ProductionTree from '../modules/production-tree.vue'
   import ProductionWorkspaceHeader from '../modules/production-workspace-header.vue'
+  import {
+    isShiftScheduleActiveOnDate,
+    shiftScheduleParticipationText
+  } from '../modules/shift-schedule-policy'
   import ShiftScheduleDialog from './modules/shift-schedule-dialog.vue'
 
   defineOptions({ name: 'MdmShiftScheduling' })
@@ -231,6 +236,7 @@
     view: 'calendar' as 'calendar' | 'roster',
     month: new Date(),
     rows: [] as ShiftScheduleRecord[],
+    holidayDates: [] as string[],
     loading: false,
     error: ''
   })
@@ -241,6 +247,7 @@
   const today = dayjs().format('YYYY-MM-DD')
   const monthKey = computed(() => dayjs(schedule.month).format('YYYY-MM'))
   const monthTitle = computed(() => dayjs(schedule.month).format('YYYY 年 M 月'))
+  const holidayDateSet = computed(() => new Set(schedule.holidayDates))
   const selectedDepartment = computed(() =>
     scope.departments.find((department) => department.id === scope.selected)
   )
@@ -327,6 +334,13 @@
       label: '排班日期',
       minWidth: 210,
       formatter: effectiveDate
+    },
+    {
+      prop: 'weekdays',
+      label: '参与日期',
+      minWidth: 260,
+      showOverflowTooltip: true,
+      formatter: shiftScheduleParticipationText
     },
     {
       prop: 'members',
@@ -416,6 +430,7 @@
     const request = ++scheduleRequest
     if (!scope.selected || !hasAuth('MdmShiftScheduling:View')) {
       schedule.rows = []
+      schedule.holidayDates = []
       schedule.error = ''
       schedule.loading = false
       return
@@ -428,12 +443,18 @@
         .subtract(7, 'day')
         .format('YYYY-MM-DD')
       const endDate = dayjs(schedule.month).endOf('month').add(7, 'day').format('YYYY-MM-DD')
-      const rows = await fetchShiftSchedules({
-        departmentId: scope.selected,
-        startDate,
-        endDate
-      })
-      if (request === scheduleRequest) schedule.rows = rows
+      const [rows, holidayDates] = await Promise.all([
+        fetchShiftSchedules({
+          departmentId: scope.selected,
+          startDate,
+          endDate
+        }),
+        fetchShiftScheduleHolidayDates(scope.selected, startDate, endDate)
+      ])
+      if (request === scheduleRequest) {
+        schedule.rows = rows
+        schedule.holidayDates = holidayDates
+      }
     } catch {
       if (request === scheduleRequest) schedule.error = '排班加载失败，请重试。'
     } finally {
@@ -446,8 +467,8 @@
   }
 
   function schedulesForDate(date: string): ShiftScheduleRecord[] {
-    return schedule.rows.filter(
-      (row) => row.startDate <= date && (!row.endDate || row.endDate >= date)
+    return schedule.rows.filter((row) =>
+      isShiftScheduleActiveOnDate(row, date, holidayDateSet.value)
     )
   }
 

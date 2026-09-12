@@ -306,6 +306,27 @@ export async function setProductionCalendar(
     { ...writeOptions, requireAffected: false }
   )
 }
+export async function replaceProductionCalendarRange(
+  departmentId: string,
+  patternId: string,
+  startDate: string,
+  endDate: string,
+  weekdays: number[],
+  includeStatutoryHolidays: boolean
+) {
+  await responseHandle(
+    () =>
+      supabase.rpc('mdm_replace_production_calendar_range_secure', {
+        p_department_id: departmentId,
+        p_pattern_id: patternId,
+        p_start_date: startDate,
+        p_end_date: endDate,
+        p_weekdays: weekdays,
+        p_include_statutory_holidays: includeStatutoryHolidays
+      }),
+    { ...writeOptions, requireAffected: false, message: '生产日历已更新' }
+  )
+}
 export async function fetchProductionCalendarDaySettings(
   departmentId: string,
   start: string,

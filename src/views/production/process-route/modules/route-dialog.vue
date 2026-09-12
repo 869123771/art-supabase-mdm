@@ -71,6 +71,7 @@
     type ProcessRouteInput,
     type ProcessRouteReferences
   } from '@mdm/api'
+  import { buildProcessRoutePayload } from './process-route-payload'
 
   const emit = defineEmits<{ success: [] }>()
   const user = useUserStore()
@@ -298,17 +299,7 @@
       onConfirm: async () => {
         try {
           await formRef.value?.validate()
-          await saveProcessRoute(
-            {
-              ...form,
-              code: form.code.trim().toUpperCase(),
-              name: form.name.trim(),
-              version: form.version.trim(),
-              path: form.path.trim(),
-              remark: form.remark.trim()
-            },
-            copy ? undefined : row?.id
-          )
+          await saveProcessRoute(buildProcessRoutePayload(form), copy ? undefined : row?.id)
           emit('success')
           return true
         } catch {

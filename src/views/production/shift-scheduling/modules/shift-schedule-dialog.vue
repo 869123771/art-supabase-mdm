@@ -132,6 +132,11 @@
     type ShiftScheduleDateMode,
     type ShiftScheduleRecord
   } from '@mdm/api'
+  import {
+    ALL_SHIFT_WEEKDAYS,
+    SHIFT_WEEKDAY_OPTIONS,
+    shiftScheduleParticipationText
+  } from '../../modules/shift-schedule-policy'
 
   interface OpenData {
     mode: 'add' | 'edit' | 'view'
@@ -146,6 +151,8 @@
     dateMode: ShiftScheduleDateMode
     startDate: string
     dateRange: string[]
+    weekdays: number[]
+    includeStatutoryHolidays: boolean
     personnelIds: string[]
     note: string
   }
@@ -174,6 +181,8 @@
       dateMode: 'single',
       startDate: dayjs().format('YYYY-MM-DD'),
       dateRange: [],
+      weekdays: [...ALL_SHIFT_WEEKDAYS],
+      includeStatutoryHolidays: false,
       personnelIds: [],
       note: ''
     }
@@ -199,6 +208,8 @@
       ? `${selectedShift.value.name} · ${selectedShift.value.startTime}—${selectedShift.value.endTime}`
       : '—',
     effectiveDate: effectiveDateText.value,
+    participation: shiftScheduleParticipationText(form.model),
+    holidayPolicy: form.model.includeStatutoryHolidays ? '参与排班' : '不参与排班',
     memberCount: `${form.members.length} 人`,
     note: form.model.note || '—'
   }))
@@ -207,6 +218,8 @@
     { key: 'pattern', field: 'pattern', label: '轮班模式' },
     { key: 'shift', field: 'shift', label: '班次' },
     { key: 'effectiveDate', field: 'effectiveDate', label: '排班日期' },
+    { key: 'participation', field: 'participation', label: '参与星期' },
+    { key: 'holidayPolicy', field: 'holidayPolicy', label: '法定假日' },
     { key: 'memberCount', field: 'memberCount', label: '班组人数' },
     { key: 'note', field: 'note', label: '备注' }
   ]
@@ -260,6 +273,22 @@
       }
     },
     {
+      key: 'includeStatutoryHolidays',
+      label: '法定假日',
+      type: 'checkbox',
+      span: 24,
+      slots: { default: () => '法定假日参与排班' },
+      help: '勾选后，所选星期遇到法定假日仍安排该班次；不勾选则自动排除。'
+    },
+    {
+      key: 'weekdays',
+      label: '参与星期',
+      type: 'checkboxGroup',
+      span: 24,
+      options: SHIFT_WEEKDAY_OPTIONS.map((option) => ({ ...option })),
+      help: '只在勾选的星期生成排班；未勾选的星期不会出现在排班日历和工厂日历。'
+    },
+    {
       key: 'people',
       label: '班组人员',
       type: 'divider',
@@ -291,6 +320,15 @@
         validator: (_rule: unknown, value: string[]) =>
           form.model.dateMode !== 'range' || value?.length === 2,
         message: '请选择完整的有效期间',
+        trigger: 'change'
+      }
+    ],
+    weekdays: [
+      {
+        type: 'array',
+        required: true,
+        min: 1,
+        message: '请至少选择一个参与排班的星期',
         trigger: 'change'
       }
     ],
@@ -354,6 +392,8 @@
         dateMode: row.dateMode,
         startDate: row.startDate,
         dateRange: row.endDate ? [row.startDate, row.endDate] : [],
+        weekdays: row.weekdays?.length ? [...row.weekdays] : [...ALL_SHIFT_WEEKDAYS],
+        includeStatutoryHolidays: row.includeStatutoryHolidays !== false,
         personnelIds: row.members.map((member) => member.id),
         note: row.note
       })
@@ -394,6 +434,8 @@
           dateMode: form.model.dateMode,
           startDate,
           endDate,
+          weekdays: form.model.weekdays,
+          includeStatutoryHolidays: form.model.includeStatutoryHolidays,
           note: form.model.note.trim(),
           personnelIds: form.model.personnelIds
         },

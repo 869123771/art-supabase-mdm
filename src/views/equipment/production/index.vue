@@ -30,7 +30,7 @@
                 <div>
                   <span>EQUIPMENT SCOPE</span>
                   <strong>设备范围</strong>
-                  <small>按生产组织或位置筛选</small>
+                  <small>按分类、生产组织或位置筛选</small>
                 </div>
                 <ElButton
                   text
@@ -54,11 +54,13 @@
               </button>
               <ArtAsyncState
                 :empty="!activeScopeTree.length"
-                :empty-text="scopeMode === 'department' ? '暂无生产组织' : '暂无存放位置'"
+                :empty-text="scopeEmptyText"
                 :empty-description="
-                  scopeMode === 'department'
-                    ? '建立部门或产线后，可按生产归属快速筛选设备。'
-                    : '维护存放位置后，可按现场区域快速筛选设备。'
+                  scopeMode === 'category'
+                    ? '维护设备分类后，可按分类层级快速筛选设备。'
+                    : scopeMode === 'department'
+                      ? '建立部门或产线后，可按生产归属快速筛选设备。'
+                      : '维护存放位置后，可按现场区域快速筛选设备。'
                 "
                 :empty-image-size="68"
                 :min-height="180"
@@ -92,10 +94,7 @@
           <main class="production-equipment-page__results">
             <div class="production-equipment-page__scope-bar art-card-xs">
               <div>
-                <span aria-hidden="true"
-                  ><ArtSvgIcon
-                    :icon="scopeMode === 'department' ? 'ri:node-tree' : 'ri:map-pin-range-line'"
-                /></span>
+                <span aria-hidden="true"><ArtSvgIcon :icon="scopeBarIcon" /></span>
                 <div>
                   <small>当前设备范围</small>
                   <strong>{{ activeScopeLabel }}</strong>
@@ -103,9 +102,13 @@
                 </div>
               </div>
               <div class="production-equipment-page__scope-meta">
-                <span>{{ overview.total }} 台设备</span>
+                <span>{{ currentTotal }} 台设备</span>
                 <ElTag v-if="activeScopeId" effect="plain" round>{{
-                  scopeMode === 'department' ? '包含下级产线' : '包含下级位置'
+                  scopeMode === 'category'
+                    ? '包含下级分类'
+                    : scopeMode === 'department'
+                      ? '包含下级产线'
+                      : '包含下级位置'
                 }}</ElTag>
               </div>
             </div>
@@ -142,15 +145,38 @@
       >
         <div v-if="detailRow" class="equipment-detail">
           <div class="equipment-detail__hero">
-            <span><ArtSvgIcon icon="ri:tools-line" /></span>
-            <div
-              ><small>{{ detailRow.equipmentCode }}</small
-              ><h2>{{ detailRow.equipmentName }}</h2
-              ><p>{{
-                [detailRow.equipmentBrand, detailRow.model].filter(Boolean).join(' · ') ||
-                '未维护品牌型号'
-              }}</p></div
-            >
+            <div class="equipment-detail__image">
+              <ElImage
+                v-if="detailRow.photoUrl"
+                :src="detailRow.photoUrl"
+                :preview-src-list="[detailRow.photoUrl]"
+                :alt="`${detailRow.equipmentName}设备图片`"
+                fit="cover"
+                preview-teleported
+              />
+              <span v-else aria-hidden="true"><ArtSvgIcon icon="ri:tools-line" /></span>
+            </div>
+            <div class="equipment-detail__identity">
+              <small>设备名称</small>
+              <h2>{{ detailRow.equipmentName }}</h2>
+              <p
+                ><span>设备编号</span><strong>{{ detailRow.equipmentCode }}</strong></p
+              >
+              <dl>
+                <div>
+                  <dt>规格型号</dt>
+                  <dd>{{ detailRow.model || '未设置' }}</dd>
+                </div>
+                <div>
+                  <dt>安装位置</dt>
+                  <dd>{{ detailRow.locationName || '未设置' }}</dd>
+                </div>
+                <div>
+                  <dt>使用部门</dt>
+                  <dd>{{ detailRow.departmentName || '待分配' }}</dd>
+                </div>
+              </dl>
+            </div>
             <ElTag
               :type="detailRow.status === 'enabled' ? 'success' : 'info'"
               effect="plain"
@@ -160,12 +186,14 @@
           </div>
           <div class="equipment-detail__summary">
             <div
-              ><small>部门 / 产线</small
-              ><strong>{{ detailRow.departmentName || '待分配' }}</strong></div
+              ><small>工作中心</small
+              ><strong>{{
+                [detailRow.workCenterCode, detailRow.workCenterName].filter(Boolean).join(' · ') ||
+                '未绑定'
+              }}</strong></div
             >
             <div
-              ><small>工作中心</small
-              ><strong>{{ detailRow.workCenterName || '未绑定' }}</strong></div
+              ><small>设备分类</small><strong>{{ detailRow.categoryName }}</strong></div
             >
             <div
               ><small>标准利用率</small
@@ -213,7 +241,7 @@
 
 <script setup lang="tsx">
   import dayjs from 'dayjs'
-  import { ElTag } from 'element-plus'
+  import { ElImage, ElTag } from 'element-plus'
   import TreeUtils from '@/utils/tree'
   import { useArtFeedback } from '@/hooks/core/useArtFeedback'
   import { useUserStore } from '@/store/modules/user'
@@ -234,6 +262,7 @@
     type BusinessWorkspaceMetric
   } from '@/components/business/business-workspace-header/index.vue'
   import BusinessTableWorkspaceActions from '@/components/business/business-table-workspace-actions/index.vue'
+  import BusinessTableRowActions from '@/components/business/business-table-row-actions/index.vue'
   import type { SearchFormItem } from '@/components/core/forms/art-search-bar/index.vue'
   import type {
     ArtTableQueryExpose,
@@ -255,7 +284,7 @@
   import EquipmentDialog, { type EquipmentDialogOpenData } from './modules/equipment-dialog.vue'
 
   defineOptions({ name: 'MdmProductionEquipment' })
-  type ScopeMode = 'department' | 'location'
+  type ScopeMode = 'category' | 'department' | 'location'
   type TreeReference = EquipmentReference & { children?: TreeReference[] }
   interface DialogExpose {
     handleOpen: (data: EquipmentDialogOpenData) => Promise<void>
@@ -270,7 +299,7 @@
   const dialogRef = ref<DialogExpose>()
   const drawerRef = ref<ArtDrawerExpose<ProductionEquipment>>()
   const detailRow = shallowRef<ProductionEquipment>()
-  const scopeMode = ref<ScopeMode>('department')
+  const scopeMode = ref<ScopeMode>('category')
   const activeScopeId = ref('')
   const activeScopeLabel = ref('全部设备')
   const references = reactive<ProductionEquipmentReferences>({
@@ -286,28 +315,55 @@
     connected: 0,
     unassigned: 0
   })
+  const currentTotal = ref(0)
   const search = reactive({ keyword: '', status: undefined as ProductionEquipmentQuery['status'] })
   const treeUtils = new TreeUtils({ idKey: 'id', parentKey: 'parentId', childrenKey: 'children' })
   const visibleTenantId = computed(() => effectiveTenantId.value ?? '')
   const departmentTree = computed(
     () => treeUtils.listToTree(references.departments) as TreeReference[]
   )
+  const categoryTree = computed(
+    () => treeUtils.listToTree(references.categories) as TreeReference[]
+  )
   const locationTree = computed(() => treeUtils.listToTree(references.locations) as TreeReference[])
   const scopeModeOptions = [
-    { label: '部门 / 产线', value: 'department' },
-    { label: '存放位置', value: 'location' }
+    { label: '分类', value: 'category' },
+    { label: '组织', value: 'department' },
+    { label: '地点', value: 'location' }
   ]
   const activeScopeTree = computed(() =>
-    scopeMode.value === 'department' ? departmentTree.value : locationTree.value
+    scopeMode.value === 'category'
+      ? categoryTree.value
+      : scopeMode.value === 'department'
+        ? departmentTree.value
+        : locationTree.value
+  )
+  const scopeEmptyText = computed(() =>
+    scopeMode.value === 'category'
+      ? '暂无设备分类'
+      : scopeMode.value === 'department'
+        ? '暂无生产组织'
+        : '暂无放置地点'
+  )
+  const scopeBarIcon = computed(() =>
+    scopeMode.value === 'category'
+      ? 'ri:folder-reduce-line'
+      : scopeMode.value === 'department'
+        ? 'ri:node-tree'
+        : 'ri:map-pin-range-line'
   )
   const scopeDescription = computed(() =>
     activeScopeId.value
-      ? scopeMode.value === 'department'
-        ? '设备范围将覆盖当前组织及其下级产线。'
-        : '设备范围将覆盖当前位置及其下级节点。'
-      : scopeMode.value === 'department'
-        ? '展示当前租户全部生产设备，可从左侧选择部门或产线。'
-        : '展示当前租户全部生产设备，可从左侧选择存放位置。'
+      ? scopeMode.value === 'category'
+        ? '设备范围将覆盖当前分类及其全部下级分类。'
+        : scopeMode.value === 'department'
+          ? '设备范围将覆盖当前组织及其下级产线。'
+          : '设备范围将覆盖当前位置及其下级节点。'
+      : scopeMode.value === 'category'
+        ? '展示当前租户全部生产设备，可从左侧选择设备分类。'
+        : scopeMode.value === 'department'
+          ? '展示当前租户全部生产设备，可从左侧选择部门或产线。'
+          : '展示当前租户全部生产设备，可从左侧选择放置地点。'
   )
 
   const metrics = computed<BusinessWorkspaceMetric[]>(() => [
@@ -368,11 +424,13 @@
       size: Number(params.size || 20),
       keyword: String(params.keyword || ''),
       status: params.status as ProductionEquipmentQuery['status'],
+      categoryId: scopeMode.value === 'category' ? activeScopeId.value || undefined : undefined,
       departmentId: scopeMode.value === 'department' ? activeScopeId.value || undefined : undefined,
       locationId: scopeMode.value === 'location' ? activeScopeId.value || undefined : undefined
     })
     Object.assign(references, result.references)
     Object.assign(overview, result.overview)
+    currentTotal.value = result.total
     return result
   }
 
@@ -400,6 +458,7 @@
     void tableRef.value?.refreshContext()
   }
   const scopeNodeIcon = (data: TreeReference): string => {
+    if (scopeMode.value === 'category') return 'ri:folder-3-line'
     if (scopeMode.value === 'location') return 'ri:map-pin-line'
     return data.kind === 'line' ? 'ri:git-branch-line' : 'ri:building-2-line'
   }
@@ -462,7 +521,11 @@
       formatter: (row) => (
         <div class="production-equipment-page__identity">
           <span>
-            <ArtSvgIcon icon="ri:tools-line" />
+            {row.photoUrl ? (
+              <img src={row.photoUrl} alt={`${row.equipmentName}缩略图`} width="38" height="38" />
+            ) : (
+              <ArtSvgIcon icon="ri:tools-line" />
+            )}
           </span>
           <span>
             <strong title={row.equipmentName}>{row.equipmentName}</strong>
@@ -480,8 +543,9 @@
     {
       prop: 'workCenterName',
       label: '工作中心',
-      minWidth: 150,
-      formatter: (row) => row.workCenterName || '—'
+      minWidth: 190,
+      formatter: (row) =>
+        [row.workCenterCode, row.workCenterName].filter(Boolean).join(' · ') || '—'
     },
     {
       prop: 'model',
@@ -515,7 +579,7 @@
       width: 176,
       fixed: 'right',
       formatter: (row) => (
-        <div class="production-equipment-page__row-actions">
+        <BusinessTableRowActions>
           <ArtButtonTable
             permission="MdmProductionEquipment:View"
             type="view"
@@ -530,7 +594,7 @@
             list={() => moreActions(row)}
             onClick={(item) => void handleMore(item, row)}
           />
-        </div>
+        </BusinessTableRowActions>
       )
     }
   ]
@@ -892,9 +956,17 @@
       place-items: center;
       width: 38px;
       height: 38px;
+      overflow: hidden;
       color: var(--theme-color);
       background: color-mix(in srgb, var(--theme-color) 8%, var(--el-bg-color));
       border-radius: var(--el-border-radius-base);
+
+      .el-image,
+      img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+      }
     }
 
     :deep(&__identity > span:last-child) {
@@ -915,12 +987,6 @@
       font-size: 11px;
       color: var(--el-text-color-secondary);
     }
-
-    :deep(&__row-actions) {
-      display: flex;
-      gap: 4px;
-      align-items: center;
-    }
   }
 
   .equipment-detail {
@@ -929,46 +995,97 @@
 
     &__hero {
       display: grid;
-      grid-template-columns: 52px minmax(0, 1fr) auto;
-      gap: 13px;
-      align-items: center;
-      padding: 16px;
+      grid-template-columns: 112px minmax(0, 1fr) auto;
+      gap: var(--art-space-4);
+      align-items: start;
+      padding: var(--art-space-4);
       background: color-mix(in srgb, var(--theme-color) 7%, var(--el-bg-color));
       border: 1px solid color-mix(in srgb, var(--theme-color) 15%, var(--el-border-color-lighter));
       border-radius: var(--el-border-radius-base);
     }
 
-    &__hero > span:first-child {
+    &__image {
       display: grid;
       place-items: center;
-      width: 52px;
-      height: 52px;
-      font-size: 23px;
+      width: 112px;
+      height: 112px;
+      overflow: hidden;
+      font-size: 32px;
       color: var(--theme-color);
       background: var(--el-bg-color);
       border-radius: var(--el-border-radius-base);
+
+      .el-image {
+        width: 100%;
+        height: 100%;
+      }
     }
 
-    &__hero small,
-    &__hero h2,
-    &__hero p {
+    &__identity {
+      min-width: 0;
+    }
+
+    &__identity small,
+    &__identity h2,
+    &__identity p,
+    &__identity dl,
+    &__identity dt,
+    &__identity dd {
       margin: 0;
     }
 
-    &__hero small {
+    &__identity > small {
       font-size: 10px;
+      font-weight: 700;
       color: var(--theme-color);
+      letter-spacing: 0.06em;
     }
 
-    &__hero h2 {
+    &__identity h2 {
       margin-top: 3px;
-      font-size: 18px;
+      font-size: 20px;
+      overflow-wrap: anywhere;
     }
 
-    &__hero p {
-      margin-top: 3px;
+    &__identity > p {
+      display: flex;
+      gap: var(--art-space-2);
+      align-items: baseline;
+      margin-top: 4px;
       font-size: 12px;
       color: var(--el-text-color-secondary);
+
+      strong {
+        font-family: var(--art-font-family-mono, Consolas, monospace);
+        font-weight: 600;
+        color: var(--el-text-color-primary);
+      }
+    }
+
+    &__identity dl {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: var(--art-space-3);
+      margin-top: var(--art-space-3);
+
+      > div {
+        min-width: 0;
+      }
+
+      dt {
+        font-size: 11px;
+        color: var(--el-text-color-secondary);
+      }
+
+      dd {
+        margin-top: 3px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        font-size: 13px;
+        font-weight: 600;
+        color: var(--el-text-color-primary);
+        white-space: nowrap;
+      }
     }
 
     &__summary {
@@ -1009,12 +1126,21 @@
     }
 
     .equipment-detail__hero {
-      grid-template-columns: 46px minmax(0, 1fr);
+      grid-template-columns: 80px minmax(0, 1fr);
+    }
+
+    .equipment-detail__image {
+      width: 80px;
+      height: 80px;
     }
 
     .equipment-detail__hero .el-tag {
       grid-column: 1/-1;
       justify-self: start;
+    }
+
+    .equipment-detail__identity dl {
+      grid-template-columns: 1fr;
     }
 
     .equipment-detail__summary {

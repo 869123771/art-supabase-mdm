@@ -52,9 +52,10 @@
               :label-key="(row) => formatBomMaterialDescription(row as MaterialArchive)"
               description-key="materialCode"
               title="批量添加组件物料"
-              subtitle="已存在的组件不会重复加入"
+              subtitle="父项物料不可作为自身组件；已存在组件不会重复加入"
               show-pagination
               :show-selected-panel="true"
+              :disabled-key="isComponentMaterialDisabled"
               @confirm="handleComponentsConfirm"
             >
               <template #trigger="{ open }">
@@ -65,20 +66,18 @@
             </ArtTableMultipleSelect>
           </div>
         </header>
-        <div class="bom-dialog__table-scroll">
-          <ArtTable
-            ref="componentTableRef"
-            class="bom-dialog__component-table"
-            :data="form.items"
-            :columns="componentColumns"
-            row-key="componentMaterialId"
-            :pagination="false"
-            table-layout="fixed"
-            max-height="360"
-            empty-text="暂无 BOM 组件"
-            empty-description="点击“添加组件”建立父项与子项的装配关系。"
-          />
-        </div>
+        <ArtTable
+          ref="componentTableRef"
+          class="bom-dialog__component-table"
+          :data="form.items"
+          :columns="componentColumns"
+          row-key="componentMaterialId"
+          :pagination="false"
+          table-layout="fixed"
+          max-height="360"
+          empty-text="暂无 BOM 组件"
+          empty-description="点击“添加组件”建立父项与子项的装配关系。"
+        />
         <footer
           ><span>共 {{ form.items.length }} 项组件</span
           ><span>有效用量已包含损耗率口径</span></footer
@@ -127,6 +126,10 @@
     type UnitOfMeasure
   } from '@mdm/api'
   import { formatBomMaterialDescription } from '../../modules/material-description'
+  import {
+    mergeBomComponentSelection,
+    removeBomComponentSelection
+  } from './bom-component-selection'
 
   export interface BomDialogOpenData {
     row?: BomRecord
@@ -174,6 +177,10 @@
   const form = reactive(initialForm())
   const tenantId = computed(() => form.tenantId)
   const scopedUnits = computed(() => units.value.filter((unit) => unit.tenantId === form.tenantId))
+  const inheritedParentUnitId = computed(() => {
+    const parent = selectedParent.value[0]
+    return parent?.productionUnitId || parent?.baseUnitId || ''
+  })
   const materialColumns = [
     { prop: 'materialCode', label: '物料编码', minWidth: 150 },
     { prop: 'materialName', label: '物料名称', minWidth: 180 },
@@ -240,7 +247,15 @@
         label: `${unit.unitName} · ${unit.unitCode}`,
         value: unit.id
       })),
-      props: { disabled: true, placeholder: '由父项物料自动带入' }
+      props: {
+        disabled: Boolean(inheritedParentUnitId.value),
+        clearable: !inheritedParentUnitId.value,
+        placeholder: inheritedParentUnitId.value
+          ? '已由父项物料自动带入'
+          : form.materialId
+            ? '父项未维护单位，请在此补充'
+            : '请先选择父项物料'
+      }
     },
     {
       key: 'effectiveFrom',
@@ -265,7 +280,13 @@
   const rules: FormRules<Record<string, unknown>> = {
     tenantId: [{ required: true, message: '请选择目标租户', trigger: 'change' }],
     materialId: [{ required: true, message: '请选择父项物料', trigger: 'change' }],
-    baseUnitId: [{ required: true, message: '请选择基准单位', trigger: 'change' }]
+    baseUnitId: [
+      {
+        required: true,
+        message: '请选择生产单位；父项物料未维护单位时可在此补充',
+        trigger: 'change'
+      }
+    ]
   }
   void Promise.all([
     userStore.ensureDictLoaded('mdmBomPurpose'),
@@ -289,7 +310,6 @@
     const materialName = formatBomMaterialDescription(materialById(row.componentMaterialId))
     return `第 ${rowIndex + 1} 行${materialName ? `“${materialName}”` : '组件'}`
   }
-  const componentIndex = (row: BomComponentInput) => form.items.indexOf(row)
   const componentColumns = computed<ColumnOption<BomComponentInput>[]>(() => [
     { type: 'index', label: '#', width: 48, align: 'center' },
     {
@@ -506,13 +526,14 @@
       prop: 'operation',
       label: '操作',
       width: 64,
+      fixed: 'right',
       align: 'center',
       formatter: (row) => (
         <ArtIconButton
           icon="ri:delete-bin-line"
           label="移除组件"
           tone="danger"
-          onClick={() => form.items.splice(componentIndex(row), 1)}
+          onClick={() => handleRemoveComponent(row)}
         />
       )
     }
@@ -521,33 +542,39 @@
     const row = rows[0] as MaterialArchive | undefined
     selectedParent.value = row ? [row] : []
     form.baseUnitId = row?.productionUnitId || row?.baseUnitId || ''
+    if (row && !form.baseUnitId) {
+      ElMessage.warning('该父项物料未维护生产单位，请在“生产单位”字段补充后保存')
+    }
+    if (!row || !form.items.some((item) => item.componentMaterialId === row.id)) return
+    handleRemoveComponentById(row.id)
+    ElMessage.info('父项物料不能同时作为组件，已从组件明细中移除')
   }
-  const handleComponentsConfirm = (_value: unknown, rows: DataSelectRecord[]) => {
-    const materials = rows as MaterialArchive[]
-    selectedComponents.value = materials.filter((item) => item.id !== form.materialId)
-    selectedComponentIds.value = selectedComponents.value.map((item) => item.id)
-    const existing = new Map(form.items.map((item) => [item.componentMaterialId, item]))
-    form.items = selectedComponents.value.map(
-      (item, index) =>
-        existing.get(item.id) || {
-          componentMaterialId: item.id,
-          sequenceNo: (index + 1) * 10,
-          quantity: 1,
-          unitId: item.baseUnitId || '',
-          scrapRate: 0,
-          mrpEnabled: true,
-          defaultIssueWarehouseId: item.defaultWarehouseId || null,
-          issueMethod: item.materialIssueMethod || 'production_pick',
-          backflushMethod: item.backflushMethod || 'none',
-          overIssueControlMethod: item.overIssueControlMethod || null,
-          projectText: '',
-          positionNo: '',
-          operationName: '',
-          effectiveFrom: dayjs().format('YYYY-MM-DD'),
-          effectiveTo: '9999-12-31',
-          remark: ''
-        }
+  const isComponentMaterialDisabled = (row: DataSelectRecord) => row.id === form.materialId
+  const syncComponentSelection = (materials: MaterialArchive[]) => {
+    selectedComponents.value = materials
+    selectedComponentIds.value = materials.map((item) => item.id)
+  }
+  const handleRemoveComponentById = (componentMaterialId: string) => {
+    const result = removeBomComponentSelection(
+      form.items,
+      selectedComponents.value,
+      componentMaterialId
     )
+    form.items = result.items
+    syncComponentSelection(result.materials)
+  }
+  const handleRemoveComponent = (row: BomComponentInput) =>
+    handleRemoveComponentById(row.componentMaterialId)
+  const handleComponentsConfirm = (_value: unknown, rows: DataSelectRecord[]) => {
+    const result = mergeBomComponentSelection(
+      form.items,
+      selectedComponents.value,
+      rows as MaterialArchive[],
+      form.materialId,
+      dayjs().format('YYYY-MM-DD')
+    )
+    form.items = result.items
+    syncComponentSelection(result.materials)
   }
   const validateComponents = async (): Promise<boolean> => {
     if (!form.items.length) {
@@ -591,6 +618,12 @@
     selectedComponentIds.value = selectedComponents.value.map((item) => item.id)
     if (data.row) Object.assign(form, cloneDeep(data.row))
     form.tenantId = data.row?.tenantId || data.tenantId
+    form.effectiveFrom ||= dayjs().format('YYYY-MM-DD')
+    form.effectiveTo ||= '9999-12-31'
+    form.items.forEach((item) => {
+      item.effectiveFrom ||= form.effectiveFrom
+      item.effectiveTo ||= form.effectiveTo
+    })
     if (data.copy) {
       form.id = undefined
       form.bomCode = ''
@@ -729,15 +762,9 @@
     text-align: center;
   }
 
-  .bom-dialog__table-scroll {
-    width: 100%;
-    overflow-x: scroll;
-    scrollbar-gutter: stable;
-  }
-
   .bom-dialog__component-table {
-    width: 2320px;
-    min-width: 2320px;
+    width: 100%;
+    min-width: 0;
   }
 
   @media (width <= 820px) {

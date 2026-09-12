@@ -35,6 +35,8 @@ export interface ShiftScheduleRecord {
   dateMode: ShiftScheduleDateMode
   startDate: string
   endDate: string | null
+  weekdays: number[]
+  includeStatutoryHolidays: boolean
   note: string
   memberCount: number
   members: ShiftScheduleMember[]
@@ -55,8 +57,48 @@ export interface ShiftScheduleSavePayload {
   dateMode: ShiftScheduleDateMode
   startDate: string
   endDate: string | null
+  weekdays: number[]
+  includeStatutoryHolidays: boolean
   note: string
   personnelIds: string[]
+}
+
+export interface MyShiftProfile {
+  personnelId: string
+  employeeId: string
+  employeeName: string
+  employeeNo: string
+  jobTitle: string | null
+  avatarUrl: string | null
+  departmentId: string
+  departmentName: string
+  departmentCode: string
+  factory: string | null
+}
+
+export interface MyShiftScheduleRecord {
+  id: string
+  departmentId: string
+  departmentName: string
+  departmentCode: string
+  factory: string | null
+  patternName: string
+  patternColor: string
+  shiftName: string
+  shiftStartTime: string
+  shiftEndTime: string
+  dateMode: ShiftScheduleDateMode
+  startDate: string
+  endDate: string | null
+  weekdays: number[]
+  includeStatutoryHolidays: boolean
+  note: string
+}
+
+export interface MyShiftScheduleResponse {
+  profiles: MyShiftProfile[]
+  schedules: MyShiftScheduleRecord[]
+  holidayDates: string[]
 }
 
 interface ShiftSchedulePersonnelPayload {
@@ -89,6 +131,42 @@ export async function fetchShiftSchedules(
         p_department_id: params.departmentId,
         p_start_date: params.startDate,
         p_end_date: params.endDate
+      }),
+    readOptions
+  )
+  return data ?? []
+}
+
+export async function fetchMyShiftSchedule(
+  startDate: string,
+  endDate: string
+): Promise<MyShiftScheduleResponse> {
+  const { data } = await responseHandle<MyShiftScheduleResponse>(
+    () =>
+      supabase.rpc('mdm_get_my_shift_schedule_secure', {
+        p_start_date: startDate,
+        p_end_date: endDate
+      }),
+    { ...readOptions, errorMessage: '我的排班加载失败，请重试' }
+  )
+  return {
+    profiles: data?.profiles ?? [],
+    schedules: data?.schedules ?? [],
+    holidayDates: data?.holidayDates ?? []
+  }
+}
+
+export async function fetchShiftScheduleHolidayDates(
+  departmentId: string,
+  startDate: string,
+  endDate: string
+): Promise<string[]> {
+  const { data } = await responseHandle<string[]>(
+    () =>
+      supabase.rpc('mdm_list_shift_schedule_holiday_dates_secure', {
+        p_department_id: departmentId,
+        p_start_date: startDate,
+        p_end_date: endDate
       }),
     readOptions
   )

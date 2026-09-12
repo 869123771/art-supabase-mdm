@@ -113,7 +113,7 @@ export type MaterialCategoryInput = Omit<
   'id' | 'materialType' | 'children' | 'createBy' | 'createTime' | 'updateBy' | 'updateTime'
 >
 
-export interface MaterialArchive extends MaterialReferenceBase {
+export interface MaterialArchive extends Omit<MaterialReferenceBase, 'remark'> {
   categoryId: string
   category?: Pick<MaterialCategory, 'id' | 'categoryCode' | 'categoryName'> | null
   materialCode: string
@@ -242,18 +242,21 @@ export interface MaterialArchive extends MaterialReferenceBase {
   }>
 }
 
-export type MaterialArchiveInput = Omit<
-  MaterialArchive,
-  | 'id'
-  | 'category'
-  | 'materialTypeRef'
-  | 'baseUnit'
-  | 'auxiliaryUnit'
-  | 'auxiliaryUnit2'
-  | 'attributeGroup'
-  | 'materialGroup'
-  | 'createBy'
-  | 'createTime'
-  | 'updateBy'
-  | 'updateTime'
->
+export type MaterialArchiveWriteOmitFields = readonly [
+  'id',
+  'category',
+  'materialTypeRef',
+  'baseUnit',
+  'productionUnit',
+  'auxiliaryUnit',
+  'auxiliaryUnit2',
+  'attributeGroup',
+  'materialGroup',
+  'defaultWarehouse',
+  'createBy',
+  'createTime',
+  'updateBy',
+  'updateTime'
+]
+
+export type MaterialArchiveInput = Omit<MaterialArchive, MaterialArchiveWriteOmitFields[number]>

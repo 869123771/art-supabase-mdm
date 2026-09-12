@@ -1,1 +1,0 @@
-import{Mn as e,_r as t,xn as n}from"./useApi-s_02lHjl-CMyuPVd_.js";import{t as r}from"./center-BjMceIAv.js";var i=e({name:`MdmChangeManagement`,__name:`index`,setup(e){return(e,i)=>(t(),n(r,{"initial-view":`changes`}))}});export{i as default};

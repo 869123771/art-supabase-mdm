@@ -179,7 +179,27 @@
                           <ArtSvgIcon :icon="resolveDayTypeMeta(data.day).icon" />
                           {{ resolveDayTypeMeta(data.day).displayLabel }}
                         </span>
-                        <small v-if="dayPattern(data.day)" class="production-calendar__duration"
+                        <span
+                          v-if="schedulesForDate(data.day).length"
+                          class="production-calendar__schedules"
+                        >
+                          <span
+                            v-for="schedule in schedulesForDate(data.day).slice(0, 2)"
+                            :key="schedule.id"
+                            class="production-calendar__schedule"
+                            :title="`${schedule.shiftName} · ${schedule.memberCount} 人`"
+                          >
+                            <i :style="{ background: schedule.patternColor }" />
+                            <span>{{ schedule.shiftName }}</span>
+                            <small>{{ schedule.memberCount }}人</small>
+                          </span>
+                          <small v-if="schedulesForDate(data.day).length > 2"
+                            >+{{ schedulesForDate(data.day).length - 2 }} 个班次</small
+                          >
+                        </span>
+                        <small
+                          v-else-if="dayPattern(data.day)"
+                          class="production-calendar__duration"
                           >{{ patternMinutes(dayPattern(data.day)) }} 分钟</small
                         >
                         <small v-else class="production-calendar__unset">未设置</small>
@@ -270,17 +290,20 @@
     fetchProductionCalendar,
     fetchProductionCalendarDaySettings,
     fetchCalendarReminder,
+    fetchShiftSchedules,
     deleteShiftPattern,
     type ProductionDepartment,
     type ShiftPattern,
     type ProductionCalendarDay,
     type ProductionCalendarDaySetting,
     type ProductionCalendarDayType,
-    type CalendarReminder
+    type CalendarReminder,
+    type ShiftScheduleRecord
   } from '@mdm/api'
   import ProductionTree from '../modules/production-tree.vue'
   import ProductionWorkspaceHeader from '../modules/production-workspace-header.vue'
   import { productionToday } from '../modules/production-model'
+  import { isShiftScheduleActiveOnDate } from '../modules/shift-schedule-policy'
   import PatternDialog from './modules/pattern-dialog.vue'
   import CalendarActionDialog from './modules/calendar-action-dialog.vue'
   import { calendarDayTypes } from './modules/calendar-day-types'
@@ -304,6 +327,7 @@
     patterns: [] as ShiftPattern[],
     days: [] as ProductionCalendarDay[],
     daySettings: [] as ProductionCalendarDaySetting[],
+    schedules: [] as ShiftScheduleRecord[],
     selectedDates: [] as string[],
     loading: false,
     error: '',
@@ -317,9 +341,23 @@
   const daySettingMap = computed(
     () => new Map(calendar.daySettings.map((setting) => [setting.workDate, setting]))
   )
+  const holidayDateSet = computed(
+    () =>
+      new Set(
+        calendar.daySettings
+          .filter(
+            (setting) => setting.source === 'statutory_holiday' && setting.dayType !== 'work_day'
+          )
+          .map((setting) => setting.workDate)
+      )
+  )
   const patternMap = computed(() => new Map(calendar.patterns.map((p) => [p.id, p])))
   const dayTypeLegend = calendarDayTypes
   const dayPattern = (date: string) => patternMap.value.get(dayMap.value.get(date) || '')
+  const schedulesForDate = (date: string) =>
+    calendar.schedules.filter((schedule) =>
+      isShiftScheduleActiveOnDate(schedule, date, holidayDateSet.value)
+    )
   const resolveDayType = (date: string): ProductionCalendarDayType =>
     daySettingMap.value.get(date)?.dayType ??
     (dayPattern(date) ? 'work_day' : [0, 6].includes(dayjs(date).day()) ? 'rest_day' : 'work_day')
@@ -329,10 +367,9 @@
     const setting = daySettingMap.value.get(date)
     return {
       ...meta,
-      displayLabel:
-        setting?.holidayName
-          ? `${dayType === 'work_day' ? '班 · ' : dayType === 'rest_day' ? '休 · ' : ''}${setting.holidayName}`
-          : meta.label
+      displayLabel: setting?.holidayName
+        ? `${dayType === 'work_day' ? '班 · ' : dayType === 'rest_day' ? '休 · ' : ''}${setting.holidayName}`
+        : meta.label
     }
   }
   const patternMinutes = (pattern: ShiftPattern | undefined) =>
@@ -407,6 +444,7 @@
         patterns: [],
         days: [],
         daySettings: [],
+        schedules: [],
         reminder: null,
         loading: false,
         error: ''
@@ -420,29 +458,38 @@
     const reminderEnd = dayjs(today).add(30, 'day')
     // Include the reminder horizon independently of the visible month.
     try {
-      const [patterns, visibleDays, upcomingDays, reminder, daySettings] = await Promise.all([
-        fetchShiftPatterns(user.info.tenantId || '', scope.selected),
-        fetchProductionCalendar(
-          user.info.tenantId || '',
-          scope.selected,
-          start,
-          monthEnd.format('YYYY-MM-DD')
-        ),
-        fetchProductionCalendar(
-          user.info.tenantId || '',
-          scope.selected,
-          today,
-          reminderEnd.format('YYYY-MM-DD')
-        ),
-        fetchCalendarReminder(user.info.tenantId || '', scope.selected),
-        fetchProductionCalendarDaySettings(scope.selected, start, monthEnd.format('YYYY-MM-DD'))
-      ])
+      const [patterns, visibleDays, upcomingDays, reminder, daySettings, schedules] =
+        await Promise.all([
+          fetchShiftPatterns(user.info.tenantId || '', scope.selected),
+          fetchProductionCalendar(
+            user.info.tenantId || '',
+            scope.selected,
+            start,
+            monthEnd.format('YYYY-MM-DD')
+          ),
+          fetchProductionCalendar(
+            user.info.tenantId || '',
+            scope.selected,
+            today,
+            reminderEnd.format('YYYY-MM-DD')
+          ),
+          fetchCalendarReminder(user.info.tenantId || '', scope.selected),
+          fetchProductionCalendarDaySettings(scope.selected, start, monthEnd.format('YYYY-MM-DD')),
+          hasAuth('MdmShiftScheduling:View')
+            ? fetchShiftSchedules({
+                departmentId: scope.selected,
+                startDate: start,
+                endDate: monthEnd.format('YYYY-MM-DD')
+              })
+            : Promise.resolve([])
+        ])
       if (request !== calendarRequest) return
       Object.assign(calendar, {
         patterns,
         days: uniqBy([...visibleDays, ...upcomingDays], 'workDate'),
         reminder,
-        daySettings
+        daySettings,
+        schedules
       })
     } catch {
       if (request === calendarRequest) calendar.error = '日历加载失败，请重试。'
@@ -478,7 +525,11 @@
   }
   function dayLabel(date: string) {
     const pattern = dayPattern(date)
-    return `${date}，${resolveDayTypeMeta(date).displayLabel}，${pattern ? pattern.name + '，' + patternMinutes(pattern) + ' 分钟' : '未设置班次'}`
+    const schedules = schedulesForDate(date)
+    const scheduleText = schedules.length
+      ? schedules.map((schedule) => `${schedule.shiftName}${schedule.memberCount}人`).join('，')
+      : '无人员排班'
+    return `${date}，${resolveDayTypeMeta(date).displayLabel}，${pattern ? pattern.name + '，' + patternMinutes(pattern) + ' 分钟' : '未设置轮班模式'}，${scheduleText}`
   }
   function openAction(kind: 'batch' | 'reference' | 'reminder', dates: string[] = []) {
     void actionDialog.value?.handleOpen({
@@ -644,7 +695,7 @@
     }
 
     :deep(.el-calendar-day) {
-      height: 128px;
+      height: 152px;
       padding: 4px;
     }
 
@@ -756,6 +807,48 @@
       white-space: nowrap;
     }
 
+    &__schedules {
+      display: grid;
+      gap: 3px;
+      min-width: 0;
+
+      > small {
+        font-size: 10px;
+        color: var(--el-text-color-secondary);
+      }
+    }
+
+    &__schedule {
+      display: grid;
+      grid-template-columns: 5px minmax(0, 1fr) auto;
+      gap: 4px;
+      align-items: center;
+      min-width: 0;
+      padding: 3px 5px;
+      font-size: 11px;
+      background: var(--el-fill-color-light);
+      border-radius: var(--el-border-radius-small);
+
+      > i {
+        width: 5px;
+        height: 5px;
+        border-radius: 50%;
+      }
+
+      > span {
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      > small {
+        font-size: 10px;
+        color: var(--el-text-color-secondary);
+        white-space: nowrap;
+      }
+    }
+
     &__pattern-actions {
       display: flex;
       flex-wrap: wrap;
@@ -841,7 +934,7 @@
       }
 
       :deep(.el-calendar-day) {
-        height: 128px;
+        height: 146px;
       }
 
       &__day {

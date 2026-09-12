@@ -29,10 +29,11 @@ export async function fetchProductionEquipment(params: ProductionEquipmentQuery)
   const from = (params.current - 1) * params.size
   const { data } = await responseHandle<EquipmentRpcPayload>(
     () =>
-      supabase.rpc('mdm_list_production_equipment_secure', {
+      supabase.rpc('mdm_list_production_equipment_v2_secure', {
         p_from: from,
         p_to: from + params.size - 1,
         p_keyword: params.keyword?.trim() || null,
+        p_category_id: params.categoryId || null,
         p_department_id: params.departmentId || null,
         p_location_id: params.locationId || null,
         p_status: params.status || null

@@ -46,6 +46,15 @@
           :show-submit="false"
           root-class="equipment-dialog__form"
         >
+          <template #photoUrl>
+            <ArtUploadImage
+              v-model="form.photoUrl"
+              title="上传设备图片"
+              :limit="1"
+              :size="104"
+              tip="支持上传或从资源库选择 1 张设备主图"
+            />
+          </template>
           <template #responsibleEmployeeId>
             <ArtEmployeeSelect
               :model-value="form.responsibleEmployeeId ?? undefined"
@@ -63,11 +72,13 @@
 
 <script setup lang="ts">
   import type { FormRules } from 'element-plus'
-  import { cloneDeep } from 'lodash-es'
+  import { cloneDeep, pick } from 'lodash-es'
+  import TreeUtils from '@/utils/tree'
   import type { EmployeeIntegrationItem } from '@/api/integration/employees'
   import ArtDialog from '@/components/core/dialogs/art-dialog/index.vue'
   import type { ArtDialogExpose } from '@/components/core/dialogs/art-dialog/types'
   import ArtForm, { type FormItem } from '@/components/core/forms/art-form/index.vue'
+  import ArtUploadImage from '@/components/core/forms/art-upload-image/index.vue'
   import ArtEmployeeSelect from '@/components/business/art-employee-select/index.vue'
   import ArtSvgIcon from '@/components/core/base/art-svg-icon/index.vue'
   import ArtDictDisplay from '@/components/core/base/art-dict-display/index.vue'
@@ -93,6 +104,14 @@
     id?: string
   }
 
+  interface EquipmentTreeOption {
+    id: string
+    parentId?: string | null
+    label: string
+    value: string
+    children?: EquipmentTreeOption[]
+  }
+
   const emit = defineEmits<{ success: [] }>()
   const userStore = useUserStore()
   const { getDictMap } = storeToRefs(userStore)
@@ -108,6 +127,7 @@
   })
   const tenantOptions = ref<Array<{ label: string; value: string }>>([])
   const editingRow = shallowRef<ProductionEquipment>()
+  const referenceTree = new TreeUtils({ parentKey: 'parentId' })
 
   const tabs = [
     { name: 'identity', label: '基础资料', icon: 'ri:fingerprint-line' },
@@ -164,6 +184,7 @@
     supplierId: null,
     equipmentCode: '',
     equipmentName: '',
+    photoUrl: '',
     equipmentBrand: '',
     model: '',
     manufacturer: '',
@@ -189,13 +210,22 @@
     form.tenantId ? items.filter((item) => item.tenantId === form.tenantId) : []
   const options = (items: EquipmentReference[]) =>
     inTenant(items).map((item) => ({ label: `${item.name} · ${item.code}`, value: item.id }))
-  const departmentOptions = computed(() => options(references.value.departments))
-  const workCenterOptions = computed(() =>
-    options(
-      references.value.workCenters.filter(
-        (item) => item.departmentId === form.productionDepartmentId
-      )
+  const treeOptions = (items: EquipmentReference[]): EquipmentTreeOption[] =>
+    referenceTree.listToTree(
+      inTenant(items).map((item) => ({
+        id: item.id,
+        parentId: item.parentId,
+        label: `${item.name} · ${item.code}`,
+        value: item.id
+      }))
     )
+  const categoryOptions = computed(() => treeOptions(references.value.categories))
+  const departmentOptions = computed(() => treeOptions(references.value.departments))
+  const locationOptions = computed(() => treeOptions(references.value.locations))
+  const workCenterOptions = computed(() =>
+    inTenant(references.value.workCenters)
+      .filter((item) => item.departmentId === form.productionDepartmentId)
+      .map((item) => ({ label: `${item.code} · ${item.name}`, value: item.id }))
   )
   const selectedEmployee = computed<EmployeeIntegrationItem[]>(() => {
     if (!editingRow.value?.responsibleEmployeeId || !editingRow.value.responsibleName) return []
@@ -229,15 +259,22 @@
           key: 'equipmentCode',
           type: 'input',
           help: '可留空，由企业编码规则自动生成。',
-          props: { maxlength: 60, placeholder: '留空自动生成' }
+          props: { maxlength: 60, placeholder: '留空自动生成', disabled: Boolean(form.id) }
         },
         { label: '设备名称', key: 'equipmentName', type: 'input', props: { maxlength: 120 } },
         {
+          label: '设备图片',
+          key: 'photoUrl',
+          type: 'slot',
+          span: 24,
+          help: '用于设备列表识别与档案首屏展示。'
+        },
+        {
           label: '设备分类',
           key: 'categoryId',
-          type: 'select',
-          options: options(references.value.categories),
-          props: { filterable: true }
+          type: 'treeSelect',
+          options: categoryOptions.value,
+          props: { checkStrictly: true, filterable: true, defaultExpandAll: true }
         },
         {
           label: '启用状态',
@@ -251,23 +288,36 @@
         {
           label: '部门 / 产线',
           key: 'productionDepartmentId',
-          type: 'select',
+          type: 'treeSelect',
           options: departmentOptions.value,
-          props: { filterable: true }
+          props: { checkStrictly: true, filterable: true, defaultExpandAll: true }
         },
         {
           label: '工作中心',
           key: 'workCenterId',
           type: 'select',
           options: workCenterOptions.value,
-          props: { clearable: true, filterable: true }
+          props: {
+            clearable: true,
+            filterable: true,
+            disabled: form.syncWorkCenter,
+            placeholder: form.syncWorkCenter ? '保存后自动回填设备编号' : '选择已有工作中心'
+          },
+          help: form.syncWorkCenter
+            ? '新建设备保存后，将自动回填同编码工作中心。'
+            : '仅显示所选部门 / 产线下的工作中心。'
         },
         {
           label: '放置地点',
           key: 'locationId',
-          type: 'select',
-          options: options(references.value.locations),
-          props: { clearable: true, filterable: true }
+          type: 'treeSelect',
+          options: locationOptions.value,
+          props: {
+            clearable: true,
+            checkStrictly: true,
+            filterable: true,
+            defaultExpandAll: true
+          }
         },
         { label: '设备管理员', key: 'responsibleEmployeeId', type: 'slot' },
         {
@@ -281,7 +331,14 @@
           label: '同步更新工作中心',
           key: 'syncWorkCenter',
           type: 'switch',
-          help: '启用后由后续生产配置流程同步设备与工作中心关系。'
+          props: {
+            disabled: Boolean(form.id),
+            activeText: '自动生成',
+            inactiveText: '手动选择'
+          },
+          help: form.id
+            ? '同步生成策略仅在新建设备时设置，已有设备保留当前工作中心关系。'
+            : '开启后保存设备时同步创建同编号、同名称、同所属产线的工作中心。'
         }
       ]
     if (activeTab.value === 'technical')
@@ -368,6 +425,39 @@
     productionDepartmentId: [{ required: true, message: '请选择部门或产线', trigger: 'change' }]
   }
 
+  const equipmentInputKeys = [
+    'tenantId',
+    'categoryId',
+    'productionDepartmentId',
+    'locationId',
+    'workCenterId',
+    'responsibleEmployeeId',
+    'supplierId',
+    'equipmentCode',
+    'equipmentName',
+    'photoUrl',
+    'equipmentBrand',
+    'model',
+    'manufacturer',
+    'factoryNo',
+    'fixedAssetNo',
+    'manufactureDate',
+    'installationDate',
+    'acceptanceDate',
+    'enableDate',
+    'trafficLightCardNo',
+    'andonBoxNo',
+    'pulseIntervalSeconds',
+    'standardUtilization',
+    'syncWorkCenter',
+    'operationStatus',
+    'status',
+    'remark',
+    'sort'
+  ] as const satisfies readonly (keyof ProductionEquipmentInput)[]
+
+  const buildWriteInput = (): ProductionEquipmentInput => cloneDeep(pick(form, equipmentInputKeys))
+
   const handleSubmit = async (): Promise<boolean> => {
     try {
       activeTab.value = 'identity'
@@ -379,7 +469,7 @@
         await formRef.value?.validate()
         return false
       }
-      await saveProductionEquipment(cloneDeep(form), form.id)
+      await saveProductionEquipment(buildWriteInput(), form.id)
       emit('success')
       return true
     } catch {
@@ -417,6 +507,12 @@
     () => {
       if (!workCenterOptions.value.some((item) => item.value === form.workCenterId))
         form.workCenterId = null
+    }
+  )
+  watch(
+    () => form.syncWorkCenter,
+    (enabled) => {
+      if (enabled && !form.id) form.workCenterId = null
     }
   )
   defineExpose({ handleOpen })
