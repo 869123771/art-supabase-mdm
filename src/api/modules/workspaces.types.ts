@@ -41,6 +41,7 @@ export interface WorkCenterInput {
   code: string
   name: string
   departmentId: string
+  operationControlCodeId: string | null
   mainCenterId: string | null
   personnelMode: string
   headcount: number
@@ -52,7 +53,33 @@ export interface WorkCenterInput {
 export interface WorkCenter extends WorkCenterInput, WorkspaceAudit {
   qrToken: string
   department: { id: string; name: string; code: string } | null
+  operationControlCode: { id: string; code: string; name: string } | null
   mainCenter: { id: string; code: string; name: string } | null
+}
+export interface WorkCenterActivityInput {
+  activityName: string
+  activityType: string
+  maintenanceRule: string
+  baseQuantity: number
+  activityUnit: string
+  planFormulaId: string | null
+  reportFormulaId: string | null
+  backflush: boolean
+  remark: string
+  sort: number
+}
+export interface WorkCenterActivity extends WorkCenterActivityInput, WorkspaceAudit {
+  workCenterId: string
+  planFormula: { id: string; code: string; name: string; expression: string } | null
+  reportFormula: { id: string; code: string; name: string; expression: string } | null
+}
+export interface WorkCenterReference {
+  id: string
+  code: string
+  name: string
+  activityType?: string
+  planExpression?: string
+  reportExpression?: string
 }
 export interface CommonWorkCenter {
   id: string
@@ -153,6 +180,11 @@ export interface ProcessStepInput {
   departmentId: string | null
   operationMode: string
   controlCodeId: string | null
+  processingMode: string
+  reportMode: string
+  inspectionMode: string
+  sequenceControl: string
+  reworkMode: string
   needInspection: boolean
   firstInspection: boolean
   firstInspectionControl: string
@@ -189,6 +221,13 @@ export interface ProcessRouteReference {
   unit?: string
   planExpression?: string
   reportExpression?: string
+  activityType?: string | null
+  processingMode?: string | null
+  reportMode?: string | null
+  inspectionMode?: string | null
+  sequenceControl?: string | null
+  reworkMode?: string | null
+  departmentId?: string | null
 }
 
 export interface ProcessRouteReferences {

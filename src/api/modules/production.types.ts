@@ -18,6 +18,9 @@ export interface ProductionDepartment extends ProductionDepartmentInput {
   id: string
   tenantId: string
 }
+export interface ProductionDepartmentTreeNode extends ProductionDepartment {
+  children: ProductionDepartmentTreeNode[]
+}
 export interface ProductionPersonInput {
   tenantId: string
   departmentId: string

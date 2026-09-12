@@ -42,6 +42,25 @@
                   placeholder="本工作中心（默认）"
                   :disabled-key="disabledCenter"
               /></template>
+              <template #operationControlCodeId
+                ><ArtTableSingleSelect
+                  :model-value="form.model.operationControlCodeId || undefined"
+                  @update:model-value="
+                    form.model.operationControlCodeId = $event == null ? null : String($event)
+                  "
+                  :selected-data="form.controlCodeSelection"
+                  :api-fn="fetchControlCodes"
+                  :columns="[
+                    { prop: 'code', label: '控制码', minWidth: 140 },
+                    { prop: 'name', label: '名称', minWidth: 220 }
+                  ]"
+                  label-key="name"
+                  title="选择工序控制码"
+                  subtitle="来源：工艺主数据 · 工序控制码"
+                  search-placeholder="控制码 / 名称"
+                  placeholder="请选择工序控制码"
+                  :disabled="!referenceTenantId"
+              /></template>
               <template #personIds
                 ><ArtEmployeeSelect
                   multiple
@@ -54,6 +73,20 @@
                   search-placeholder="姓名 / 工号"
               /></template>
             </ArtForm>
+          </ArtSectionCard>
+        </ElTabPane>
+        <ElTabPane label="活动信息" name="活动信息" lazy>
+          <ArtSectionCard
+            title="活动信息"
+            subtitle="维护工作中心的标准活动、计量基数与计划 / 汇报公式。"
+            preserve-content-structure
+          >
+            <ActivityEditor
+              ref="activityEditorRef"
+              v-model="form.activities"
+              :formulas="form.activityFormulas"
+              :readonly="form.readonly"
+            />
           </ArtSectionCard>
         </ElTabPane>
         <ElTabPane v-for="section in sections" :key="section" :label="section" :name="section" lazy>
@@ -104,6 +137,7 @@
   import ArtEmployeeSelect from '@/components/business/art-employee-select/index.vue'
   import ArtTableSingleSelect from '@/components/core/forms/art-data-select/table-single.vue'
   import { ref, reactive, computed, watch } from 'vue'
+  import { ElMessage } from 'element-plus'
   import { cloneDeep, pick } from 'lodash-es'
   import ArtForm, { type FormItem } from '@/components/core/forms/art-form/index.vue'
   import type { ArtDialogExpose } from '@/components/core/dialogs/art-dialog/types'
@@ -115,17 +149,22 @@
   import { useUserStore } from '@/store/modules/user'
   import {
     saveWorkCenter,
+    fetchWorkCenterActivities,
+    fetchWorkCenterReferenceOptions,
     fetchAvailableMainCenters,
     fetchCenterDefaults,
     fetchProductionPersonSelector,
     fetchCenterPeople,
     type WorkCenter,
     type WorkCenterInput,
+    type WorkCenterActivityInput,
+    type WorkCenterReference,
     type ProductionDepartment
   } from '@mdm/api'
   import { departmentOptions } from '../../modules/production-model'
   import { createCenterPolicy, createWorkCenter } from './center-policy'
   import PolicyEditor from './policy-editor.vue'
+  import ActivityEditor from './activity-editor.vue'
   interface OpenData {
     row?: WorkCenter
     mode: 'add' | 'edit' | 'copy' | 'view'
@@ -137,6 +176,7 @@
   const user = useUserStore()
   const dialogRef = ref<ArtDialogExpose<OpenData>>()
   const formRef = ref<InstanceType<typeof ArtForm>>()
+  const activityEditorRef = ref<InstanceType<typeof ActivityEditor>>()
   const automationDialog = ref<ArtDialogExpose>()
   const automationPolicy = ref(createCenterPolicy())
   const deleting = ref(false)
@@ -170,7 +210,10 @@
     error: '',
     departments: [] as ProductionDepartment[],
     people: [] as EmployeeIntegrationItem[],
-    mainSelection: [] as { id: string; code: string; name: string }[]
+    mainSelection: [] as { id: string; code: string; name: string }[],
+    controlCodeSelection: [] as WorkCenterReference[],
+    activityFormulas: [] as WorkCenterReference[],
+    activities: [] as WorkCenterActivityInput[]
   })
   const sections = ['报工规则', '生产控制', '人员与排程', '自动化'] as const
   const sectionMeta = {
@@ -216,6 +259,11 @@
       help: '默认以本工作中心为核心；多设备产线可选择未被其他中心绑定的工作中心。'
     },
     {
+      key: 'operationControlCodeId',
+      label: '工序控制码',
+      help: '来源于工艺主数据中的工序控制码。'
+    },
+    {
       key: 'personnelMode',
       label: '人员安排',
       type: 'select',
@@ -247,6 +295,7 @@
     { key: 'code', label: '工作中心' },
     { key: 'name', label: '名称' },
     { key: 'department', label: '所属产线' },
+    { key: 'operationControlCode', label: '工序控制码' },
     { key: 'main', label: '主工序位' },
     { key: 'staff', label: '人员安排' },
     { key: 'remark', label: '备注' }
@@ -254,6 +303,10 @@
   const basicDisplay = computed(() => ({
     ...form.model,
     department: form.departments.find((d) => d.id === form.model.departmentId)?.name,
+    operationControlCode:
+      form.controlCodeSelection[0]?.name && form.controlCodeSelection[0]?.code
+        ? `${form.controlCodeSelection[0].name} · ${form.controlCodeSelection[0].code}`
+        : '—',
     main: form.mainSelection[0]?.code || form.model.code,
     staff:
       form.model.personnelMode === '指定人数'
@@ -263,6 +316,35 @@
   const disabledCenter = (r: DataSelectRecord) => r.id === form.id
   const fetchCenters = (p: DataSelectFetchParams) =>
     fetchAvailableMainCenters(p.keyword, p.page, p.pageSize, form.id)
+  const referenceTenantId = computed(
+    () =>
+      form.departments.find((department) => department.id === form.model.departmentId)?.tenantId ||
+      ''
+  )
+  const fetchControlCodes = (p: DataSelectFetchParams) =>
+    fetchWorkCenterReferenceOptions(
+      'control_code',
+      referenceTenantId.value,
+      p.keyword,
+      p.page,
+      p.pageSize,
+      form.id
+    )
+  async function loadActivityFormulas() {
+    if (!referenceTenantId.value) {
+      form.activityFormulas = []
+      return
+    }
+    const result = await fetchWorkCenterReferenceOptions(
+      'activity_formula',
+      referenceTenantId.value,
+      '',
+      1,
+      1000,
+      form.id
+    )
+    form.activityFormulas = result.data
+  }
   async function handleOpen(data: OpenData) {
     currentDelete = data.onDelete
     Object.assign(form, {
@@ -275,7 +357,10 @@
       error: '',
       departments: data.departments,
       people: [],
-      mainSelection: data.row?.mainCenter ? [data.row.mainCenter] : []
+      mainSelection: data.row?.mainCenter ? [data.row.mainCenter] : [],
+      controlCodeSelection: data.row?.operationControlCode ? [data.row.operationControlCode] : [],
+      activityFormulas: [],
+      activities: []
     })
     if (data.mode === 'copy') {
       Object.assign(form.model, { code: '', name: '', mainCenterId: null })
@@ -291,7 +376,7 @@
       }[data.mode],
       subtitle: form.readonly
         ? '查看生产资源资料和各环节执行策略'
-        : '按页签维护基础资料、报工、生产、排程与自动化规则',
+        : '按页签维护基础资料、活动、报工、生产、排程与自动化规则',
       confirmText: '保存工作中心',
       cancelText: form.readonly ? '关闭' : '取消',
       showConfirmButton: !form.readonly,
@@ -299,12 +384,42 @@
       loading: true,
       onOpen: async (_data, api) => {
         try {
-          if (data.mode === 'add') {
-            const defaults = await fetchCenterDefaults(user.info.tenantId || '')
-            if (defaults) form.model.policy = cloneDeep(defaults)
-          }
-          if (form.model.personIds.length)
-            form.people = await fetchCenterPeople(form.model.personIds)
+          await Promise.all(
+            [
+              'mdmWorkCenterActivityName',
+              'mdmActivityType',
+              'mdmWorkCenterMaintenanceRule',
+              'mdmWorkCenterActivityUnit',
+              'commonBoolean'
+            ].map((code) => user.ensureDictLoaded(code))
+          )
+          const [defaults, people, activities] = await Promise.all([
+            data.mode === 'add'
+              ? fetchCenterDefaults(referenceTenantId.value || user.info.tenantId || '')
+              : Promise.resolve(null),
+            form.model.personIds.length
+              ? fetchCenterPeople(form.model.personIds)
+              : Promise.resolve([]),
+            data.row ? fetchWorkCenterActivities(data.row.id) : Promise.resolve([])
+          ])
+          if (defaults) form.model.policy = cloneDeep(defaults)
+          form.people = people
+          form.activities = activities.map((activity, index) => ({
+            ...pick(activity, [
+              'activityName',
+              'activityType',
+              'maintenanceRule',
+              'baseQuantity',
+              'activityUnit',
+              'planFormulaId',
+              'reportFormulaId',
+              'backflush',
+              'remark',
+              'sort'
+            ]),
+            sort: index
+          })) as WorkCenterActivityInput[]
+          await loadActivityFormulas()
         } catch {
           form.error = '配置加载失败，请关闭后重试'
         } finally {
@@ -320,6 +435,12 @@
         }
         try {
           await formRef.value?.validate()
+          const activityValidation = await activityEditorRef.value?.validate()
+          if (activityValidation?.valid === false) {
+            form.tab = '活动信息'
+            ElMessage.warning(activityValidation.firstError?.message || '请完整填写活动信息')
+            return false
+          }
           const payload: WorkCenterInput = {
             ...cloneDeep(form.model),
             code: form.model.code.trim(),
@@ -327,7 +448,12 @@
             mainCenterId: form.model.mainCenterId || null,
             personIds: form.model.personnelMode === '指定人员' ? form.model.personIds : []
           }
-          await saveWorkCenter(payload, form.id)
+          const activities = form.activities.map((activity, index) => ({
+            ...cloneDeep(activity),
+            remark: activity.remark.trim(),
+            sort: index
+          }))
+          await saveWorkCenter(payload, activities, form.id)
           emit('success')
         } catch {
           return false
@@ -342,6 +468,20 @@
     },
     { deep: true }
   )
+  watch(referenceTenantId, (tenantId, previousTenantId) => {
+    if (!tenantId || tenantId === previousTenantId) return
+    if (previousTenantId) {
+      form.model.operationControlCodeId = null
+      form.controlCodeSelection = []
+      form.activities.forEach((activity) => {
+        activity.planFormulaId = null
+        activity.reportFormulaId = null
+      })
+    }
+    void loadActivityFormulas().catch(() => {
+      form.error = '活动公式加载失败，请重试'
+    })
+  })
   defineExpose({ handleOpen })
 </script>
 <style scoped lang="scss">

@@ -148,6 +148,7 @@ export const createWorkCenter = (): WorkCenterInput => ({
   code: '',
   name: '',
   departmentId: '',
+  operationControlCodeId: null,
   mainCenterId: null,
   personnelMode: '指定人数',
   headcount: 1,

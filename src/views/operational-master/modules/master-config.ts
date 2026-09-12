@@ -357,8 +357,8 @@ const configurations: Record<string, OperationalMasterConfig> = {
   'activity-formula': {
     kind: 'activity-formula',
     routeName: 'MdmActivityFormula',
-    title: '活动公式配置',
-    description: '统一配置标准工时与实际汇报量公式，让计划与报工使用同一计算口径。',
+    title: '活动公式',
+    description: '通过用途、活动类型和参数化表达式，统一计划与实际汇报活动量的计算口径。',
     icon: 'ri:function-line',
     eyebrow: 'PROCESS MASTER DATA',
     codeKey: 'code',
@@ -368,13 +368,13 @@ const configurations: Record<string, OperationalMasterConfig> = {
         key: 'identity',
         title: '公式识别',
         description: '定义公式名称、用途、活动类型以及默认使用策略。',
-        fieldKeys: ['code', 'name', 'purpose', 'activityType', 'isDefault']
+        fieldKeys: ['code', 'name', 'purpose', 'activityTypes', 'isDefault']
       },
       {
         key: 'expression',
-        title: '计算表达式',
-        description: '分别维护计划与汇报口径，确保排程和报工计算一致。',
-        fieldKeys: ['planExpression', 'reportExpression', 'description']
+        title: '公式配置',
+        description: '由参数、运算符与函数生成机器表达式和业务译文。',
+        fieldKeys: ['formulaExpression', 'formulaTranslation', 'description']
       },
       {
         key: 'status',
@@ -391,14 +391,17 @@ const configurations: Record<string, OperationalMasterConfig> = {
         label: '用途',
         type: 'select',
         dictCode: 'mdmFormulaPurpose',
+        required: true,
         minWidth: 170,
         table: true
       },
       {
-        key: 'activityType',
+        key: 'activityTypes',
         label: '活动类型',
         type: 'select',
         dictCode: 'mdmActivityType',
+        multiple: true,
+        required: true,
         minWidth: 120,
         table: true
       },
@@ -411,22 +414,22 @@ const configurations: Record<string, OperationalMasterConfig> = {
         table: true
       },
       {
-        key: 'planExpression',
-        label: '计划活动量公式',
+        key: 'formulaExpression',
+        label: '公式',
         required: true,
         span: 24,
         minWidth: 240,
         table: true,
-        placeholder: '如：批量 × 标准工时'
+        placeholder: '通过参数和运算符生成公式'
       },
       {
-        key: 'reportExpression',
-        label: '汇报活动量公式',
-        required: true,
+        key: 'formulaTranslation',
+        label: '公式译文',
+        systemGenerated: true,
         span: 24,
         minWidth: 240,
         table: true,
-        placeholder: '如：良品数 × 标准工时'
+        placeholder: '系统根据公式自动生成'
       },
       {
         key: 'description',

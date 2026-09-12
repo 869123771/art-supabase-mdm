@@ -12,6 +12,9 @@ import type {
   OperationTemplateInput,
   WorkCenter,
   WorkCenterInput,
+  WorkCenterActivity,
+  WorkCenterActivityInput,
+  WorkCenterReference,
   CenterAdjustment,
   CenterAdjustmentInput,
   CenterDevice,
@@ -45,7 +48,7 @@ const write = {
 }
 type WorkCenterRow = Omit<WorkCenter, 'department' | 'mainCenter'>
 type WorkCenterDepartment = NonNullable<WorkCenter['department']>
-type WorkCenterReference = NonNullable<WorkCenter['mainCenter']>
+type MainCenterReference = NonNullable<WorkCenter['mainCenter']>
 type CenterPersonReference = Pick<
   ProductionPerson,
   'id' | 'tenantId' | 'name' | 'employeeNo' | 'jobTitle' | 'enabled'
@@ -118,7 +121,10 @@ export async function setOperationTemplatesEnabled(ids: string[], enabled: boole
 export async function fetchWorkCenters(p: WorkspaceQuery, options?: { signal?: AbortSignal }) {
   let q = supabase
     .from('mdm_work_center')
-    .select('*', { count: 'exact' })
+    .select(
+      '*,operationControlCode:mdm_operation_control_code!mdm_work_center_operation_control_code_fk(id,code:control_code,name:control_code_name)',
+      { count: 'exact' }
+    )
     .eq('tenant_id', p.tenantId)
     .order('sort')
     .order('code')
@@ -146,7 +152,7 @@ export async function fetchWorkCenters(p: WorkspaceQuery, options?: { signal?: A
         }, read)
       : Promise.resolve({ data: [] as WorkCenterDepartment[] }),
     mainCenterIds.length
-      ? responseHandle<WorkCenterReference[]>(() => {
+      ? responseHandle<MainCenterReference[]>(() => {
           const query = supabase
             .from('mdm_work_center')
             .select('id,code,name')
@@ -154,13 +160,20 @@ export async function fetchWorkCenters(p: WorkspaceQuery, options?: { signal?: A
             .in('id', mainCenterIds)
           return options?.signal ? query.abortSignal(options.signal) : query
         }, read)
-      : Promise.resolve({ data: [] as WorkCenterReference[] })
+      : Promise.resolve({ data: [] as MainCenterReference[] })
   ])
   const departments = keyBy(departmentResult.data ?? [], 'id')
   const mainCenters = keyBy(mainCenterResult.data ?? [], 'id')
   return {
     data: rows.map((row) => ({
       ...row,
+      operationControlCode: row.operationControlCode
+        ? {
+            id: row.operationControlCode.id,
+            code: row.operationControlCode.code,
+            name: row.operationControlCode.name
+          }
+        : null,
       department: departments[row.departmentId] ?? null,
       mainCenter: row.mainCenterId ? (mainCenters[row.mainCenterId] ?? null) : null
     })),
@@ -169,17 +182,52 @@ export async function fetchWorkCenters(p: WorkspaceQuery, options?: { signal?: A
     size: p.size
   }
 }
-export async function saveWorkCenter(input: WorkCenterInput, id?: string) {
-  const { policy, ...fields } = input
-  const payload = { ...keysToSnakeDeep(fields), policy }
-  const { data } = await responseHandle<{ id: string }[]>(
+export async function saveWorkCenter(
+  input: WorkCenterInput,
+  activities: WorkCenterActivityInput[],
+  id?: string
+) {
+  const { data } = await responseHandle<string>(
     () =>
-      id
-        ? supabase.from('mdm_work_center').update(payload).eq('id', id).select('id')
-        : supabase.from('mdm_work_center').insert(payload).select('id'),
-    write
+      supabase.rpc('mdm_save_work_center_with_activities', {
+        p_center_id: id || null,
+        p_center: keysToSnakeDeep(input),
+        p_activities: keysToSnakeDeep(activities)
+      }),
+    { ...write, requireAffected: false, message: id ? '工作中心已更新' : '工作中心已创建' }
   )
-  return data?.[0]?.id
+  return data
+}
+
+export async function fetchWorkCenterActivities(centerId: string) {
+  const { data } = await responseHandle<WorkCenterActivity[]>(
+    () => supabase.rpc('mdm_work_center_activities', { p_center_id: centerId }),
+    read
+  )
+  return data ?? []
+}
+
+export async function fetchWorkCenterReferenceOptions(
+  kind: 'control_code' | 'activity_formula' | 'equipment',
+  tenantId: string,
+  keyword: string,
+  current: number,
+  size: number,
+  centerId?: string
+) {
+  const { data } = await responseHandle<{ records: WorkCenterReference[]; total: number }>(
+    () =>
+      supabase.rpc('mdm_work_center_reference_options', {
+        p_kind: kind,
+        p_tenant_id: tenantId || null,
+        p_keyword: keyword,
+        p_from: (current - 1) * size,
+        p_to: current * size - 1,
+        p_center_id: centerId || null
+      }),
+    read
+  )
+  return { data: data?.records ?? [], total: data?.total ?? 0 }
 }
 export async function fetchAvailableMainCenters(
   keyword: string,
@@ -449,6 +497,16 @@ export async function saveProcessRoute(input: ProcessRouteInput, id?: string) {
     write
   )
 }
+export async function saveProcessRoutes(inputs: ProcessRouteInput[]) {
+  await responseHandle(
+    () =>
+      supabase
+        .from('mdm_process_route')
+        .insert(inputs.map((input) => keysToSnakeDeep(input)))
+        .select('id'),
+    { ...write, message: `已创建 ${inputs.length} 条工艺路线` }
+  )
+}
 export async function deleteProcessRoute(id: string) {
   await responseHandle(
     () => supabase.from('mdm_process_route').delete().eq('id', id).select('id'),
@@ -549,10 +607,26 @@ export async function saveProcessStep(input: ProcessStepInput, id?: string) {
     write
   )
 }
+export async function saveProcessSteps(inputs: ProcessStepInput[]) {
+  await responseHandle(
+    () =>
+      supabase
+        .from('mdm_process_route_step')
+        .insert(inputs.map((input) => keysToSnakeDeep(input)))
+        .select('id'),
+    { ...write, message: `已新增 ${inputs.length} 道工序` }
+  )
+}
 export async function deleteProcessStep(id: string) {
   await responseHandle(
     () => supabase.from('mdm_process_route_step').delete().eq('id', id).select('id'),
     write
+  )
+}
+export async function deleteProcessSteps(ids: string[]) {
+  await responseHandle(
+    () => supabase.from('mdm_process_route_step').delete().in('id', ids).select('id'),
+    { ...write, message: `已删除 ${ids.length} 道工序` }
   )
 }
 export async function fetchProcessRouteReferences(tenantId?: string) {

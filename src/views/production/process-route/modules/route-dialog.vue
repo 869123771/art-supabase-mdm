@@ -25,16 +25,30 @@
           :show-submit="false"
         >
           <template #materialId>
+            <ArtTableMultipleSelect
+              v-if="isCreating"
+              v-model="materialIds"
+              :selected-data="selection"
+              :api-fn="fetchMaterials"
+              :columns="materialColumns"
+              label-key="materialName"
+              description-key="materialCode"
+              title="批量选择产品物料"
+              subtitle="每个产品会创建一条独立路线，并继承各自的生产单位"
+              search-placeholder="搜索产品编码、名称或规格"
+              empty-text="暂无可选产品"
+              empty-description="请先维护产品物料后再创建工艺路线。"
+              :show-selected-panel="true"
+              @change="handleMaterialChange"
+            />
             <ArtTableSingleSelect
+              v-else
               v-model="form.materialId"
               :selected-data="selection"
               :api-fn="fetchMaterials"
-              :columns="[
-                { prop: 'materialCode', label: '产品编码', minWidth: 140 },
-                { prop: 'materialName', label: '产品名称', minWidth: 160 },
-                { prop: 'specificationModel', label: '规格型号', minWidth: 150 }
-              ]"
+              :columns="materialColumns"
               label-key="materialName"
+              description-key="materialCode"
               title="选择产品"
               subtitle="从当前租户的产品物料中选择路线适用对象"
               search-placeholder="搜索产品编码、名称或规格"
@@ -42,6 +56,10 @@
               empty-description="请先维护产品物料后再创建工艺路线。"
               @change="handleMaterialChange"
             />
+            <p v-if="isCreating && selection.length" class="process-route-dialog__material-hint">
+              <ArtSvgIcon icon="ri:information-line" />
+              {{ materialSelectionHint }}
+            </p>
           </template>
         </ArtForm>
       </div>
@@ -51,10 +69,12 @@
 
 <script setup lang="ts">
   import dayjs from 'dayjs'
-  import { cloneDeep } from 'lodash-es'
+  import { cloneDeep, uniq } from 'lodash-es'
   import ArtDictDisplay from '@/components/core/base/art-dict-display/index.vue'
   import ArtTableSingleSelect from '@/components/core/forms/art-data-select/table-single.vue'
+  import ArtTableMultipleSelect from '@/components/core/forms/art-data-select/table-multiple.vue'
   import ArtForm, { type FormItem } from '@/components/core/forms/art-form/index.vue'
+  import ArtSvgIcon from '@/components/core/base/art-svg-icon/index.vue'
   import type { ArtDialogExpose } from '@/components/core/dialogs/art-dialog/types'
   import ArtEntitySummary from '@/components/core/surfaces/art-entity-summary/index.vue'
   import type {
@@ -65,11 +85,14 @@
   import { useUserStore } from '@/store/modules/user'
   import {
     saveProcessRoute,
+    saveProcessRoutes,
     fetchProductionReferences,
+    fetchProductionDepartmentTree,
     fetchProcessRouteReferences,
     type ProcessRoute,
     type ProcessRouteInput,
-    type ProcessRouteReferences
+    type ProcessRouteReferences,
+    type ProductionDepartmentTreeNode
   } from '@mdm/api'
   import { buildProcessRoutePayload } from './process-route-payload'
 
@@ -79,6 +102,15 @@
   const dialogRef = ref<ArtDialogExpose>()
   const formRef = ref<InstanceType<typeof ArtForm>>()
   const selection = ref<NonNullable<ProcessRoute['material']>[]>([])
+  const materialIds = ref<DataSelectKey[]>([])
+  const isCreating = ref(true)
+  const productionUnitOverridden = ref(false)
+  const departmentTree = ref<ProductionDepartmentTreeNode[]>([])
+  const materialColumns = [
+    { prop: 'materialCode', label: '产品编码', minWidth: 140 },
+    { prop: 'materialName', label: '产品名称', minWidth: 180 },
+    { prop: 'specificationModel', label: '规格型号', minWidth: 160 }
+  ]
   const references = ref<ProcessRouteReferences>({
     groups: [],
     operations: [],
@@ -127,6 +159,12 @@
       ? `适用产品：${materialName}`
       : '定义产品版本、批量范围与生效规则；保存后可继续维护工序序列。'
   })
+  const materialSelectionHint = computed(() => {
+    const unitIds = uniq(selection.value.map((item) => item.productionUnitId).filter(Boolean))
+    if (unitIds.length <= 1)
+      return `已选择 ${selection.value.length} 个产品，生产单位已自动带入；仍可手工统一修改。`
+    return `已选择 ${selection.value.length} 个产品，生产单位不一致；不修改时将分别继承各产品单位。`
+  })
   const option = (rows: Array<{ id: string; code: string; name: string }>) =>
     rows.map((row) => ({ label: `${row.name} · ${row.code}`, value: row.id }))
   const items = computed<FormItem[]>(() => [
@@ -161,9 +199,17 @@
     {
       key: 'departmentId',
       label: '生产车间',
-      type: 'select',
-      options: option(references.value.departments),
-      props: { clearable: true, filterable: true }
+      type: 'treeSelect',
+      props: {
+        data: departmentTree.value,
+        clearable: true,
+        filterable: true,
+        checkStrictly: true,
+        defaultExpandAll: true,
+        nodeKey: 'id',
+        props: { label: 'name', value: 'id', children: 'children' },
+        placeholder: '按层级选择生产车间'
+      }
     },
     { key: 'scope', label: '批量与有效期', type: 'divider', span: 24 },
     {
@@ -183,7 +229,7 @@
       label: '生产单位',
       type: 'select',
       options: option(references.value.units),
-      props: { clearable: true, filterable: true }
+      props: { clearable: true, filterable: true, onChange: handleProductionUnitChange }
     },
     {
       key: 'effectiveDate',
@@ -258,22 +304,30 @@
     ]
   }
   const fetchMaterials = (p: DataSelectFetchParams) =>
-    fetchProductionReferences('material', user.info.tenantId || '', p.keyword, p.page, p.pageSize)
+    fetchProductionReferences('material', form.tenantId, p.keyword, p.page, p.pageSize)
+  const handleProductionUnitChange = () => {
+    productionUnitOverridden.value = true
+  }
   const handleMaterialChange = (
     _value: DataSelectKey | DataSelectKey[] | undefined,
     rows: DataSelectRecord[]
   ) => {
     selection.value = rows as NonNullable<ProcessRoute['material']>[]
-    const material = selection.value[0]
-    if (material?.productionUnitId && !form.productionUnitId)
-      form.productionUnitId = material.productionUnitId
+    materialIds.value = selection.value.map((item) => item.id)
+    form.materialId = selection.value[0]?.id || ''
+    if (productionUnitOverridden.value) return
+    const unitIds = uniq(selection.value.map((item) => item.productionUnitId).filter(Boolean))
+    form.productionUnitId = unitIds.length === 1 ? unitIds[0]! : null
   }
 
   async function handleOpen(row?: ProcessRoute, tenantId?: string, copy = false) {
     Object.assign(form, row ? cloneDeep(row) : initialForm())
+    isCreating.value = !row || copy
+    productionUnitOverridden.value = false
     form.tenantId = row?.tenantId || tenantId || user.info.tenantId || ''
     if (copy) Object.assign(form, { code: '', name: `${row?.name || ''} - 副本`, isDefault: false })
     selection.value = row?.material ? [row.material] : []
+    materialIds.value = selection.value.map((item) => item.id)
     await Promise.all(
       [
         'mdmProcessRouteType',
@@ -290,7 +344,13 @@
       loading: true,
       onOpen: async (_data, api) => {
         try {
-          references.value = await fetchProcessRouteReferences(tenantId || row?.tenantId)
+          const targetTenantId = row?.tenantId || tenantId || form.tenantId
+          const [nextReferences, nextDepartmentTree] = await Promise.all([
+            fetchProcessRouteReferences(targetTenantId),
+            fetchProductionDepartmentTree(targetTenantId)
+          ])
+          references.value = nextReferences
+          departmentTree.value = nextDepartmentTree
           formRef.value?.clearValidate()
         } finally {
           api.setLoading(false)
@@ -299,7 +359,20 @@
       onConfirm: async () => {
         try {
           await formRef.value?.validate()
-          await saveProcessRoute(buildProcessRoutePayload(form), copy ? undefined : row?.id)
+          if (isCreating.value) {
+            const targets = selection.value.map((material) =>
+              buildProcessRoutePayload({
+                ...form,
+                materialId: material.id,
+                productionUnitId: productionUnitOverridden.value
+                  ? form.productionUnitId
+                  : material.productionUnitId || null
+              })
+            )
+            await saveProcessRoutes(targets)
+          } else {
+            await saveProcessRoute(buildProcessRoutePayload(form), row?.id)
+          }
           emit('success')
           return true
         } catch {
@@ -326,6 +399,22 @@
       );
       border: 1px solid var(--el-border-color-lighter);
       border-radius: var(--art-control-radius);
+    }
+
+    &__material-hint {
+      display: flex;
+      gap: var(--art-space-2);
+      align-items: flex-start;
+      margin: var(--art-space-2) 0 0;
+      font-size: var(--art-font-size-caption);
+      line-height: 20px;
+      color: var(--el-text-color-secondary);
+
+      .art-svg-icon {
+        flex: none;
+        margin-top: 2px;
+        color: var(--theme-color);
+      }
     }
 
     @media (width <= 720px) {

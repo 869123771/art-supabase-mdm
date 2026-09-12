@@ -9,6 +9,40 @@ export type OperationalMasterKind =
 
 export type MasterGroupDomain = 'customer' | 'project' | 'operation' | 'process-route'
 
+export type ActivityFormulaPurpose =
+  | 'report_preparation'
+  | 'report_processing'
+  | 'report_other_1'
+  | 'report_other_2'
+  | 'plan_preparation'
+  | 'plan_processing'
+  | 'plan_other_1'
+  | 'plan_other_2'
+
+export type ActivityFormulaToken =
+  | { type: 'parameter'; value: string; label: string; parameterId: string }
+  | { type: 'operator'; value: '+' | '-' | '*' | '/' | '(' | ')'; label: string }
+  | { type: 'function'; value: 'ROUND' | 'CEIL' | 'FLOOR'; label: string }
+  | { type: 'number'; value: string; label: string }
+  | { type: 'literal'; value: string; label: string }
+
+export interface ActivityFormulaParameter {
+  id: string
+  tenantId: string
+  purpose: ActivityFormulaPurpose
+  parentId: string | null
+  nodeType: 'group' | 'parameter'
+  code: string
+  name: string
+  activityUnit: 'hour' | 'minute' | 'second' | null
+  relatedField: string
+  sort: number
+  enabled: boolean
+  remark: string
+}
+
+export type ActivityFormulaParameterInput = Omit<ActivityFormulaParameter, 'id'>
+
 export interface MasterGroup {
   id: string
   tenantId: string
@@ -72,9 +106,13 @@ export interface OperationalMasterRecord {
   source?: string | null
   purpose?: string | null
   activityType?: string | null
+  activityTypes?: string[]
   isDefault?: boolean
   planExpression?: string | null
   reportExpression?: string | null
+  formulaExpression?: string | null
+  formulaTranslation?: string | null
+  formulaTokens?: ActivityFormulaToken[]
   description?: string | null
   participatesScheduling?: boolean
   processingMode?: string | null

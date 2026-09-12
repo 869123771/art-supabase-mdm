@@ -27,12 +27,12 @@
       <div class="route-maintenance__workspace">
         <ArtSectionCard
           class="route-maintenance__sequences"
-          title="工序序列"
-          :subtitle="`${sequenceState.rows.length} 条路径；组织主干、并行与返工关系。`"
+          title="标准工序与并行序列"
+          :subtitle="`${sequenceState.rows.length} 条路径；标准工序为主路径，并行序列用于部装等分支路线。`"
           :loading="sequenceState.loading"
           :empty="!sequenceState.loading && !sequenceState.rows.length"
           empty-title="暂无工序序列"
-          empty-description="先创建一条主干序列，再添加路线中的工序节点。"
+          empty-description="先创建一条标准工序序列，再添加路线中的工序节点。"
           body-class="route-maintenance__sequence-body"
           :min-height="320"
         >
@@ -50,7 +50,7 @@
           </template>
           <template v-if="!readonly" #empty-action>
             <ElButton v-auth="'MdmProcessRoute:Edit'" type="primary" @click="openSequence()">
-              创建主干序列
+              创建标准工序
             </ElButton>
           </template>
           <ElScrollbar class="route-maintenance__sequence-scroll">
@@ -121,6 +121,25 @@
           </template>
         </ArtTableQuery>
       </div>
+
+      <ArtTableMultipleSelect
+        ref="operationSelectRef"
+        v-model="selectedOperationIds"
+        :selected-data="selectedOperations"
+        :api-fn="fetchOperationOptions"
+        :columns="operationColumns"
+        label-key="name"
+        description-key="code"
+        title="批量选择工序"
+        subtitle="选择工序集条目后，将按 10、20、30… 自动生成工序号"
+        search-placeholder="搜索工序编码、名称或助记码"
+        empty-text="暂无可选工序"
+        empty-description="请先在工序集中维护启用的标准工序。"
+        :show-selected-panel="true"
+        @confirm="handleOperationsConfirm"
+      >
+        <template #trigger></template>
+      </ArtTableMultipleSelect>
     </div>
   </ArtDialog>
 
@@ -182,7 +201,7 @@
           v-show="activeTab === 'basic'"
           ref="formRef"
           v-model="stepForm"
-          :items="stepItems"
+          :items="lockEditorItems(stepItems)"
           :rules="stepRules"
           :span="12"
           :gutter="24"
@@ -199,20 +218,26 @@
           />
           <ArtForm
             v-model="unitForm"
-            :items="unitItems"
+            :items="lockEditorItems(unitItems)"
             :span="12"
             :gutter="24"
             label-position="top"
             :show-reset="false"
             :show-submit="false"
           />
+          <div class="step-editor__equation" role="status">
+            <span>相当于</span>
+            <strong>1 {{ route?.productionUnit?.unitName || '生产单位' }}</strong>
+            <ArtSvgIcon icon="ri:arrow-right-line" />
+            <strong>{{ unitConversionPreview }} {{ operationUnitName }}</strong>
+          </div>
         </div>
 
         <div v-show="activeTab === 'activity'" class="step-editor__content">
           <div class="route-maintenance__tab-toolbar">
             <span>活动公式会自动带入计划与汇报表达式，仍可按工序调整。</span>
             <ElButton
-              v-if="!readonly && activityRows.length"
+              v-if="!editorReadonly && activityRows.length"
               v-auth="'MdmProcessRoute:Edit'"
               type="primary"
               plain
@@ -227,10 +252,17 @@
               title="暂无活动配置"
               description="活动用于计算计划与汇报数量，可按需引用活动公式。"
             >
-              <template v-if="!readonly" #default>
-                <ElButton type="primary" plain @click="addActivity">新增活动</ElButton>
+              <template v-if="!editorReadonly" #default>
+                <ElButton v-auth="'MdmProcessRoute:Edit'" type="primary" plain @click="addActivity"
+                  >新增活动</ElButton
+                >
               </template>
             </ArtEmptyState>
+            <div v-if="activityRows.length" class="route-maintenance__activity-row is-header">
+              <span>#</span><span>活动公式</span><span>活动名称</span><span>活动类型</span
+              ><span>基本数量</span><span>活动单位</span><span>资源</span><span>计划活动量公式</span
+              ><span>汇报活动量公式</span><span>操作</span>
+            </div>
             <div
               v-for="(activity, index) in activityRows"
               :key="activity.key"
@@ -244,6 +276,7 @@
                 clearable
                 placeholder="活动公式"
                 @change="applyFormula(activity)"
+                :disabled="editorReadonly"
               >
                 <ElOption
                   v-for="item in references.activityFormulas"
@@ -257,6 +290,13 @@
                 :aria-label="`第 ${index + 1} 行活动名称`"
                 maxlength="100"
                 placeholder="活动名称"
+                :disabled="editorReadonly"
+              />
+              <ElInput
+                :model-value="dictLabel('mdmActivityType', activity.activityType)"
+                :aria-label="`第 ${index + 1} 行活动类型`"
+                readonly
+                placeholder="由活动公式带入"
               />
               <ElInputNumber
                 v-model="activity.basicQuantity"
@@ -264,6 +304,7 @@
                 :min="0"
                 :precision="6"
                 controls-position="right"
+                :disabled="editorReadonly"
               />
               <ElSelect
                 v-model="activity.unitId"
@@ -271,6 +312,7 @@
                 filterable
                 clearable
                 placeholder="活动单位"
+                :disabled="editorReadonly"
               >
                 <ElOption
                   v-for="item in references.units"
@@ -284,34 +326,37 @@
                 :aria-label="`第 ${index + 1} 行资源`"
                 maxlength="200"
                 placeholder="资源"
+                :disabled="editorReadonly"
               />
               <ElInput
                 v-model="activity.planExpression"
                 :aria-label="`第 ${index + 1} 行计划活动量公式`"
                 placeholder="计划活动量公式"
+                :disabled="editorReadonly"
               />
               <ElInput
                 v-model="activity.reportExpression"
                 :aria-label="`第 ${index + 1} 行汇报活动量公式`"
                 placeholder="汇报活动量公式"
+                :disabled="editorReadonly"
               />
               <div class="route-maintenance__activity-actions">
                 <ArtIconButton
-                  v-if="!readonly"
+                  v-if="!editorReadonly"
                   icon="ri:arrow-up-line"
                   label="上移活动"
                   :disabled="index === 0"
                   @click="moveActivity(index, -1)"
                 />
                 <ArtIconButton
-                  v-if="!readonly"
+                  v-if="!editorReadonly"
                   icon="ri:arrow-down-line"
                   label="下移活动"
                   :disabled="index === activityRows.length - 1"
                   @click="moveActivity(index, 1)"
                 />
                 <ArtIconButton
-                  v-if="!readonly"
+                  v-if="!editorReadonly"
                   icon="ri:delete-bin-6-line"
                   label="删除活动"
                   tone="danger"
@@ -325,7 +370,7 @@
         <div v-show="activeTab === 'outsourcing'" class="step-editor__content">
           <ArtForm
             v-model="outsourcingForm"
-            :items="outsourcingItems"
+            :items="lockEditorItems(outsourcingItems)"
             :span="24"
             label-position="top"
             :show-reset="false"
@@ -336,7 +381,7 @@
         <div v-show="activeTab === 'inspection'" class="step-editor__content">
           <ArtForm
             v-model="inspectionForm"
-            :items="inspectionItems"
+            :items="lockEditorItems(inspectionItems)"
             :span="12"
             :gutter="24"
             label-position="top"
@@ -348,7 +393,7 @@
         <div v-show="activeTab === 'sop'" class="step-editor__content">
           <ArtForm
             v-model="sopForm"
-            :items="sopItems"
+            :items="lockEditorItems(sopItems)"
             :span="24"
             label-position="top"
             :show-reset="false"
@@ -360,6 +405,7 @@
                   v-model="sopForm.attachments"
                   multiple
                   :limit="10"
+                  :disabled="editorReadonly"
                   title="上传作业指导书"
                   tip="支持上传附件，也可选择工程主数据中的 ESOP 文档。"
                 />
@@ -384,27 +430,39 @@
   import ArtSectionCard from '@/components/core/surfaces/art-section-card/index.vue'
   import BusinessTableRowActions from '@/components/business/business-table-row-actions/index.vue'
   import ArtUploadFile from '@/components/core/forms/art-upload-file/index.vue'
+  import ArtTableMultipleSelect from '@/components/core/forms/art-data-select/table-multiple.vue'
   import type { ArtDialogExpose } from '@/components/core/dialogs/art-dialog/types'
   import type {
     ArtTableQueryExpose,
-    ArtTableQueryHeaderAction
+    ArtTableQueryHeaderAction,
+    ArtTableQueryHeaderActionContext
   } from '@/components/core/tables/art-table-query/index.vue'
   import type { ColumnOption } from '@/types'
   import type { SearchFormItem } from '@/components/core/forms/art-search-bar/index.vue'
+  import type {
+    DataSelectFetchParams,
+    DataSelectKey,
+    DataSelectRecord
+  } from '@/components/core/forms/art-data-select/types'
   import { useUserStore } from '@/store/modules/user'
   import {
     deleteProcessSequence,
     deleteProcessStep,
+    deleteProcessSteps,
+    fetchOperationalMaster,
     fetchProcessRouteReferences,
     fetchProcessSequences,
     fetchProcessSteps,
+    fetchWorkCenterActivities,
     saveProcessSequence,
     saveProcessStep,
+    saveProcessSteps,
     type ProcessRoute,
     type ProcessRouteReferences,
     type ProcessSequence,
     type ProcessStep,
     type ProcessStepInput,
+    type OperationalMasterRecord,
     type WorkspaceQuery
   } from '@mdm/api'
   import { buildProcessSequencePayload, buildProcessStepPayload } from './process-route-payload'
@@ -412,6 +470,7 @@
   interface ActivityRow {
     key: string
     formulaId: string
+    activityType: string
     name: string
     basicQuantity: number
     unitId: string
@@ -429,8 +488,10 @@
   const tableRef = ref<ArtTableQueryExpose>()
   const formRef = ref<InstanceType<typeof ArtForm>>()
   const sequenceFormRef = ref<InstanceType<typeof ArtForm>>()
+  const operationSelectRef = ref<InstanceType<typeof ArtTableMultipleSelect>>()
   const route = shallowRef<ProcessRoute>()
   const readonly = ref(false)
+  const editorReadonly = ref(false)
   const search = reactive({ keyword: '' })
   const activeTab = ref('basic')
   const references = reactive<ProcessRouteReferences>({
@@ -446,12 +507,21 @@
   })
   const sequenceState = reactive({ loading: false, selectedId: '', rows: [] as ProcessSequence[] })
   const stepRows = ref<ProcessStep[]>([])
+  const mainStepRows = ref<ProcessStep[]>([])
+  const selectedOperationIds = ref<DataSelectKey[]>([])
+  const selectedOperations = ref<OperationalMasterRecord[]>([])
+  const operationColumns = [
+    { prop: 'code', label: '工序编码', minWidth: 140 },
+    { prop: 'name', label: '工序名称', minWidth: 180 },
+    { prop: 'mnemonic', label: '助记码', minWidth: 120 },
+    { prop: 'remark', label: '工序说明', minWidth: 220 }
+  ]
   const initialSequence = () => ({
     sequenceNo: 1,
     sequenceType: 'main',
     transferInStepId: null as string | null,
     transferOutStepId: null as string | null,
-    remark: ''
+    remark: '标准工序'
   })
   const sequenceForm = reactive(initialSequence())
   const sequenceEditId = ref('')
@@ -467,6 +537,11 @@
     departmentId: null,
     operationMode: 'individual',
     controlCodeId: null,
+    processingMode: '',
+    reportMode: '',
+    inspectionMode: '',
+    sequenceControl: '',
+    reworkMode: '',
     needInspection: false,
     firstInspection: false,
     firstInspectionControl: 'none',
@@ -483,13 +558,21 @@
   const stepForm = reactive(initialStep())
   const stepEditId = ref('')
   const unitForm = reactive({ productionFactor: 1, operationFactor: 1, operationUnitId: '' })
-  const outsourcingForm = reactive({ enabled: false, supplierId: '', remark: '' })
+  const outsourcingForm = reactive({
+    enabled: false,
+    purchaseOrganization: '',
+    supplierId: '',
+    unitPrice: null as number | null,
+    remark: ''
+  })
   const inspectionForm = reactive({ method: '', standard: '', samplingRule: '', remark: '' })
   const sopForm = reactive({ documentIds: [] as string[], attachments: [] as string[] })
   const activityRows = ref<ActivityRow[]>([])
   const sequenceTypeLabel = (value: string) =>
-    getDictMap.value.mdmProcessRouteSequenceType?.find((item) => item.value === value)?.label ||
-    value
+    value === 'main'
+      ? '标准工序'
+      : getDictMap.value.mdmProcessRouteSequenceType?.find((item) => item.value === value)?.label ||
+        value
   const currentSequence = computed(() =>
     sequenceState.rows.find((item) => item.id === sequenceState.selectedId)
   )
@@ -512,11 +595,11 @@
     () => `${route.value?.name || '工艺路线'} · ${currentSequenceSubtitle.value}`
   )
   const stepTabs = computed(() => [
-    { name: 'basic', label: '基础信息', icon: 'ri:file-list-3-line', count: 0 },
+    { name: 'basic', label: '工序明细', icon: 'ri:file-list-3-line', count: 0 },
     { name: 'unit', label: '单位换算', icon: 'ri:exchange-line', count: 0 },
     {
       name: 'activity',
-      label: '活动配置',
+      label: '活动信息',
       icon: 'ri:function-line',
       count: activityRows.value.length
     },
@@ -539,6 +622,19 @@
       count: sopForm.documentIds.length + sopForm.attachments.length
     }
   ])
+  const operationUnitName = computed(
+    () =>
+      references.units.find((item) => item.id === unitForm.operationUnitId)?.name ||
+      references.units.find((item) => item.id === stepForm.unitId)?.name ||
+      '工序单位'
+  )
+  const unitConversionPreview = computed(() => {
+    const productionFactor = Number(unitForm.productionFactor) || 1
+    const operationFactor = Number(unitForm.operationFactor) || 1
+    return (productionFactor / operationFactor).toLocaleString('zh-CN', {
+      maximumFractionDigits: 6
+    })
+  })
   const activeStepPanel = computed(() => {
     const count = sopForm.documentIds.length + sopForm.attachments.length
     return (
@@ -607,6 +703,20 @@
   )
   const option = (rows: Array<{ id: string; code: string; name: string }>) =>
     rows.map((item) => ({ label: `${item.name} · ${item.code}`, value: item.id }))
+  const dictLabel = (code: string, value: string): string =>
+    getDictMap.value[code]?.find((item) => item.value === value)?.label || value || '—'
+  const lockEditorItems = (items: FormItem[]): FormItem[] =>
+    editorReadonly.value
+      ? items.map((item) => ({ ...item, props: { ...item.props, disabled: true } }))
+      : items
+  const fetchOperationOptions = (params: DataSelectFetchParams) =>
+    fetchOperationalMaster('operation', {
+      tenantId: route.value?.tenantId || user.info.tenantId || '',
+      current: params.page,
+      size: params.pageSize,
+      keyword: params.keyword,
+      enabled: true
+    })
 
   const sequenceItems = computed<FormItem[]>(() => [
     {
@@ -625,24 +735,52 @@
       key: 'transferInStepId',
       label: '转入工序',
       type: 'select',
-      options: stepOptions.value,
-      props: { clearable: true, filterable: true }
+      options: transferInStepOptions.value,
+      props: {
+        clearable: true,
+        filterable: true,
+        disabled: sequenceForm.sequenceType !== 'parallel',
+        placeholder: '选择标准工序中的前置工序'
+      },
+      help: '仅并行序列可设置，不能选择标准工序的末序。'
     },
     {
       key: 'transferOutStepId',
       label: '转出工序',
       type: 'select',
-      options: stepOptions.value,
-      props: { clearable: true, filterable: true }
+      options: transferOutStepOptions.value,
+      props: {
+        clearable: true,
+        filterable: true,
+        disabled: sequenceForm.sequenceType !== 'parallel',
+        placeholder: '选择返回标准工序的位置'
+      },
+      help: '仅并行序列可设置，不能选择标准工序的首序。'
     },
     { key: 'remark', label: '备注', type: 'textarea', props: { rows: 3, maxlength: 500 } }
   ])
-  const stepOptions = computed(() =>
-    stepRows.value.map((item) => ({ label: `${item.code}｜${item.name}`, value: item.id }))
+  const transferInStepOptions = computed(() =>
+    mainStepRows.value
+      .filter((item) => !item.isLast)
+      .map((item) => ({ label: `${item.code}｜${item.name}`, value: item.id }))
+  )
+  const transferOutStepOptions = computed(() =>
+    mainStepRows.value
+      .filter((item) => !item.isFirst)
+      .map((item) => ({ label: `${item.code}｜${item.name}`, value: item.id }))
   )
   const sequenceRules = {
     sequenceNo: [{ required: true, message: '请输入工序序列号', trigger: 'blur' }],
-    sequenceType: [{ required: true, message: '请选择序列类型', trigger: 'change' }]
+    sequenceType: [{ required: true, message: '请选择序列类型', trigger: 'change' }],
+    transferOutStepId: [
+      {
+        validator: (_rule: unknown, value: string | null, callback: (error?: Error) => void) =>
+          sequenceForm.sequenceType !== 'parallel' || sequenceForm.transferInStepId || value
+            ? callback()
+            : callback(new Error('并行序列的转入工序和转出工序不能同时为空')),
+        trigger: 'change'
+      }
+    ]
   }
   const stepItems = computed<FormItem[]>(() => [
     {
@@ -688,7 +826,7 @@
       label: '工作中心',
       type: 'select',
       options: option(references.workCenters),
-      props: { clearable: true, filterable: true }
+      props: { clearable: true, filterable: true, onChange: applyWorkCenter }
     },
     {
       key: 'departmentId',
@@ -708,7 +846,42 @@
       label: '工序控制码',
       type: 'select',
       options: option(references.controlCodes),
-      props: { clearable: true, filterable: true }
+      props: { clearable: true, filterable: true, onChange: applyControlCode }
+    },
+    {
+      key: 'processingMode',
+      label: '加工类型',
+      type: 'select',
+      options: getDictMap.value.mdmProcessingMode ?? [],
+      props: { disabled: true, placeholder: '由工序控制码带入' }
+    },
+    {
+      key: 'reportMode',
+      label: '汇报方式',
+      type: 'select',
+      options: getDictMap.value.mdmReportMode ?? [],
+      props: { disabled: true, placeholder: '由工序控制码带入' }
+    },
+    {
+      key: 'inspectionMode',
+      label: '检验方式',
+      type: 'select',
+      options: getDictMap.value.mdmInspectionMode ?? [],
+      props: { disabled: true, placeholder: '由工序控制码带入' }
+    },
+    {
+      key: 'sequenceControl',
+      label: '汇报顺序控制',
+      type: 'select',
+      options: getDictMap.value.mdmSequenceControl ?? [],
+      props: { disabled: true, placeholder: '由工序控制码带入' }
+    },
+    {
+      key: 'reworkMode',
+      label: '返工方式',
+      type: 'select',
+      options: getDictMap.value.mdmReworkMode ?? [],
+      props: { disabled: true, placeholder: '由工序控制码带入' }
     },
     { key: 'needInspection', label: '工序质检', type: 'switch' },
     { key: 'firstInspection', label: '首检', type: 'switch' },
@@ -718,8 +891,20 @@
       type: 'select',
       options: getDictMap.value.mdmProcessSequenceControlMode ?? []
     },
-    { key: 'isFirst', label: '首序', type: 'switch' },
-    { key: 'isLast', label: '末序', type: 'switch' },
+    {
+      key: 'isFirst',
+      label: '首序',
+      type: 'switch',
+      props: { disabled: true },
+      help: '由当前序列中的工序顺序自动识别'
+    },
+    {
+      key: 'isLast',
+      label: '末序',
+      type: 'switch',
+      props: { disabled: true },
+      help: '由当前序列中的工序顺序自动识别'
+    },
     { key: 'critical', label: '关键工序', type: 'switch' },
     {
       key: 'sort',
@@ -752,11 +937,29 @@
   const outsourcingItems = computed<FormItem[]>(() => [
     { key: 'enabled', label: '启用委外', type: 'switch' },
     {
+      key: 'purchaseOrganization',
+      label: '采购组织',
+      type: 'select',
+      options: getDictMap.value.mdmMaterialPurchaseOrganization ?? [],
+      props: { clearable: true, disabled: !outsourcingForm.enabled }
+    },
+    {
       key: 'supplierId',
       label: '供应商',
       type: 'select',
       options: option(references.suppliers),
       props: { clearable: true, filterable: true, disabled: !outsourcingForm.enabled }
+    },
+    {
+      key: 'unitPrice',
+      label: '委外单价（元）',
+      type: 'number',
+      props: {
+        min: 0,
+        precision: 4,
+        class: '!w-full',
+        disabled: !outsourcingForm.enabled
+      }
     },
     { key: 'remark', label: '委外说明', type: 'textarea', props: { rows: 4, maxlength: 1000 } }
   ])
@@ -812,14 +1015,35 @@
     return result
   }
   const columns = (): ColumnOption<ProcessStep>[] => [
+    ...(!readonly.value ? [{ type: 'selection' as const, width: 48, reserveSelection: true }] : []),
+    {
+      prop: 'sequence',
+      label: '工序序列',
+      width: 96,
+      formatter: (row) => row.sequence?.sequenceNo ?? '—'
+    },
+    {
+      prop: 'sequenceType',
+      label: '序列类型',
+      width: 110,
+      formatter: (row) => sequenceTypeLabel(row.sequence?.sequenceType || '')
+    },
     { prop: 'code', label: '工序号', width: 100 },
     { prop: 'name', label: '工序名称', minWidth: 150, showOverflowTooltip: true },
     {
       prop: 'operation',
-      label: '工序集',
+      label: '工序编码',
       minWidth: 140,
-      formatter: (row) => row.operation?.name || '自定义工序'
+      formatter: (row) => row.operation?.code || '自定义'
     },
+    { prop: 'description', label: '工序说明', minWidth: 180, showOverflowTooltip: true },
+    {
+      prop: 'unit',
+      label: '工序单位',
+      width: 110,
+      formatter: (row) => row.unit?.unitName || '未指定'
+    },
+    { prop: 'basicBatch', label: '基本批量', width: 100, align: 'right' },
     {
       prop: 'workCenter',
       label: '工作中心',
@@ -832,7 +1056,82 @@
       minWidth: 130,
       formatter: (row) => row.department?.name || '未指定'
     },
-    { prop: 'basicBatch', label: '基本批量', width: 100, align: 'right' },
+    {
+      prop: 'operationMode',
+      label: '作业类型',
+      width: 110,
+      formatter: (row) => dictLabel('mdmProcessOperationMode', row.operationMode)
+    },
+    {
+      prop: 'controlCode',
+      label: '工序控制码',
+      minWidth: 140,
+      formatter: (row) => row.controlCode?.controlCodeName || '未指定'
+    },
+    {
+      prop: 'processingMode',
+      label: '加工类型',
+      width: 110,
+      formatter: (row) => dictLabel('mdmProcessingMode', row.processingMode)
+    },
+    {
+      prop: 'reportMode',
+      label: '汇报方式',
+      width: 110,
+      formatter: (row) => dictLabel('mdmReportMode', row.reportMode)
+    },
+    {
+      prop: 'inspectionMode',
+      label: '检验方式',
+      width: 110,
+      formatter: (row) => dictLabel('mdmInspectionMode', row.inspectionMode)
+    },
+    {
+      prop: 'sequenceControl',
+      label: '汇报顺序控制',
+      width: 130,
+      formatter: (row) => dictLabel('mdmSequenceControl', row.sequenceControl)
+    },
+    {
+      prop: 'reworkMode',
+      label: '返工方式',
+      width: 110,
+      formatter: (row) => dictLabel('mdmReworkMode', row.reworkMode)
+    },
+    {
+      prop: 'needInspection',
+      label: '工序质检',
+      width: 92,
+      align: 'center',
+      formatter: (row) => (row.needInspection ? '是' : '否')
+    },
+    {
+      prop: 'firstInspection',
+      label: '首检',
+      width: 72,
+      align: 'center',
+      formatter: (row) => (row.firstInspection ? '是' : '否')
+    },
+    {
+      prop: 'firstInspectionControl',
+      label: '首检控制方式',
+      width: 130,
+      formatter: (row) => dictLabel('mdmProcessSequenceControlMode', row.firstInspectionControl)
+    },
+    {
+      prop: 'isFirst',
+      label: '首序',
+      width: 72,
+      align: 'center',
+      formatter: (row) => (row.isFirst ? '是' : '否')
+    },
+    {
+      prop: 'isLast',
+      label: '末序',
+      width: 72,
+      align: 'center',
+      formatter: (row) => (row.isLast ? '是' : '否')
+    },
     {
       prop: 'critical',
       label: '关键',
@@ -845,14 +1144,25 @@
           {
             prop: '__actions',
             label: '操作',
-            width: 112,
+            width: 176,
             fixed: 'right' as const,
             formatter: (row: ProcessStep) => (
               <BusinessTableRowActions>
                 <ArtButtonTable
+                  type="view"
+                  permission="MdmProcessRoute:View"
+                  onClick={() => void openStep(row, 'view')}
+                />
+                <ArtButtonTable
                   type="edit"
                   permission="MdmProcessRoute:Edit"
                   onClick={() => void openStep(row)}
+                />
+                <ArtButtonTable
+                  icon="ri:file-copy-line"
+                  label="复制工序"
+                  permission="MdmProcessRoute:Edit"
+                  onClick={() => void openStep(row, 'copy')}
                 />
                 <ArtButtonTable
                   type="delete"
@@ -871,10 +1181,56 @@
       : [
           {
             type: 'add',
-            label: stepRows.value.length ? '新增工序' : '新增首道工序',
+            label: stepRows.value.length ? '新增' : '新增首道工序',
             permission: 'MdmProcessRoute:Edit',
             disabled: !sequenceState.selectedId,
-            onClick: () => void openStep()
+            onClick: () => void openOperationSelector()
+          },
+          {
+            key: 'insert',
+            label: '插入行',
+            icon: 'ri:insert-row-bottom',
+            permission: 'MdmProcessRoute:Edit',
+            selectionRequired: true,
+            disabled: ({ selectedCount }: ArtTableQueryHeaderActionContext) => selectedCount !== 1,
+            onClick: ({ selectedRows }) => void openStep(selectedRows[0] as ProcessStep, 'insert')
+          },
+          {
+            key: 'copy',
+            label: '复制',
+            icon: 'ri:file-copy-line',
+            permission: 'MdmProcessRoute:Edit',
+            selectionRequired: true,
+            disabled: ({ selectedCount }: ArtTableQueryHeaderActionContext) => selectedCount !== 1,
+            onClick: ({ selectedRows }) => void openStep(selectedRows[0] as ProcessStep, 'copy')
+          },
+          {
+            key: 'view',
+            label: '查看',
+            icon: 'ri:eye-line',
+            selectionRequired: true,
+            disabled: ({ selectedCount }: ArtTableQueryHeaderActionContext) => selectedCount !== 1,
+            onClick: ({ selectedRows }) => void openStep(selectedRows[0] as ProcessStep, 'view')
+          },
+          {
+            key: 'edit',
+            label: '编辑',
+            icon: 'ri:edit-line',
+            permission: 'MdmProcessRoute:Edit',
+            selectionRequired: true,
+            disabled: ({ selectedCount }: ArtTableQueryHeaderActionContext) => selectedCount !== 1,
+            onClick: ({ selectedRows }) => void openStep(selectedRows[0] as ProcessStep, 'edit')
+          },
+          {
+            type: 'delete',
+            label: '删除',
+            permission: 'MdmProcessRoute:Edit',
+            content: ({ selectedCount }: ArtTableQueryHeaderActionContext) =>
+              `确认删除选中的 ${selectedCount} 道工序？`,
+            onClick: async ({ selectedRows, api }) => {
+              await deleteProcessSteps((selectedRows as ProcessStep[]).map((item) => item.id))
+              await Promise.all([api.refreshRemove(), loadSequences()])
+            }
           }
         ]
   )
@@ -886,6 +1242,19 @@
       sequenceState.rows = await fetchProcessSequences(route.value.id)
       if (!sequenceState.rows.some((item) => item.id === sequenceState.selectedId))
         sequenceState.selectedId = sequenceState.rows[0]?.id || ''
+      const mainSequenceId = sequenceState.rows.find((item) => item.sequenceType === 'main')?.id
+      if (mainSequenceId) {
+        const mainSteps = await fetchProcessSteps({
+          tenantId: route.value.tenantId,
+          routeId: route.value.id,
+          sequenceId: mainSequenceId,
+          current: 1,
+          size: 1000
+        })
+        mainStepRows.value = mainSteps.data
+      } else {
+        mainStepRows.value = []
+      }
     } finally {
       sequenceState.loading = false
     }
@@ -914,6 +1283,10 @@
       onConfirm: async () => {
         try {
           await sequenceFormRef.value?.validate()
+          if (sequenceForm.sequenceType !== 'parallel') {
+            sequenceForm.transferInStepId = null
+            sequenceForm.transferOutStepId = null
+          }
           await saveProcessSequence(
             buildProcessSequencePayload({ routeId: route.value!.id, ...sequenceForm }),
             sequenceEditId.value || undefined
@@ -947,9 +1320,41 @@
     stepForm.name = operation.name
     if (!stepForm.description) stepForm.description = operation.name
   }
+  async function applyWorkCenter(value: string) {
+    const center = references.workCenters.find((item) => item.id === value)
+    if (!center) return
+    if (center.departmentId) stepForm.departmentId = center.departmentId
+    const activities = await fetchWorkCenterActivities(value)
+    activityRows.value = activities.map((item) => ({
+      key: crypto.randomUUID(),
+      formulaId: item.planFormulaId || item.reportFormulaId || '',
+      activityType: item.activityType,
+      name: item.activityName,
+      basicQuantity: item.baseQuantity,
+      unitId:
+        references.units.find(
+          (unit) => unit.id === item.activityUnit || unit.code === item.activityUnit
+        )?.id || '',
+      resource: '',
+      planExpression: item.planFormula?.expression || '',
+      reportExpression: item.reportFormula?.expression || ''
+    }))
+  }
+  function applyControlCode(value: string) {
+    const controlCode = references.controlCodes.find((item) => item.id === value)
+    Object.assign(stepForm, {
+      processingMode: controlCode?.processingMode || '',
+      reportMode: controlCode?.reportMode || '',
+      inspectionMode: controlCode?.inspectionMode || '',
+      sequenceControl: controlCode?.sequenceControl || '',
+      reworkMode: controlCode?.reworkMode || '',
+      needInspection: Boolean(controlCode?.inspectionMode && controlCode.inspectionMode !== 'none')
+    })
+  }
   function applyFormula(row: ActivityRow) {
     const formula = references.activityFormulas.find((item) => item.id === row.formulaId)
     if (!formula) return
+    row.activityType = formula.activityType || ''
     row.name ||= formula.name
     row.planExpression = formula.planExpression || ''
     row.reportExpression = formula.reportExpression || ''
@@ -958,6 +1363,7 @@
     activityRows.value.push({
       key: crypto.randomUUID(),
       formulaId: '',
+      activityType: '',
       name: '',
       basicQuantity: 1,
       unitId: '',
@@ -972,42 +1378,103 @@
     const rows = activityRows.value
     ;[rows[index], rows[target]] = [rows[target], rows[index]]
   }
-  async function openStep(row?: ProcessStep) {
+  async function openOperationSelector() {
+    if (!sequenceState.selectedId) return
+    selectedOperationIds.value = []
+    selectedOperations.value = []
+    await operationSelectRef.value?.open()
+  }
+  async function handleOperationsConfirm(_value: unknown, rows: DataSelectRecord[]) {
+    if (!route.value || !sequenceState.selectedId || !rows.length) return
+    const operations = rows as OperationalMasterRecord[]
+    const baseSort = Math.max(0, ...stepRows.value.map((item) => item.sort))
+    const inputs = operations.map((operation, index) => {
+      const sort = baseSort + (index + 1) * 10
+      return buildProcessStepPayload({
+        routeId: route.value!.id,
+        ...initialStep(),
+        sequenceId: sequenceState.selectedId,
+        code: String(sort),
+        sort,
+        operationId: operation.id,
+        name: operation.name || operation.code || `工序 ${sort}`,
+        description: operation.remark || operation.name || '',
+        unitId: route.value!.productionUnitId,
+        workCenterId: operation.workCenterIds?.[0] || null,
+        departmentId: operation.departmentId || route.value!.departmentId,
+        isFirst: stepRows.value.length === 0 && index === 0,
+        isLast: index === operations.length - 1
+      })
+    })
+    await saveProcessSteps(inputs)
+    selectedOperationIds.value = []
+    selectedOperations.value = []
+    await Promise.all([tableRef.value?.refreshData(), loadSequences()])
+  }
+  type StepOpenMode = 'add' | 'insert' | 'copy' | 'view' | 'edit'
+  const insertionSort = (anchor?: ProcessStep): number => {
+    if (!anchor) return Math.max(0, ...stepRows.value.map((item) => item.sort)) + 10
+    const rows = [...stepRows.value].sort((left, right) => left.sort - right.sort)
+    const index = rows.findIndex((item) => item.id === anchor.id)
+    const nextSort = rows[index + 1]?.sort
+    return nextSort && nextSort - anchor.sort > 1
+      ? Math.floor((anchor.sort + nextSort) / 2)
+      : anchor.sort + 1
+  }
+  async function openStep(row?: ProcessStep, mode: StepOpenMode = row ? 'edit' : 'add') {
     if (!route.value || !sequenceState.selectedId) return
-    stepEditId.value = row?.id || ''
+    const editing = mode === 'edit'
+    const viewing = mode === 'view'
+    const cloning = mode === 'copy'
+    const inserting = mode === 'insert'
+    editorReadonly.value = viewing || readonly.value
+    stepEditId.value = editing ? row?.id || '' : ''
+    const nextSort = insertionSort(inserting ? row : undefined)
     Object.assign(
       stepForm,
-      row
-        ? cloneDeep(row)
+      row && !inserting
+        ? {
+            ...cloneDeep(row),
+            ...(cloning
+              ? { code: String(nextSort), sort: nextSort, isFirst: false, isLast: false }
+              : {})
+          }
         : {
             ...initialStep(),
             sequenceId: sequenceState.selectedId,
-            code: String((stepRows.value.at(-1)?.sort || 0) + 10),
-            sort: (stepRows.value.at(-1)?.sort || 0) + 10
+            code: String(nextSort),
+            sort: nextSort,
+            unitId: route.value.productionUnitId,
+            departmentId: route.value.departmentId,
+            isFirst: stepRows.value.length === 0,
+            isLast: true
           }
     )
     Object.assign(unitForm, {
       productionFactor: 1,
       operationFactor: 1,
-      operationUnitId: '',
-      ...(row?.unitConversion || {})
+      operationUnitId: stepForm.unitId || '',
+      ...(!inserting && row?.unitConversion ? row.unitConversion : {})
     })
     Object.assign(outsourcingForm, {
       enabled: false,
+      purchaseOrganization: '',
       supplierId: '',
+      unitPrice: null,
       remark: '',
-      ...(row?.outsourcing || {})
+      ...(!inserting && row?.outsourcing ? row.outsourcing : {})
     })
     Object.assign(inspectionForm, {
       method: '',
       standard: '',
       samplingRule: '',
       remark: '',
-      ...(row?.inspection || {})
+      ...(!inserting && row?.inspection ? row.inspection : {})
     })
-    activityRows.value = (row?.activities || []).map((item) => ({
+    activityRows.value = (!inserting ? row?.activities || [] : []).map((item) => ({
       key: crypto.randomUUID(),
       formulaId: '',
+      activityType: '',
       name: '',
       basicQuantity: 1,
       unitId: '',
@@ -1016,19 +1483,30 @@
       reportExpression: '',
       ...item
     })) as ActivityRow[]
-    const sop = row?.sopDocuments || []
+    const sop = !inserting ? row?.sopDocuments || [] : []
     sopForm.documentIds = sop.filter((item) => item.type === 'esop').map((item) => String(item.id))
     sopForm.attachments = sop
       .filter((item) => item.type === 'upload')
       .map((item) => String(item.url))
     activeTab.value = 'basic'
     await editDialog.value?.handleOpen(undefined, {
-      title: row ? '编辑工序与工艺配置' : '新增工序与工艺配置',
+      title: viewing
+        ? '查看工序明细'
+        : editing
+          ? '编辑工序明细'
+          : cloning
+            ? '复制工序明细'
+            : inserting
+              ? '插入工序明细'
+              : '新增工序明细',
       subtitle: currentSequenceSubtitle.value,
-      confirmText: row ? '保存更改' : '创建工序',
+      confirmText: editing ? '保存更改' : '创建工序',
+      showConfirmButton: !editorReadonly.value,
+      cancelText: editorReadonly.value ? '关闭' : '取消',
       contentMaxHeight: '72vh',
       onOpen: () => formRef.value?.clearValidate(),
       onConfirm: async () => {
+        if (editorReadonly.value) return true
         try {
           await formRef.value?.validate()
           await saveProcessStep(
@@ -1038,6 +1516,7 @@
               unitConversion: cloneDeep(unitForm),
               activities: activityRows.value.map((item) => ({
                 formulaId: item.formulaId,
+                activityType: item.activityType,
                 name: item.name,
                 basicQuantity: item.basicQuantity,
                 unitId: item.unitId,
@@ -1068,7 +1547,7 @@
         type: 'warning'
       })
       await deleteProcessStep(row.id)
-      await tableRef.value?.refreshData()
+      await Promise.all([tableRef.value?.refreshData(), loadSequences()])
     } catch {
       /* API owns feedback. */
     }
@@ -1083,7 +1562,14 @@
         'mdmProcessRouteSequenceType',
         'mdmProcessOperationMode',
         'mdmProcessSequenceControlMode',
-        'mdmProcessStepInspectionMode'
+        'mdmProcessStepInspectionMode',
+        'mdmProcessingMode',
+        'mdmReportMode',
+        'mdmInspectionMode',
+        'mdmSequenceControl',
+        'mdmReworkMode',
+        'mdmMaterialPurchaseOrganization',
+        'mdmActivityType'
       ].map((code) => user.ensureDictLoaded(code))
     )
     await dialogRef.value?.handleOpen(undefined, {
@@ -1336,13 +1822,27 @@
     &__activity-row {
       display: grid;
       grid-template-columns:
-        28px minmax(150px, 1fr) minmax(140px, 1fr) 130px minmax(130px, 0.8fr)
+        28px minmax(150px, 1fr) minmax(140px, 1fr) minmax(120px, 0.8fr) 130px
+        minmax(130px, 0.8fr)
         minmax(140px, 1fr) minmax(180px, 1fr) minmax(180px, 1fr) auto;
       gap: 8px;
       align-items: center;
-      min-width: 1280px;
+      min-width: 1420px;
       padding: 8px 4px;
       border-bottom: 1px solid var(--el-border-color-lighter);
+
+      &.is-header {
+        position: sticky;
+        top: 0;
+        z-index: 2;
+        min-height: 40px;
+        padding-block: 10px;
+        font-size: var(--art-font-size-caption);
+        font-weight: 600;
+        color: var(--el-text-color-secondary);
+        background: var(--el-fill-color-light);
+        border-radius: var(--art-control-radius) var(--art-control-radius) 0 0;
+      }
     }
 
     &__activity-index {
@@ -1463,6 +1963,30 @@
     &__content {
       display: grid;
       gap: var(--art-space-3);
+    }
+
+    &__equation {
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr) auto minmax(0, 1fr);
+      gap: var(--art-space-3);
+      align-items: center;
+      padding: var(--art-space-3) var(--art-space-4);
+      color: var(--el-text-color-secondary);
+      background: color-mix(in srgb, var(--theme-color) 5%, var(--el-bg-color));
+      border: 1px solid color-mix(in srgb, var(--theme-color) 14%, var(--art-card-border));
+      border-radius: var(--art-control-radius);
+
+      strong {
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        color: var(--el-text-color-primary);
+        white-space: nowrap;
+      }
+
+      svg {
+        color: var(--theme-color);
+      }
     }
 
     &__upload {

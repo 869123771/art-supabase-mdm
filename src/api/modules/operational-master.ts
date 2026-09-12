@@ -1,6 +1,9 @@
 import { useSupabase } from '@/hooks'
 import { buildOrIlikeFilter } from '@/utils/supabase/search'
 import type {
+  ActivityFormulaParameter,
+  ActivityFormulaParameterInput,
+  ActivityFormulaPurpose,
   MasterGroup,
   MasterGroupDomain,
   MasterGroupInput,
@@ -157,6 +160,57 @@ export async function deleteOperationalMasters(kind: OperationalMasterKind, ids:
   await responseHandle(
     () => supabase.from(definition.table).delete({ count: 'exact' }).in('id', ids).select('id'),
     { ...writeOptions, message: '删除成功', errorMessage: '删除失败，请先解除业务引用' }
+  )
+}
+
+export async function fetchActivityFormulaParameters(
+  tenantId: string,
+  purpose: ActivityFormulaPurpose
+): Promise<ActivityFormulaParameter[]> {
+  const { data } = await responseHandle<ActivityFormulaParameter[]>(
+    () =>
+      supabase
+        .from('mdm_activity_formula_parameter')
+        .select('*')
+        .eq('tenant_id', tenantId)
+        .eq('purpose', purpose)
+        .order('sort')
+        .order('code'),
+    { ...readOptions, errorMessage: '公式参数加载失败，请重试' }
+  )
+  return data ?? []
+}
+
+export async function saveActivityFormulaParameter(
+  input: ActivityFormulaParameterInput,
+  id?: string
+) {
+  const payload = keysToSnakeDeep(input)
+  await responseHandle(
+    () =>
+      id
+        ? supabase
+            .from('mdm_activity_formula_parameter')
+            .update(payload, { count: 'exact' })
+            .eq('id', id)
+            .select('id')
+        : supabase
+            .from('mdm_activity_formula_parameter')
+            .insert(payload, { count: 'exact' })
+            .select('id'),
+    { ...writeOptions, message: id ? '参数已更新' : '参数已创建', errorMessage: '公式参数保存失败' }
+  )
+}
+
+export async function deleteActivityFormulaParameter(id: string) {
+  await responseHandle(
+    () =>
+      supabase
+        .from('mdm_activity_formula_parameter')
+        .delete({ count: 'exact' })
+        .eq('id', id)
+        .select('id'),
+    { ...writeOptions, message: '参数已删除', errorMessage: '参数含有下级节点，无法删除' }
   )
 }
 

@@ -39,6 +39,7 @@
           :columns-factory="columnsFactory"
           :header-actions="table.headerActions"
           :selection-actions="table.selectionActions"
+          :immediate="false"
           header-actions-placement="workspace"
           :search-bar-props="{ span: 8, labelWidth: 82, showExpand: false }"
           :table-props="{
@@ -54,7 +55,12 @@
         />
       </div>
 
-      <MasterDialog ref="dialogRef" @success="handleSaved" />
+      <ActivityFormulaDialog
+        v-if="config.kind === 'activity-formula'"
+        ref="activityFormulaDialogRef"
+        @success="handleSaved"
+      />
+      <MasterDialog v-else ref="dialogRef" @success="handleSaved" />
       <GroupDialog ref="groupDialogRef" @success="handleGroupSaved" />
     </div>
   </ArtPermissionGuard>
@@ -97,6 +103,8 @@
     type OperationalMasterReferences
   } from '@mdm/api'
   import GroupDialog, { type GroupDialogOpenData } from './modules/group-dialog.vue'
+  import { activityFormulaPurposeLabel } from './modules/activity-formula-builder'
+  import ActivityFormulaDialog from './modules/activity-formula-dialog.vue'
   import MasterDialog, { type MasterDialogOpenData } from './modules/master-dialog.vue'
   import MasterGroupPanel from './modules/master-group-panel.vue'
   import { resolveMasterConfig } from './modules/master-config'
@@ -131,6 +139,7 @@
     'MdmActivityFormula:Edit',
     'MdmActivityFormula:Delete',
     'MdmActivityFormula:Export',
+    'MdmActivityFormula:ManageParameter',
     'MdmOperationControlCode:View',
     'MdmOperationControlCode:Add',
     'MdmOperationControlCode:Copy',
@@ -163,6 +172,9 @@
   const config = computed(() => resolveMasterConfig(route.path))
   const tableRef = ref<ArtTableQueryExpose>()
   const dialogRef = ref<{ handleOpen: (data: MasterDialogOpenData) => Promise<void> }>()
+  const activityFormulaDialogRef = ref<{
+    handleOpen: (data: MasterDialogOpenData) => Promise<void>
+  }>()
   const groupDialogRef = ref<{ handleOpen: (data: GroupDialogOpenData) => Promise<void> }>()
   const overview = reactive({ total: 0, enabled: 0, rows: [] as OperationalMasterRecord[] })
   const groupState = reactive({
@@ -321,10 +333,55 @@
   function displayValue(row: OperationalMasterRecord, key: keyof OperationalMasterRecord): string {
     const value = row[key]
     const field = config.value.fields.find((item) => item.key === key)
+    if (config.value.kind === 'activity-formula') {
+      if (key === 'purpose') {
+        const rawValue = value === null || value === undefined ? '' : String(value)
+        const dictionaryLabel = getDictMap.value[field?.dictCode || '']?.find(
+          (item) => item.value === rawValue
+        )?.label
+        return rawValue ? activityFormulaPurposeLabel(rawValue, dictionaryLabel) : '—'
+      }
+      if (key === 'activityTypes') {
+        const legacyActivityType = row.activityType ? [row.activityType] : []
+        const activityTypes = Array.isArray(value) && value.length ? value : legacyActivityType
+        return (
+          activityTypes
+            .map(
+              (entry) =>
+                getDictMap.value[field?.dictCode || '']?.find((item) => item.value === entry)
+                  ?.label || String(entry)
+            )
+            .join('、') || '—'
+        )
+      }
+      if (key === 'formulaExpression') {
+        return row.formulaExpression || row.planExpression || row.reportExpression || '—'
+      }
+      if (key === 'formulaTranslation') {
+        return (
+          row.formulaTranslation ||
+          row.formulaExpression ||
+          row.planExpression ||
+          row.reportExpression ||
+          '—'
+        )
+      }
+    }
     if (key === 'groupId')
       return groupState.rows.find((item) => item.id === value)?.name || '未分组'
     if (field?.reference) return referenceLabel(references.value[field.reference], value)
     if (field?.dictCode) {
+      if (Array.isArray(value)) {
+        return (
+          value
+            .map(
+              (entry) =>
+                getDictMap.value[field.dictCode!]?.find((item) => item.value === entry)?.label ||
+                String(entry)
+            )
+            .join('、') || '—'
+        )
+      }
       const normalizedValue = typeof value === 'boolean' ? String(value) : value
       return (
         getDictMap.value[field.dictCode]?.find((item) => item.value === normalizedValue)?.label ||
@@ -451,7 +508,7 @@
   }
 
   function openDialog(row?: OperationalMasterRecord, copy = false, readonly = false): void {
-    void dialogRef.value?.handleOpen({
+    const data: MasterDialogOpenData = {
       config: config.value,
       tenantId: row?.tenantId || effectiveTenantId.value || '',
       tenantOptions: tenantChoices(),
@@ -459,7 +516,12 @@
       row: row ? cloneDeep(row) : undefined,
       copy,
       readonly
-    })
+    }
+    if (config.value.kind === 'activity-formula') {
+      void activityFormulaDialogRef.value?.handleOpen(data)
+      return
+    }
+    void dialogRef.value?.handleOpen(data)
   }
 
   function openGroupAdd(parent?: MasterGroup): void {
@@ -559,7 +621,9 @@
     min-height: 0;
 
     &__workspace {
+      display: flex;
       flex: 1;
+      flex-direction: column;
       min-height: 0;
 
       &.has-group-panel {

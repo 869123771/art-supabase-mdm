@@ -3,8 +3,10 @@ import { useSupabase } from '@/hooks'
 import { buildOrIlikeFilter } from '@/utils/supabase/search'
 import { parseProductionShifts } from './production-shifts'
 import { fetchAllRangePages } from '@/utils/supabase/pagination'
+import TreeUtils from '@/utils/tree'
 import type {
   ProductionDepartment,
+  ProductionDepartmentTreeNode,
   ProductionDepartmentInput,
   ProductionPerson,
   ProductionPersonInput,
@@ -53,6 +55,15 @@ export async function fetchProductionDepartments(
     )
   )
   return data ?? []
+}
+export async function fetchProductionDepartmentTree(
+  tenantId: string
+): Promise<ProductionDepartmentTreeNode[]> {
+  const rows = await fetchProductionDepartments(tenantId)
+  return new TreeUtils({ parentKey: 'parentId' }).listToTree<ProductionDepartmentTreeNode>(
+    rows as ProductionDepartmentTreeNode[],
+    (left, right) => left.sort - right.sort || left.code.localeCompare(right.code)
+  )
 }
 export async function saveProductionDepartment(data: ProductionDepartmentInput, id?: string) {
   const payload = keysToSnakeDeep(data)
