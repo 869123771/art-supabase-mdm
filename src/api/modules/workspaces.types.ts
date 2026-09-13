@@ -1,4 +1,4 @@
-import type { ProductionTag, ProductionPerson } from './production.types'
+import type { ProductionDepartment, ProductionTag, ProductionPerson } from './production.types'
 
 export interface WorkspaceAudit {
   id: string
@@ -80,6 +80,50 @@ export interface WorkCenterReference {
   activityType?: string
   planExpression?: string
   reportExpression?: string
+}
+export interface WorkstationScopeCenter {
+  id: string
+  tenantId: string
+  departmentId: string
+  code: string
+  name: string
+  sort: number
+}
+export interface WorkstationResponsiblePerson {
+  id: string
+  tenantId: string
+  name: string
+  employeeNo: string
+  jobTitle: string
+  enabled: boolean
+}
+export interface WorkstationInput {
+  tenantId: string
+  workstationCode: string
+  workstationName: string
+  departmentId: string
+  workCenterId: string
+  responsiblePersonId: string | null
+  andonSimNo: string | null
+  enabled: boolean
+  remark: string
+}
+export interface Workstation extends WorkstationInput, WorkspaceAudit {
+  department: { id: string; tenantId: string; code: string; name: string } | null
+  workCenter: { id: string; tenantId: string; code: string; name: string } | null
+  responsiblePerson: WorkstationResponsiblePerson | null
+}
+export interface WorkstationQuery {
+  tenantId?: string | null
+  workCenterId: string
+  keyword?: string
+  enabled?: boolean
+  current: number
+  size: number
+}
+export interface WorkstationScope {
+  departments: ProductionDepartment[]
+  workCenters: WorkstationScopeCenter[]
 }
 export interface CommonWorkCenter {
   id: string

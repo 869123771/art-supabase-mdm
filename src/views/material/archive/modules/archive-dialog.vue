@@ -116,44 +116,50 @@
               </div>
             </div>
           </template>
-          <template #purchaser
+          <template #purchaserId
             ><ArtEmployeeSelect
               :model-value="formModel.purchaserId ?? undefined"
+              v-model:selected-data="employeeSelections.purchaserId"
               :tenant-id="tenantId"
               placeholder="选择采购员"
               @update:model-value="formModel.purchaserId = $event ?? null"
           /></template>
-          <template #planner
+          <template #plannerId
             ><ArtEmployeeSelect
               :model-value="formModel.plannerId ?? undefined"
+              v-model:selected-data="employeeSelections.plannerId"
               :tenant-id="tenantId"
               placeholder="选择计划员"
               @update:model-value="formModel.plannerId = $event ?? null"
           /></template>
-          <template #salesperson
+          <template #salespersonId
             ><ArtEmployeeSelect
               :model-value="formModel.salespersonId ?? undefined"
+              v-model:selected-data="employeeSelections.salespersonId"
               :tenant-id="tenantId"
               placeholder="选择销售员"
               @update:model-value="formModel.salespersonId = $event ?? null"
           /></template>
-          <template #custodian
+          <template #custodianId
             ><ArtEmployeeSelect
               :model-value="formModel.custodianId ?? undefined"
+              v-model:selected-data="employeeSelections.custodianId"
               :tenant-id="tenantId"
-              placeholder="选择保管员"
+              placeholder="选择仓管员"
               @update:model-value="formModel.custodianId = $event ?? null"
           /></template>
-          <template #dispatcher
+          <template #dispatcherId
             ><ArtEmployeeSelect
               :model-value="formModel.dispatcherId ?? undefined"
+              v-model:selected-data="employeeSelections.dispatcherId"
               :tenant-id="tenantId"
               placeholder="选择调度员"
               @update:model-value="formModel.dispatcherId = $event ?? null"
           /></template>
-          <template #productionPlanner
+          <template #productionPlannerId
             ><ArtEmployeeSelect
               :model-value="formModel.productionPlannerId ?? undefined"
+              v-model:selected-data="employeeSelections.productionPlannerId"
               :tenant-id="tenantId"
               placeholder="选择生产计划员"
               @update:model-value="formModel.productionPlannerId = $event ?? null"
@@ -216,6 +222,10 @@
   import ArtForm, { type FormItem } from '@/components/core/forms/art-form/index.vue'
   import ArtUploadImage from '@/components/core/forms/art-upload-image/index.vue'
   import ArtEmployeeSelect from '@/components/business/art-employee-select/index.vue'
+  import {
+    fetchEmployeeSelectorList,
+    type EmployeeIntegrationItem
+  } from '@/api/integration/employees'
   import ArtIconButton from '@/components/core/widget/art-icon-button/index.vue'
   import ArtSvgIcon from '@/components/core/base/art-svg-icon/index.vue'
   import { useUserStore } from '@/store/modules/user'
@@ -240,6 +250,14 @@
   interface ArchiveFormModel extends MaterialArchiveInput {
     id?: string
   }
+  type EmployeeSelectionField =
+    | 'purchaserId'
+    | 'plannerId'
+    | 'salespersonId'
+    | 'custodianId'
+    | 'dispatcherId'
+    | 'productionPlannerId'
+  type EmployeeSelections = Record<EmployeeSelectionField, EmployeeIntegrationItem[]>
   interface MaterialCategoryOption {
     id: string
     parentId?: string | null
@@ -289,6 +307,15 @@
   const warehouseOptions = ref<MaterialContextOption[]>([])
   const outboundRuleOptions = ref<MaterialContextOption[]>([])
   const supplyRuleOptions = ref<MaterialContextOption[]>([])
+  const initialEmployeeSelections = (): EmployeeSelections => ({
+    purchaserId: [],
+    plannerId: [],
+    salespersonId: [],
+    custodianId: [],
+    dispatcherId: [],
+    productionPlannerId: []
+  })
+  const employeeSelections = reactive<EmployeeSelections>(initialEmployeeSelections())
   const tabs = [
     { name: 'base', label: '基本信息', icon: 'ri:information-line' },
     { name: 'purchase', label: '采购', icon: 'ri:shopping-bag-3-line' },
@@ -482,6 +509,56 @@
   )
   const scopedContextOptions = (items: MaterialContextOption[]) =>
     items.filter((item) => item.tenantId === formModel.tenantId)
+  const resetEmployeeSelections = (): void => {
+    Object.assign(employeeSelections, initialEmployeeSelections())
+  }
+  const selectedEmployeeIds = (): string[] =>
+    [
+      formModel.purchaserId,
+      formModel.plannerId,
+      formModel.salespersonId,
+      formModel.custodianId,
+      formModel.dispatcherId,
+      formModel.productionPlannerId
+    ].filter((id): id is string => Boolean(id))
+  const loadEmployeeSelections = async (): Promise<void> => {
+    const selectedIds = selectedEmployeeIds()
+    if (!selectedIds.length) {
+      resetEmployeeSelections()
+      return
+    }
+    const pageSize = 200
+    const employeeById = new Map<string, EmployeeIntegrationItem>()
+    const missingIds = new Set(selectedIds)
+    let from = 0
+    while (missingIds.size) {
+      const result = await fetchEmployeeSelectorList({
+        tenantId: formModel.tenantId,
+        from,
+        to: from + pageSize - 1
+      })
+      for (const employee of result.data) {
+        if (!missingIds.has(employee.id)) continue
+        employeeById.set(employee.id, employee)
+        missingIds.delete(employee.id)
+      }
+      if (!result.data.length) break
+      from += pageSize
+      if (from >= result.total) break
+    }
+    const getSelection = (id?: string | null): EmployeeIntegrationItem[] => {
+      const employee = id ? employeeById.get(id) : undefined
+      return employee ? [employee] : []
+    }
+    Object.assign(employeeSelections, {
+      purchaserId: getSelection(formModel.purchaserId),
+      plannerId: getSelection(formModel.plannerId),
+      salespersonId: getSelection(formModel.salespersonId),
+      custodianId: getSelection(formModel.custodianId),
+      dispatcherId: getSelection(formModel.dispatcherId),
+      productionPlannerId: getSelection(formModel.productionPlannerId)
+    })
+  }
   function option<T extends { id: string }>(items: T[], label: (item: T) => string) {
     return items.map((item) => ({ label: label(item), value: item.id }))
   }
@@ -1277,6 +1354,7 @@
   }
   const handleOpen = async (data: ArchiveDialogOpenData): Promise<void> => {
     Object.assign(formModel, initialForm())
+    resetEmployeeSelections()
     activeTab.value = 'base'
     tenantOptions.value = data.tenantOptions
     categories.value = data.categories
@@ -1305,8 +1383,16 @@
       subtitle: '统一物料身份与各业务域默认视图',
       confirmText: '保存物料',
       contentMaxHeight: '74vh',
+      loading: selectedEmployeeIds().length > 0,
       onConfirm: handleSubmit,
-      onOpen: () => formRef.value?.clearValidate()
+      onOpen: async (_openData, api) => {
+        try {
+          await loadEmployeeSelections()
+          formRef.value?.clearValidate()
+        } finally {
+          api.setLoading(false)
+        }
+      }
     })
   }
   watch(
@@ -1335,6 +1421,7 @@
       formModel.custodianId = null
       formModel.dispatcherId = null
       formModel.productionPlannerId = null
+      resetEmployeeSelections()
       formModel.materialGroupId = null
       formModel.defaultSupplierId = null
       formModel.defaultWarehouseId = null

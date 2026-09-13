@@ -53,12 +53,14 @@
         preserve-content-structure
       >
         <ArtTable
+          class="bom-detail-dialog__component-table"
           :data="record.items"
           :columns="componentColumns"
           row-key="id"
           :pagination="false"
           table-layout="fixed"
           scrollbar-always-on
+          height="auto"
           max-height="360"
           empty-text="暂无 BOM 组件"
           empty-description="当前 BOM 尚未维护组件明细。"
@@ -105,7 +107,12 @@
   }
 
   const formatDateTime = (value?: string | null): string =>
-    value ? dayjs(value).format('YYYY-MM-DD HH:mm') : '—'
+    value && dayjs(value).isValid() ? dayjs(value).format('YYYY-MM-DD HH:mm') : '—'
+
+  const formatDate = (value?: string | null): string =>
+    value && dayjs(value).isValid() ? dayjs(value).format('YYYY-MM-DD') : '—'
+
+  const formatText = (value?: string | null): string => value?.trim() || '—'
 
   const materialIdentity = (row: BomRecord): string =>
     [row.material?.materialCode, row.material?.specificationModel].filter(Boolean).join(' · ') ||
@@ -113,6 +120,11 @@
 
   const unitIdentity = (name?: string | null, code?: string | null): string =>
     [name, code].filter(Boolean).join(' · ') || '—'
+
+  const warehouseIdentity = (row: BomItem): string => {
+    const warehouse = row.defaultIssueWarehouse || row.component?.defaultWarehouse
+    return unitIdentity(warehouse?.warehouseName, warehouse?.warehouseCode)
+  }
 
   const identityItems: ArtDescriptionItem<BomRecord>[] = [
     {
@@ -181,18 +193,51 @@
   }
 
   const componentColumns: ColumnOption<BomItem>[] = [
-    { type: 'index', label: '#', width: 52, align: 'center' },
+    { type: 'index', label: '#', width: 48, align: 'center', fixed: 'left' },
     {
       prop: 'componentMaterialId',
       label: '组件物料',
-      minWidth: 260,
+      width: 300,
+      fixed: 'left',
       formatter: componentIdentity
     },
-    { prop: 'sequenceNo', label: '顺序', width: 76, align: 'center' },
+    { prop: 'sequenceNo', label: '行号', width: 84, align: 'center' },
+    {
+      prop: 'mrpEnabled',
+      label: 'MRP 运算',
+      width: 100,
+      align: 'center',
+      dict: {
+        code: 'commonBoolean',
+        display: 'text',
+        value: (row) => String(row.mrpEnabled)
+      }
+    },
+    {
+      prop: 'materialCode',
+      label: '物料编码',
+      width: 180,
+      formatter: (row) => row.component?.materialCode || '—'
+    },
+    {
+      prop: 'specificationModel',
+      label: '规格型号',
+      width: 180,
+      formatter: (row) => row.component?.specificationModel || '—'
+    },
+    {
+      prop: 'materialSource',
+      label: '物料来源',
+      width: 120,
+      dict: {
+        code: 'mdmMaterialSource',
+        value: (row) => row.component?.materialSource
+      }
+    },
     {
       prop: 'quantity',
       label: '用量',
-      width: 112,
+      width: 120,
       align: 'right',
       formatter: (row) => formatQuantity(row.quantity)
     },
@@ -203,23 +248,71 @@
       formatter: (row) => unitIdentity(row.unit?.unitName, row.unit?.unitCode)
     },
     {
+      prop: 'defaultIssueWarehouseId',
+      label: '默认发料仓库',
+      width: 200,
+      formatter: warehouseIdentity
+    },
+    {
+      prop: 'issueMethod',
+      label: '领送料方式',
+      width: 160,
+      dict: { code: 'mdmMaterialIssueMethod' }
+    },
+    {
+      prop: 'backflushMethod',
+      label: '倒冲',
+      width: 140,
+      dict: { code: 'mdmMaterialBackflushMethod' }
+    },
+    {
+      prop: 'overIssueControlMethod',
+      label: '超发控制方式',
+      width: 180,
+      dict: { code: 'mdmMaterialOverIssueControl' }
+    },
+    {
+      prop: 'effectiveFrom',
+      label: '生效日期',
+      width: 150,
+      formatter: (row) => formatDate(row.effectiveFrom)
+    },
+    {
+      prop: 'effectiveTo',
+      label: '失效日期',
+      width: 150,
+      formatter: (row) => formatDate(row.effectiveTo)
+    },
+    {
+      prop: 'projectText',
+      label: '项目文本',
+      width: 220,
+      formatter: (row) => formatText(row.projectText)
+    },
+    {
       prop: 'scrapRate',
-      label: '损耗率',
-      width: 96,
+      label: '损耗率 %',
+      width: 120,
       align: 'right',
-      formatter: (row) => `${formatQuantity(row.scrapRate, 2)}%`
+      formatter: (row) => formatQuantity(row.scrapRate, 2)
     },
     {
       prop: 'operationName',
       label: '工序',
-      minWidth: 130,
-      formatter: (row) => row.operationName || '—'
+      width: 160,
+      formatter: (row) => formatText(row.operationName)
     },
     {
       prop: 'positionNo',
       label: '位号',
-      minWidth: 110,
-      formatter: (row) => row.positionNo || '—'
+      width: 140,
+      formatter: (row) => formatText(row.positionNo)
+    },
+    {
+      prop: 'remark',
+      label: '备注',
+      width: 220,
+      formatter: (row) => formatText(row.remark)
     }
   ]
 
@@ -337,6 +430,11 @@
     }
 
     :deep(.art-section-card) {
+      min-width: 0;
+    }
+
+    &__component-table {
+      width: 100%;
       min-width: 0;
     }
 

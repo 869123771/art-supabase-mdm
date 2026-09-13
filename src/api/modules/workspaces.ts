@@ -28,9 +28,14 @@ import type {
   ProcessRouteReferences,
   CenterPolicy,
   PersonnelWorkCenterConfig,
-  PersonnelWorkCenterQuery
+  PersonnelWorkCenterQuery,
+  Workstation,
+  WorkstationInput,
+  WorkstationQuery,
+  WorkstationScope,
+  WorkstationScopeCenter
 } from './workspaces.types'
-import type { ProductionPerson } from './production.types'
+import type { ProductionDepartment, ProductionPerson } from './production.types'
 export * from './workspaces.types'
 const { supabase, responseHandle, keysToSnakeDeep } = useSupabase()
 const read = {
@@ -278,6 +283,86 @@ export async function deleteWorkCenters(ids: string[]) {
     errorMessage: '删除失败，请先解除主工序位和工艺路线关联'
   })
 }
+
+export async function fetchWorkstationScope(tenantId?: string | null): Promise<WorkstationScope> {
+  const [departmentResult, centerResult] = await Promise.all([
+    fetchAllRangePages<ProductionDepartment>(({ from, to }) => {
+      let query = supabase.from('mdm_production_department').select('*').order('sort').order('code')
+      if (tenantId) query = query.eq('tenant_id', tenantId)
+      return responseHandle<ProductionDepartment[]>(() => query.range(from, to), read)
+    }),
+    fetchAllRangePages<WorkstationScopeCenter>(({ from, to }) => {
+      let query = supabase
+        .from('mdm_work_center')
+        .select('id,tenant_id,department_id,code,name,sort')
+        .order('sort')
+        .order('code')
+      if (tenantId) query = query.eq('tenant_id', tenantId)
+      return responseHandle<WorkstationScopeCenter[]>(() => query.range(from, to), read)
+    })
+  ])
+  return {
+    departments: departmentResult.data ?? [],
+    workCenters: centerResult.data ?? []
+  }
+}
+
+export async function fetchWorkstations(
+  params: WorkstationQuery,
+  options?: { signal?: AbortSignal }
+) {
+  const { current, size, tenantId, workCenterId, keyword, enabled } = params
+  if (!workCenterId) return { data: [], total: 0, current, size }
+
+  let query = supabase
+    .from('mdm_workstation')
+    .select(
+      `*,
+      department:mdm_production_department!mdm_workstation_department_fk(id,tenant_id,code,name),
+      workCenter:mdm_work_center!mdm_workstation_center_fk(id,tenant_id,code,name),
+      responsiblePerson:mdm_production_personnel!mdm_workstation_person_fk(id,tenant_id,name,employee_no,job_title,enabled)`,
+      { count: 'exact' }
+    )
+    .eq('work_center_id', workCenterId)
+    .order('workstation_code')
+    .range((current - 1) * size, current * size - 1)
+
+  if (tenantId) query = query.eq('tenant_id', tenantId)
+  if (typeof enabled === 'boolean') query = query.eq('enabled', enabled)
+  if (keyword?.trim()) {
+    query = query.or(
+      buildOrIlikeFilter(['workstation_code', 'workstation_name', 'andon_sim_no'], keyword.trim())
+    )
+  }
+
+  const { data, total } = await responseHandle<Workstation[]>(
+    () => (options?.signal ? query.abortSignal(options.signal) : query),
+    read
+  )
+  return { data: data ?? [], total: total ?? 0, current, size }
+}
+
+export async function saveWorkstation(input: WorkstationInput, id?: string) {
+  const payload = keysToSnakeDeep(input)
+  await responseHandle(
+    () =>
+      id
+        ? supabase
+            .from('mdm_workstation')
+            .update(payload, { count: 'exact' })
+            .eq('id', id)
+            .select('id')
+        : supabase.from('mdm_workstation').insert(payload, { count: 'exact' }).select('id'),
+    { ...write, message: id ? '工位信息已更新' : '工位已创建' }
+  )
+}
+
+export async function deleteWorkstations(ids: string[]) {
+  await responseHandle(
+    () => supabase.from('mdm_workstation').delete({ count: 'exact' }).in('id', ids).select('id'),
+    { ...write, message: '工位已删除', errorMessage: '删除失败，请先解除工位的业务引用' }
+  )
+}
 export async function fetchCenterAdjustments(centerId: string) {
   const { data } = await responseHandle<Omit<CenterAdjustment, 'person'>[]>(
     () =>
@@ -333,6 +418,23 @@ export async function saveCenterDevice(input: CenterDeviceInput, id?: string) {
             .select('id')
         : supabase.from('mdm_work_center_device').insert(keysToSnakeDeep(input)).select('id'),
     write
+  )
+}
+export async function addCenterDevices(input: {
+  workCenterId: string
+  equipmentIds: string[]
+  mainEquipmentId: string | null
+  point: string
+}) {
+  await responseHandle(
+    () =>
+      supabase.rpc('mdm_add_work_center_devices', {
+        p_work_center_id: input.workCenterId,
+        p_equipment_ids: uniq(input.equipmentIds),
+        p_main_equipment_id: input.mainEquipmentId,
+        p_point: input.point
+      }),
+    { ...write, requireAffected: false, message: '设备已关联' }
   )
 }
 export async function deleteCenterDevice(id: string) {

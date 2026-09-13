@@ -74,6 +74,8 @@
           row-key="componentMaterialId"
           :pagination="false"
           table-layout="fixed"
+          scrollbar-always-on
+          height="auto"
           max-height="360"
           empty-text="暂无 BOM 组件"
           empty-description="点击“添加组件”建立父项与子项的装配关系。"
@@ -315,7 +317,7 @@
     {
       prop: 'componentMaterialId',
       label: '组件物料',
-      width: 260,
+      width: 300,
       formatter: (row) => {
         const material = materialById(row.componentMaterialId)
         const materialName = formatBomMaterialDescription(material) || '未识别物料'
@@ -360,13 +362,13 @@
     {
       prop: 'materialCode',
       label: '物料编码',
-      width: 150,
+      width: 180,
       formatter: (row) => materialById(row.componentMaterialId)?.materialCode || '—'
     },
     {
       prop: 'specificationModel',
       label: '规格型号',
-      width: 140,
+      width: 180,
       formatter: (row) => materialById(row.componentMaterialId)?.specificationModel || '—'
     },
     {
@@ -389,7 +391,7 @@
         validator: ({ value }) => Number.isFinite(Number(value)) && Number(value) > 0,
         message: ({ row, rowIndex }) => `${componentRowLabel(row, rowIndex)}的用量必须大于 0`
       },
-      width: 118,
+      width: 150,
       align: 'center',
       formatter: (row) => (
         <ElInputNumber
@@ -407,7 +409,7 @@
       label: '计量单位',
       required: true,
       requiredMessage: ({ row, rowIndex }) => `${componentRowLabel(row, rowIndex)}未选择单位`,
-      width: 110,
+      width: 160,
       formatter: (row) => (
         <ElSelect v-model={row.unitId} filterable clearable aria-label="组件单位" class="w-full!">
           {scopedUnits.value.map((unit) => (
@@ -419,14 +421,14 @@
     {
       prop: 'defaultIssueWarehouseId',
       label: '默认发料仓库',
-      width: 150,
+      width: 180,
       formatter: (row) =>
         materialById(row.componentMaterialId)?.defaultWarehouse?.warehouseName || '—'
     },
     {
       prop: 'issueMethod',
       label: '领送料方式',
-      width: 140,
+      width: 170,
       formatter: (row) => (
         <ElSelect v-model={row.issueMethod}>
           {(getDictMap.value.mdmMaterialIssueMethod ?? []).map((item) => (
@@ -438,7 +440,7 @@
     {
       prop: 'backflushMethod',
       label: '倒冲',
-      width: 120,
+      width: 150,
       formatter: (row) => (
         <ElSelect v-model={row.backflushMethod}>
           {(getDictMap.value.mdmMaterialBackflushMethod ?? []).map((item) => (
@@ -450,7 +452,7 @@
     {
       prop: 'overIssueControlMethod',
       label: '超发控制方式',
-      width: 160,
+      width: 190,
       formatter: (row) => (
         <ElSelect v-model={row.overIssueControlMethod} clearable>
           {(getDictMap.value.mdmMaterialOverIssueControl ?? []).map((item) => (
@@ -462,19 +464,19 @@
     {
       prop: 'effectiveFrom',
       label: '生效日期',
-      width: 140,
+      width: 180,
       formatter: (row) => <ElDatePicker v-model={row.effectiveFrom} value-format="YYYY-MM-DD" />
     },
     {
       prop: 'effectiveTo',
       label: '失效日期',
-      width: 140,
+      width: 180,
       formatter: (row) => <ElDatePicker v-model={row.effectiveTo} value-format="YYYY-MM-DD" />
     },
     {
       prop: 'projectText',
       label: '项目文本',
-      width: 180,
+      width: 220,
       formatter: (row) => (
         <ElInput v-model={row.projectText} maxlength={200} placeholder="填写项目文本" />
       )
@@ -482,7 +484,7 @@
     {
       prop: 'scrapRate',
       label: '损耗率 %',
-      width: 112,
+      width: 140,
       align: 'center',
       formatter: (row) => (
         <ElInputNumber
@@ -499,6 +501,7 @@
     {
       prop: 'operationName',
       label: '工序',
+      width: 160,
       formatter: (row) => (
         <ElInput
           v-model={row.operationName}
@@ -512,6 +515,7 @@
     {
       prop: 'positionNo',
       label: '位号',
+      width: 140,
       formatter: (row) => (
         <ElInput
           v-model={row.positionNo}
