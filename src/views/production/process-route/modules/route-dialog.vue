@@ -1,5 +1,5 @@
 <template>
-  <ArtDialog ref="dialogRef" size="xl">
+  <ArtDialog ref="dialogRef" size="xl" show-fullscreen-button>
     <div class="process-route-dialog">
       <ArtEntitySummary
         icon="ri:route-line"

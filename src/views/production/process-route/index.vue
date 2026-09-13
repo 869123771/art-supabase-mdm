@@ -67,6 +67,7 @@
 <script setup lang="tsx">
   import { computed, ref, reactive } from 'vue'
   import dayjs from 'dayjs'
+  import { ElTag } from 'element-plus'
   import { uniq } from 'lodash-es'
   import type { ColumnOption } from '@/types'
   import type {
@@ -201,8 +202,24 @@
         </div>
       )
     },
-    { prop: 'name', label: '路线名称', minWidth: 200, showOverflowTooltip: true },
-    { prop: 'version', label: '工艺版本', width: 110, formatter: (row) => row.version || '—' },
+    {
+      prop: 'name',
+      label: '路线名称',
+      minWidth: 210,
+      formatter: (row) => (
+        <div class="process-route-page__route-name">
+          <strong title={row.name}>{row.name || '未命名路线'}</strong>
+          <small>{row.path || '尚未填写工艺路径'}</small>
+        </div>
+      )
+    },
+    {
+      prop: 'version',
+      label: '工艺版本',
+      width: 110,
+      align: 'center',
+      formatter: (row) => <span class="process-route-page__version">{row.version || '—'}</span>
+    },
     {
       prop: 'group',
       label: '路线分组',
@@ -232,7 +249,14 @@
       label: '默认',
       width: 80,
       align: 'center',
-      formatter: (row) => (row.isDefault ? '是' : '否')
+      formatter: (row) =>
+        row.isDefault ? (
+          <ElTag type="success" effect="plain" size="small">
+            默认
+          </ElTag>
+        ) : (
+          <span class="process-route-page__muted">—</span>
+        )
     },
     {
       prop: 'batchFrom',
@@ -261,7 +285,11 @@
       label: '状态',
       width: 88,
       align: 'center',
-      formatter: (row) => (row.enabled ? '启用' : '停用')
+      formatter: (row) => (
+        <ElTag type={row.enabled ? 'success' : 'info'} effect="plain" size="small">
+          {row.enabled ? '启用' : '停用'}
+        </ElTag>
+      )
     },
     {
       prop: 'updateTime',
@@ -535,11 +563,67 @@
         color: var(--el-text-color-secondary);
       }
     }
+
+    :deep(.process-route-page__route-name) {
+      display: grid;
+      gap: 3px;
+      min-width: 0;
+
+      strong,
+      small {
+        display: block;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      strong {
+        font-weight: 600;
+        color: var(--el-text-color-primary);
+      }
+
+      small {
+        font-size: 11px;
+        color: var(--el-text-color-secondary);
+      }
+    }
+
+    :deep(.process-route-page__version) {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 44px;
+      min-height: 24px;
+      padding: 2px 8px;
+      font-family: var(--art-font-family-mono, Consolas, monospace);
+      font-size: 11px;
+      color: var(--theme-color);
+      background: color-mix(in srgb, var(--theme-color) 8%, var(--el-bg-color));
+      border: 1px solid color-mix(in srgb, var(--theme-color) 16%, transparent);
+      border-radius: 999px;
+    }
+
+    :deep(.process-route-page__muted) {
+      color: var(--el-text-color-placeholder);
+    }
   }
 
   @media (width <= 1180px) {
     .process-route-page__workspace {
       grid-template-columns: minmax(220px, 0.34fr) minmax(0, 1fr);
+    }
+  }
+
+  @media (width <= 900px) {
+    .process-route-page {
+      overflow: auto;
+
+      &__workspace {
+        flex: none;
+        grid-template-rows: 300px minmax(520px, 1fr);
+        grid-template-columns: minmax(0, 1fr);
+      }
     }
   }
 </style>

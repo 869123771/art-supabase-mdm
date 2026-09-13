@@ -1,6 +1,12 @@
 <template>
-  <ArtDialog ref="dialogRef" size="xl">
-    <div class="route-maintenance">
+  <ArtDialog
+    ref="dialogRef"
+    class="process-route-maintenance-dialog"
+    size="xl"
+    show-fullscreen-button
+    @fullscreen-change="maintenanceFullscreen = $event"
+  >
+    <div class="route-maintenance" :class="{ 'is-fullscreen': maintenanceFullscreen }">
       <ArtEntitySummary
         icon="ri:route-line"
         eyebrow="PROCESS ROUTE"
@@ -27,8 +33,8 @@
       <div class="route-maintenance__workspace">
         <ArtSectionCard
           class="route-maintenance__sequences"
-          title="标准工序与并行序列"
-          :subtitle="`${sequenceState.rows.length} 条路径；标准工序为主路径，并行序列用于部装等分支路线。`"
+          title="工序序列"
+          :subtitle="`${sequenceState.rows.length} 条路径 · 标准主线与并行分支`"
           :loading="sequenceState.loading"
           :empty="!sequenceState.loading && !sequenceState.rows.length"
           empty-title="暂无工序序列"
@@ -37,16 +43,12 @@
           :min-height="320"
         >
           <template v-if="!readonly" #actions>
-            <ElButton
+            <ArtIconButton
               v-auth="'MdmProcessRoute:Edit'"
-              type="primary"
-              plain
-              size="small"
+              icon="ri:add-line"
+              label="新增序列"
               @click="openSequence()"
-            >
-              <ArtSvgIcon icon="ri:add-line" />
-              新增序列
-            </ElButton>
+            />
           </template>
           <template v-if="!readonly" #empty-action>
             <ElButton v-auth="'MdmProcessRoute:Edit'" type="primary" @click="openSequence()">
@@ -99,12 +101,13 @@
           :columns-factory="columns"
           :header-actions="actions"
           :search-items="stepSearchItems"
+          :search-bar-props="{ span: 12, labelWidth: 48, showExpand: false }"
           :enable-cache="false"
           :table-props="{
             rowKey: 'id',
+            tableLayout: 'fixed',
             emptyText: sequenceState.selectedId ? '当前序列还没有工序' : '请先选择工序序列',
-            emptyDescription: stepEmptyDescription,
-            height: 360
+            emptyDescription: stepEmptyDescription
           }"
         >
           <template #table-header-top>
@@ -117,6 +120,10 @@
                 <strong>{{ currentSequenceTitle }}</strong>
                 <p>{{ currentSequenceDescription }}</p>
               </div>
+              <span class="route-maintenance__sequence-context-count">
+                <strong>{{ stepRows.length }}</strong>
+                <small>道工序</small>
+              </span>
             </div>
           </template>
         </ArtTableQuery>
@@ -141,6 +148,12 @@
         <template #trigger></template>
       </ArtTableMultipleSelect>
     </div>
+    <template #footer-left>
+      <div class="route-maintenance__footer-hint">
+        <ArtSvgIcon icon="ri:information-line" aria-hidden="true" />
+        <span>{{ currentSequenceDescription }}</span>
+      </div>
+    </template>
   </ArtDialog>
 
   <ArtDialog ref="sequenceDialog" size="sm">
@@ -182,7 +195,9 @@
             <span class="step-editor__tab-label">
               <ArtSvgIcon :icon="tab.icon" />
               {{ tab.label }}
-              <i v-if="tab.count">{{ tab.count }}</i>
+              <span v-if="tab.count" class="step-editor__tab-count" :aria-label="`${tab.count} 项`">
+                {{ tab.count }}
+              </span>
             </span>
           </template>
         </ElTabPane>
@@ -197,28 +212,51 @@
           <span>{{ activeStepPanel.status }}</span>
         </div>
 
-        <ArtForm
-          v-show="activeTab === 'basic'"
-          ref="formRef"
-          v-model="stepForm"
-          :items="lockEditorItems(stepItems)"
-          :rules="stepRules"
-          :span="12"
-          :gutter="24"
-          label-position="top"
-          :show-reset="false"
-          :show-submit="false"
-        />
+        <div v-show="activeTab === 'basic'" class="step-editor__content">
+          <div v-if="editorReadonly" class="step-editor__detail">
+            <ArtDescriptions
+              :data="stepForm"
+              :items="basicDetailItems"
+              :columns="2"
+              :tablet-columns="2"
+              :mobile-columns="1"
+              empty-text="—"
+            />
+          </div>
+          <ArtForm
+            v-else
+            ref="formRef"
+            v-model="stepForm"
+            :items="stepItems"
+            :rules="stepRules"
+            :span="12"
+            :gutter="24"
+            label-position="top"
+            :show-reset="false"
+            :show-submit="false"
+          />
+        </div>
         <div v-show="activeTab === 'unit'" class="step-editor__content">
           <ElAlert
+            v-if="!editorReadonly"
             title="生产单位换算系数 × 生产单位 = 工序单位换算系数 × 工序单位"
             type="info"
             :closable="false"
             show-icon
           />
+          <ArtDescriptions
+            v-if="editorReadonly"
+            :data="unitForm"
+            :items="unitDetailItems"
+            :columns="2"
+            :tablet-columns="2"
+            :mobile-columns="1"
+            empty-text="—"
+          />
           <ArtForm
+            v-else
             v-model="unitForm"
-            :items="lockEditorItems(unitItems)"
+            :items="unitItems"
             :span="12"
             :gutter="24"
             label-position="top"
@@ -235,14 +273,20 @@
 
         <div v-show="activeTab === 'activity'" class="step-editor__content">
           <div class="route-maintenance__tab-toolbar">
-            <span>活动公式会自动带入计划与汇报表达式，仍可按工序调整。</span>
+            <span>
+              {{
+                editorReadonly
+                  ? '按执行顺序展示活动公式、资源及计划与汇报表达式。'
+                  : '活动公式会自动带入计划与汇报表达式，仍可按工序调整。'
+              }}
+            </span>
             <ElButton
               v-if="!editorReadonly && activityRows.length"
               v-auth="'MdmProcessRoute:Edit'"
               type="primary"
               plain
               @click="addActivity"
-              >新增活动</ElButton
+              ><ArtSvgIcon icon="ri:add-line" />新增活动</ElButton
             >
           </div>
           <ElScrollbar class="route-maintenance__activity-scroll">
@@ -254,123 +298,159 @@
             >
               <template v-if="!editorReadonly" #default>
                 <ElButton v-auth="'MdmProcessRoute:Edit'" type="primary" plain @click="addActivity"
-                  >新增活动</ElButton
+                  ><ArtSvgIcon icon="ri:add-line" />新增活动</ElButton
                 >
               </template>
             </ArtEmptyState>
-            <div v-if="activityRows.length" class="route-maintenance__activity-row is-header">
+            <div
+              v-if="activityRows.length"
+              class="route-maintenance__activity-row is-header"
+              :class="{ 'is-readonly': editorReadonly }"
+            >
               <span>#</span><span>活动公式</span><span>活动名称</span><span>活动类型</span
               ><span>基本数量</span><span>活动单位</span><span>资源</span><span>计划活动量公式</span
-              ><span>汇报活动量公式</span><span>操作</span>
+              ><span>汇报活动量公式</span
+              ><span v-if="!editorReadonly" class="route-maintenance__activity-operation"
+                >操作</span
+              >
             </div>
             <div
               v-for="(activity, index) in activityRows"
               :key="activity.key"
               class="route-maintenance__activity-row"
+              :class="{ 'is-readonly': editorReadonly }"
             >
               <span class="route-maintenance__activity-index">{{ index + 1 }}</span>
-              <ElSelect
-                v-model="activity.formulaId"
-                :aria-label="`第 ${index + 1} 行活动公式`"
-                filterable
-                clearable
-                placeholder="活动公式"
-                @change="applyFormula(activity)"
-                :disabled="editorReadonly"
-              >
-                <ElOption
-                  v-for="item in references.activityFormulas"
-                  :key="item.id"
-                  :label="`${item.name} · ${item.code}`"
-                  :value="item.id"
+              <template v-if="editorReadonly">
+                <span class="route-maintenance__activity-value is-strong">
+                  {{ activityFormulaLabel(activity.formulaId) }}
+                </span>
+                <span class="route-maintenance__activity-value is-strong">
+                  {{ activity.name || '—' }}
+                </span>
+                <span class="route-maintenance__activity-value">
+                  {{ dictLabel('mdmActivityType', activity.activityType) }}
+                </span>
+                <span class="route-maintenance__activity-value is-number">
+                  {{ formatQuantity(activity.basicQuantity) }}
+                </span>
+                <span class="route-maintenance__activity-value">
+                  {{ referenceLabel(references.units, activity.unitId) }}
+                </span>
+                <span class="route-maintenance__activity-value">
+                  {{ activity.resource || '—' }}
+                </span>
+                <span class="route-maintenance__activity-value is-code">
+                  {{ activity.planExpression || '—' }}
+                </span>
+                <span class="route-maintenance__activity-value is-code">
+                  {{ activity.reportExpression || '—' }}
+                </span>
+              </template>
+              <template v-else>
+                <ElSelect
+                  v-model="activity.formulaId"
+                  :aria-label="`第 ${index + 1} 行活动公式`"
+                  filterable
+                  clearable
+                  placeholder="活动公式"
+                  @change="applyFormula(activity)"
+                >
+                  <ElOption
+                    v-for="item in references.activityFormulas"
+                    :key="item.id"
+                    :label="`${item.name} · ${item.code}`"
+                    :value="item.id"
+                  />
+                </ElSelect>
+                <ElInput
+                  v-model="activity.name"
+                  :aria-label="`第 ${index + 1} 行活动名称`"
+                  maxlength="100"
+                  placeholder="活动名称"
                 />
-              </ElSelect>
-              <ElInput
-                v-model="activity.name"
-                :aria-label="`第 ${index + 1} 行活动名称`"
-                maxlength="100"
-                placeholder="活动名称"
-                :disabled="editorReadonly"
-              />
-              <ElInput
-                :model-value="dictLabel('mdmActivityType', activity.activityType)"
-                :aria-label="`第 ${index + 1} 行活动类型`"
-                readonly
-                placeholder="由活动公式带入"
-              />
-              <ElInputNumber
-                v-model="activity.basicQuantity"
-                :aria-label="`第 ${index + 1} 行基本数量`"
-                :min="0"
-                :precision="6"
-                controls-position="right"
-                :disabled="editorReadonly"
-              />
-              <ElSelect
-                v-model="activity.unitId"
-                :aria-label="`第 ${index + 1} 行活动单位`"
-                filterable
-                clearable
-                placeholder="活动单位"
-                :disabled="editorReadonly"
-              >
-                <ElOption
-                  v-for="item in references.units"
-                  :key="item.id"
-                  :label="`${item.name} · ${item.code}`"
-                  :value="item.id"
+                <ElInput
+                  :model-value="dictLabel('mdmActivityType', activity.activityType)"
+                  :aria-label="`第 ${index + 1} 行活动类型`"
+                  readonly
+                  placeholder="由活动公式带入"
                 />
-              </ElSelect>
-              <ElInput
-                v-model="activity.resource"
-                :aria-label="`第 ${index + 1} 行资源`"
-                maxlength="200"
-                placeholder="资源"
-                :disabled="editorReadonly"
-              />
-              <ElInput
-                v-model="activity.planExpression"
-                :aria-label="`第 ${index + 1} 行计划活动量公式`"
-                placeholder="计划活动量公式"
-                :disabled="editorReadonly"
-              />
-              <ElInput
-                v-model="activity.reportExpression"
-                :aria-label="`第 ${index + 1} 行汇报活动量公式`"
-                placeholder="汇报活动量公式"
-                :disabled="editorReadonly"
-              />
-              <div class="route-maintenance__activity-actions">
-                <ArtIconButton
-                  v-if="!editorReadonly"
-                  icon="ri:arrow-up-line"
-                  label="上移活动"
-                  :disabled="index === 0"
-                  @click="moveActivity(index, -1)"
+                <ElInputNumber
+                  v-model="activity.basicQuantity"
+                  :aria-label="`第 ${index + 1} 行基本数量`"
+                  :min="0"
+                  :precision="6"
+                  controls-position="right"
                 />
-                <ArtIconButton
-                  v-if="!editorReadonly"
-                  icon="ri:arrow-down-line"
-                  label="下移活动"
-                  :disabled="index === activityRows.length - 1"
-                  @click="moveActivity(index, 1)"
+                <ElSelect
+                  v-model="activity.unitId"
+                  :aria-label="`第 ${index + 1} 行活动单位`"
+                  filterable
+                  clearable
+                  placeholder="活动单位"
+                >
+                  <ElOption
+                    v-for="item in references.units"
+                    :key="item.id"
+                    :label="`${item.name} · ${item.code}`"
+                    :value="item.id"
+                  />
+                </ElSelect>
+                <ElInput
+                  v-model="activity.resource"
+                  :aria-label="`第 ${index + 1} 行资源`"
+                  maxlength="200"
+                  placeholder="资源"
                 />
-                <ArtIconButton
-                  v-if="!editorReadonly"
-                  icon="ri:delete-bin-6-line"
-                  label="删除活动"
-                  tone="danger"
-                  @click="activityRows.splice(index, 1)"
+                <ElInput
+                  v-model="activity.planExpression"
+                  :aria-label="`第 ${index + 1} 行计划活动量公式`"
+                  placeholder="计划活动量公式"
                 />
-              </div>
+                <ElInput
+                  v-model="activity.reportExpression"
+                  :aria-label="`第 ${index + 1} 行汇报活动量公式`"
+                  placeholder="汇报活动量公式"
+                />
+                <div class="route-maintenance__activity-actions">
+                  <ArtIconButton
+                    icon="ri:arrow-up-line"
+                    label="上移活动"
+                    :disabled="index === 0"
+                    @click="moveActivity(index, -1)"
+                  />
+                  <ArtIconButton
+                    icon="ri:arrow-down-line"
+                    label="下移活动"
+                    :disabled="index === activityRows.length - 1"
+                    @click="moveActivity(index, 1)"
+                  />
+                  <ArtIconButton
+                    icon="ri:delete-bin-6-line"
+                    label="删除活动"
+                    tone="danger"
+                    @click="activityRows.splice(index, 1)"
+                  />
+                </div>
+              </template>
             </div>
           </ElScrollbar>
         </div>
 
         <div v-show="activeTab === 'outsourcing'" class="step-editor__content">
+          <ArtDescriptions
+            v-if="editorReadonly"
+            :data="outsourcingForm"
+            :items="outsourcingDetailItems"
+            :columns="2"
+            :tablet-columns="2"
+            :mobile-columns="1"
+            empty-text="—"
+          />
           <ArtForm
+            v-else
             v-model="outsourcingForm"
-            :items="lockEditorItems(outsourcingItems)"
+            :items="outsourcingItems"
             :span="24"
             label-position="top"
             :show-reset="false"
@@ -379,9 +459,19 @@
         </div>
 
         <div v-show="activeTab === 'inspection'" class="step-editor__content">
+          <ArtDescriptions
+            v-if="editorReadonly"
+            :data="inspectionForm"
+            :items="inspectionDetailItems"
+            :columns="2"
+            :tablet-columns="2"
+            :mobile-columns="1"
+            empty-text="—"
+          />
           <ArtForm
+            v-else
             v-model="inspectionForm"
-            :items="lockEditorItems(inspectionItems)"
+            :items="inspectionItems"
             :span="12"
             :gutter="24"
             label-position="top"
@@ -391,9 +481,19 @@
         </div>
 
         <div v-show="activeTab === 'sop'" class="step-editor__content">
+          <ArtDescriptions
+            v-if="editorReadonly"
+            :data="sopForm"
+            :items="sopDetailItems"
+            :columns="2"
+            :tablet-columns="2"
+            :mobile-columns="1"
+            empty-text="—"
+          />
           <ArtForm
+            v-else
             v-model="sopForm"
-            :items="lockEditorItems(sopItems)"
+            :items="sopItems"
             :span="24"
             label-position="top"
             :show-reset="false"
@@ -425,6 +525,8 @@
   import ArtButtonTable from '@/components/core/forms/art-button-table/index.vue'
   import ArtIconButton from '@/components/core/widget/art-icon-button/index.vue'
   import ArtSvgIcon from '@/components/core/base/art-svg-icon/index.vue'
+  import ArtDescriptions from '@/components/core/base/art-descriptions/index.vue'
+  import type { ArtDescriptionItem } from '@/components/core/base/art-descriptions/types'
   import ArtEmptyState from '@/components/core/feedback/art-empty-state/index.vue'
   import ArtEntitySummary from '@/components/core/surfaces/art-entity-summary/index.vue'
   import ArtSectionCard from '@/components/core/surfaces/art-section-card/index.vue'
@@ -458,6 +560,7 @@
     saveProcessStep,
     saveProcessSteps,
     type ProcessRoute,
+    type ProcessRouteReference,
     type ProcessRouteReferences,
     type ProcessSequence,
     type ProcessStep,
@@ -491,6 +594,7 @@
   const operationSelectRef = ref<InstanceType<typeof ArtTableMultipleSelect>>()
   const route = shallowRef<ProcessRoute>()
   const readonly = ref(false)
+  const maintenanceFullscreen = ref(false)
   const editorReadonly = ref(false)
   const search = reactive({ keyword: '' })
   const activeTab = ref('basic')
@@ -705,10 +809,15 @@
     rows.map((item) => ({ label: `${item.name} · ${item.code}`, value: item.id }))
   const dictLabel = (code: string, value: string): string =>
     getDictMap.value[code]?.find((item) => item.value === value)?.label || value || '—'
-  const lockEditorItems = (items: FormItem[]): FormItem[] =>
-    editorReadonly.value
-      ? items.map((item) => ({ ...item, props: { ...item.props, disabled: true } }))
-      : items
+  const referenceLabel = (rows: ProcessRouteReference[], id: unknown): string => {
+    if (!id) return '—'
+    const row = rows.find((item) => item.id === id)
+    return row ? `${row.name} · ${row.code}` : '—'
+  }
+  const activityFormulaLabel = (id: string): string =>
+    referenceLabel(references.activityFormulas, id)
+  const formatQuantity = (value: number): string =>
+    Number(value || 0).toLocaleString('zh-CN', { maximumFractionDigits: 6 })
   const fetchOperationOptions = (params: DataSelectFetchParams) =>
     fetchOperationalMaster('operation', {
       tenantId: route.value?.tenantId || user.info.tenantId || '',
@@ -996,6 +1105,200 @@
     },
     { key: 'attachments', label: '上传附件', type: 'slot' }
   ])
+  const basicDetailItems = computed<ArtDescriptionItem<typeof stepForm>[]>(() => [
+    {
+      key: 'sequenceId',
+      label: '工序序列',
+      field: 'sequenceId',
+      formatter: (value) => {
+        const sequence = sequenceState.rows.find((item) => item.id === value)
+        return sequence
+          ? `${sequence.sequenceNo} · ${sequenceTypeLabel(sequence.sequenceType)}`
+          : '—'
+      }
+    },
+    { key: 'code', label: '工序号', field: 'code', copyable: true },
+    {
+      key: 'operationId',
+      label: '工序集',
+      field: 'operationId',
+      formatter: (value) => referenceLabel(references.operations, value)
+    },
+    { key: 'name', label: '工序名称', field: 'name' },
+    { key: 'description', label: '工序说明', field: 'description', span: 2 },
+    {
+      key: 'unitId',
+      label: '工序单位',
+      field: 'unitId',
+      formatter: (value) => referenceLabel(references.units, value)
+    },
+    { key: 'basicBatch', label: '基本批量', field: 'basicBatch', format: 'number' },
+    {
+      key: 'workCenterId',
+      label: '工作中心',
+      field: 'workCenterId',
+      formatter: (value) => referenceLabel(references.workCenters, value)
+    },
+    {
+      key: 'departmentId',
+      label: '加工车间',
+      field: 'departmentId',
+      formatter: (value) => referenceLabel(references.departments, value)
+    },
+    {
+      key: 'operationMode',
+      label: '作业类型',
+      field: 'operationMode',
+      dictCode: 'mdmProcessOperationMode'
+    },
+    {
+      key: 'controlCodeId',
+      label: '工序控制码',
+      field: 'controlCodeId',
+      formatter: (value) => referenceLabel(references.controlCodes, value)
+    },
+    {
+      key: 'processingMode',
+      label: '加工类型',
+      field: 'processingMode',
+      dictCode: 'mdmProcessingMode'
+    },
+    {
+      key: 'reportMode',
+      label: '汇报方式',
+      field: 'reportMode',
+      dictCode: 'mdmReportMode'
+    },
+    {
+      key: 'inspectionMode',
+      label: '检验方式',
+      field: 'inspectionMode',
+      dictCode: 'mdmInspectionMode'
+    },
+    {
+      key: 'sequenceControl',
+      label: '汇报顺序控制',
+      field: 'sequenceControl',
+      dictCode: 'mdmSequenceControl'
+    },
+    {
+      key: 'reworkMode',
+      label: '返工方式',
+      field: 'reworkMode',
+      dictCode: 'mdmReworkMode'
+    },
+    {
+      key: 'needInspection',
+      label: '工序质检',
+      field: 'needInspection',
+      formatter: (value) => (value ? '需要' : '不需要')
+    },
+    {
+      key: 'firstInspection',
+      label: '首检',
+      field: 'firstInspection',
+      formatter: (value) => (value ? '需要' : '不需要')
+    },
+    {
+      key: 'firstInspectionControl',
+      label: '首检控制',
+      field: 'firstInspectionControl',
+      dictCode: 'mdmProcessSequenceControlMode'
+    },
+    {
+      key: 'critical',
+      label: '关键工序',
+      field: 'critical',
+      formatter: (value) => (value ? '是' : '否')
+    },
+    {
+      key: 'position',
+      label: '序列位置',
+      value: () =>
+        [stepForm.isFirst ? '首序' : '', stepForm.isLast ? '末序' : '']
+          .filter(Boolean)
+          .join('、') || '普通工序'
+    },
+    { key: 'sort', label: '排序', field: 'sort', format: 'number' }
+  ])
+  const unitDetailItems = computed<ArtDescriptionItem<typeof unitForm>[]>(() => [
+    {
+      key: 'productionUnit',
+      label: '生产单位',
+      value: () => route.value?.productionUnit?.unitName || '—'
+    },
+    {
+      key: 'operationUnitId',
+      label: '工序单位',
+      field: 'operationUnitId',
+      formatter: (value) => referenceLabel(references.units, value)
+    },
+    {
+      key: 'productionFactor',
+      label: '生产单位换算系数',
+      field: 'productionFactor',
+      format: 'number'
+    },
+    {
+      key: 'operationFactor',
+      label: '工序单位换算系数',
+      field: 'operationFactor',
+      format: 'number'
+    }
+  ])
+  const outsourcingDetailItems = computed<ArtDescriptionItem<typeof outsourcingForm>[]>(() => [
+    {
+      key: 'enabled',
+      label: '委外状态',
+      field: 'enabled',
+      formatter: (value) => (value ? '已启用' : '未启用')
+    },
+    {
+      key: 'purchaseOrganization',
+      label: '采购组织',
+      field: 'purchaseOrganization',
+      dictCode: 'mdmMaterialPurchaseOrganization'
+    },
+    {
+      key: 'supplierId',
+      label: '供应商',
+      field: 'supplierId',
+      formatter: (value) => referenceLabel(references.suppliers, value)
+    },
+    { key: 'unitPrice', label: '委外单价（元）', field: 'unitPrice', format: 'number' },
+    { key: 'remark', label: '委外说明', field: 'remark', span: 2 }
+  ])
+  const inspectionDetailItems = computed<ArtDescriptionItem<typeof inspectionForm>[]>(() => [
+    {
+      key: 'method',
+      label: '检验方式',
+      field: 'method',
+      dictCode: 'mdmProcessStepInspectionMode'
+    },
+    { key: 'samplingRule', label: '抽样规则', field: 'samplingRule' },
+    { key: 'standard', label: '检验标准', field: 'standard', span: 2 },
+    { key: 'remark', label: '检验备注', field: 'remark', span: 2 }
+  ])
+  const sopDetailItems = computed<ArtDescriptionItem<typeof sopForm>[]>(() => [
+    {
+      key: 'documentIds',
+      label: '工程主数据 ESOP',
+      field: 'documentIds',
+      span: 2,
+      formatter: (value) => {
+        if (!Array.isArray(value) || !value.length) return '—'
+        return value.map((id) => referenceLabel(references.esopDocuments, id)).join('、')
+      }
+    },
+    {
+      key: 'attachments',
+      label: '上传附件',
+      field: 'attachments',
+      span: 2,
+      formatter: (value) =>
+        Array.isArray(value) && value.length ? `已上传 ${value.length} 个附件` : '—'
+    }
+  ])
   const stepRules = {
     sequenceId: [{ required: true, message: '请选择工序序列', trigger: 'change' }],
     code: [{ required: true, message: '请输入工序号', trigger: 'blur' }],
@@ -1144,7 +1447,7 @@
           {
             prop: '__actions',
             label: '操作',
-            width: 176,
+            width: 186,
             fixed: 'right' as const,
             formatter: (row: ProcessStep) => (
               <BusinessTableRowActions>
@@ -1555,6 +1858,7 @@
   async function handleOpen(row: ProcessRoute, viewOnly = false) {
     route.value = row
     readonly.value = viewOnly
+    maintenanceFullscreen.value = false
     search.keyword = ''
     sequenceState.selectedId = ''
     await Promise.all(
@@ -1577,7 +1881,7 @@
       subtitle: `${row.material?.materialCode || '—'} · ${row.material?.materialName || '未关联产品'}`,
       showConfirmButton: false,
       cancelText: '关闭',
-      contentMaxHeight: '72vh',
+      contentMaxHeight: '78vh',
       loading: true,
       onOpen: async (_data, api) => {
         try {
@@ -1630,8 +1934,10 @@
 
     &__workspace {
       display: grid;
-      grid-template-columns: minmax(272px, 0.32fr) minmax(0, 1fr);
+      grid-template-columns: minmax(300px, 0.34fr) minmax(0, 1fr);
       gap: var(--art-space-4);
+      align-items: stretch;
+      height: clamp(400px, 52vh, 520px);
       min-height: 0;
     }
 
@@ -1639,6 +1945,16 @@
       display: flex;
       flex-direction: column;
       min-height: 0;
+      overflow: hidden;
+
+      :deep(.art-section-card__header) {
+        align-items: center;
+        margin-bottom: var(--art-space-3);
+      }
+
+      :deep(.art-section-card__identity p) {
+        margin-left: 0;
+      }
     }
 
     :deep(.route-maintenance__sequence-body) {
@@ -1745,11 +2061,15 @@
       min-width: 0;
       height: 100%;
       min-height: 0;
+
+      :deep(.art-search-bar) {
+        flex: none;
+      }
     }
 
     &__sequence-context {
       display: grid;
-      grid-template-columns: 40px minmax(0, 1fr);
+      grid-template-columns: 40px minmax(0, 1fr) auto;
       gap: var(--art-space-3);
       align-items: center;
       padding: var(--art-space-3);
@@ -1804,44 +2124,111 @@
         color: var(--el-text-color-secondary);
         white-space: nowrap;
       }
+
+      &-count {
+        display: grid;
+        gap: 1px;
+        min-width: 56px;
+        padding-left: var(--art-space-3);
+        text-align: right;
+        border-left: 1px solid color-mix(in srgb, var(--theme-color) 16%, transparent);
+
+        strong {
+          font-size: 18px;
+          font-variant-numeric: tabular-nums;
+          line-height: 22px;
+          color: var(--theme-color);
+        }
+
+        small {
+          font-size: var(--art-font-size-caption);
+          font-weight: 400;
+          line-height: 18px;
+          color: var(--el-text-color-secondary);
+          letter-spacing: 0;
+        }
+      }
+    }
+
+    &__footer-hint {
+      display: flex;
+      gap: var(--art-space-2);
+      align-items: center;
+      min-width: 0;
+
+      svg {
+        flex: none;
+        color: var(--theme-color);
+      }
+
+      span {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
     }
 
     &__tab-toolbar {
       display: flex;
-      gap: 16px;
+      gap: var(--art-space-4);
       align-items: center;
       justify-content: space-between;
-      margin-bottom: 12px;
+      min-height: 36px;
+      margin-bottom: var(--art-space-3);
       color: var(--el-text-color-secondary);
     }
 
     &__activity-scroll {
-      height: 430px;
+      height: 390px;
+      background: var(--default-box-color);
+      border: 1px solid var(--el-border-color-lighter);
+      border-radius: var(--art-control-radius);
     }
 
     &__activity-row {
       display: grid;
       grid-template-columns:
-        28px minmax(150px, 1fr) minmax(140px, 1fr) minmax(120px, 0.8fr) 130px
-        minmax(130px, 0.8fr)
-        minmax(140px, 1fr) minmax(180px, 1fr) minmax(180px, 1fr) auto;
-      gap: 8px;
+        28px minmax(170px, 1fr) minmax(160px, 1fr) minmax(130px, 0.8fr) 140px
+        minmax(145px, 0.8fr)
+        minmax(150px, 1fr) minmax(200px, 1fr) minmax(200px, 1fr) 112px;
+      gap: var(--art-space-3);
       align-items: center;
-      min-width: 1420px;
-      padding: 8px 4px;
+      min-width: 1640px;
+      min-height: 60px;
+      padding: 10px var(--art-space-3);
       border-bottom: 1px solid var(--el-border-color-lighter);
+      transition: background-color var(--art-motion-duration-fast) ease;
+
+      &.is-readonly {
+        grid-template-columns:
+          28px minmax(170px, 1fr) minmax(160px, 1fr) minmax(130px, 0.8fr) 140px
+          minmax(145px, 0.8fr)
+          minmax(150px, 1fr) minmax(200px, 1fr) minmax(200px, 1fr);
+        min-width: 1516px;
+      }
+
+      &:not(.is-header):hover {
+        background: color-mix(in srgb, var(--theme-color) 3%, var(--default-box-color));
+      }
 
       &.is-header {
         position: sticky;
         top: 0;
         z-index: 2;
-        min-height: 40px;
+        min-height: 44px;
         padding-block: 10px;
         font-size: var(--art-font-size-caption);
         font-weight: 600;
         color: var(--el-text-color-secondary);
         background: var(--el-fill-color-light);
-        border-radius: var(--art-control-radius) var(--art-control-radius) 0 0;
+        box-shadow: inset 0 -1px 0 var(--el-border-color-lighter);
+      }
+
+      :deep(.el-select),
+      :deep(.el-input),
+      :deep(.el-input-number) {
+        width: 100%;
+        min-width: 0;
       }
     }
 
@@ -1849,6 +2236,54 @@
       font-variant-numeric: tabular-nums;
       color: var(--el-text-color-secondary);
       text-align: center;
+    }
+
+    &__activity-operation,
+    &__activity-actions {
+      position: sticky;
+      right: 0;
+      z-index: 1;
+      align-self: stretch;
+      justify-content: center;
+      padding-right: var(--art-space-3);
+      margin-right: calc(var(--art-space-3) * -1);
+      background: var(--default-box-color);
+      border-left: 1px solid var(--el-border-color-lighter);
+      box-shadow: -10px 0 16px -16px rgb(15 23 42 / 45%);
+    }
+
+    &__activity-operation {
+      display: flex;
+      align-items: center;
+      background: var(--el-fill-color-light);
+    }
+
+    &__activity-row:not(.is-header):hover &__activity-actions {
+      background: color-mix(in srgb, var(--theme-color) 3%, var(--default-box-color));
+    }
+
+    &__activity-value {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      font-size: var(--art-font-size-caption);
+      line-height: 20px;
+      color: var(--el-text-color-regular);
+      white-space: nowrap;
+
+      &.is-strong {
+        font-weight: 600;
+        color: var(--el-text-color-primary);
+      }
+
+      &.is-number {
+        font-variant-numeric: tabular-nums;
+        text-align: right;
+      }
+
+      &.is-code {
+        font-family: var(--art-font-family-mono, Consolas, monospace);
+      }
     }
 
     &__tab-empty {
@@ -1906,19 +2341,26 @@
       display: inline-flex;
       gap: var(--art-space-2);
       align-items: center;
+    }
 
-      i {
-        display: inline-grid;
-        place-items: center;
-        min-width: 20px;
-        height: 20px;
-        padding: 0 6px;
-        font-size: 10px;
-        font-style: normal;
-        color: var(--theme-color);
-        background: color-mix(in srgb, var(--theme-color) 10%, transparent);
-        border-radius: 999px;
-      }
+    &__tab-count {
+      display: inline-flex;
+      flex: none;
+      align-items: center;
+      justify-content: center;
+      min-width: 18px;
+      height: 18px;
+      padding: 0 5px;
+      margin-left: -2px;
+      font-size: 10px;
+      font-weight: 650;
+      font-variant-numeric: tabular-nums;
+      line-height: 16px;
+      color: var(--theme-color);
+      background: color-mix(in srgb, var(--theme-color) 9%, var(--default-box-color));
+      border: 1px solid color-mix(in srgb, var(--theme-color) 16%, transparent);
+      border-radius: 999px;
+      transform: translateY(-1px);
     }
 
     &__panel {
@@ -1962,7 +2404,27 @@
 
     &__content {
       display: grid;
-      gap: var(--art-space-3);
+      gap: var(--art-space-4);
+      min-width: 0;
+    }
+
+    &__detail,
+    &__content {
+      :deep(.art-descriptions .el-descriptions__label) {
+        width: 148px;
+        padding: 13px var(--art-space-4);
+        background: color-mix(in srgb, var(--art-gray-100) 78%, var(--default-box-color));
+      }
+
+      :deep(.art-descriptions .el-descriptions__content) {
+        padding: 13px var(--art-space-4);
+        line-height: 21px;
+        background: var(--default-box-color);
+      }
+
+      :deep(.art-descriptions .el-descriptions__table) {
+        table-layout: fixed;
+      }
     }
 
     &__equation {
@@ -2010,7 +2472,7 @@
       }
 
       &__workspace {
-        grid-template-columns: minmax(236px, 0.34fr) minmax(0, 1fr);
+        grid-template-columns: minmax(280px, 0.36fr) minmax(0, 1fr);
       }
     }
   }
@@ -2019,10 +2481,19 @@
     .route-maintenance {
       &__workspace {
         grid-template-columns: minmax(0, 1fr);
+        height: auto;
       }
 
       &__sequence-scroll {
         height: 200px;
+      }
+
+      &__steps {
+        height: 440px;
+      }
+
+      &__footer-hint {
+        display: none;
       }
     }
 
@@ -2045,6 +2516,72 @@
           display: none;
         }
       }
+    }
+  }
+
+  @media (width > 900px) {
+    .route-maintenance.is-fullscreen {
+      height: max(400px, calc(100dvh - 176px));
+    }
+
+    .route-maintenance.is-fullscreen .route-maintenance__workspace {
+      flex: 1;
+      height: auto;
+      min-height: 0;
+    }
+
+    :global(.process-route-maintenance-dialog.el-dialog.is-fullscreen) {
+      position: fixed;
+      inset: 0;
+      box-sizing: border-box;
+      width: 100vw !important;
+      max-width: none;
+      height: 100dvh;
+      max-height: 100dvh;
+      margin: 0 !important;
+      border-radius: 0;
+    }
+
+    :global(.process-route-maintenance-dialog.is-fullscreen > .el-dialog__body) {
+      display: flex;
+      flex: 1;
+      flex-direction: column;
+      min-height: 0;
+      overflow: hidden;
+    }
+
+    :global(
+      .process-route-maintenance-dialog.is-fullscreen > .el-dialog__body > .art-dialog__scrollbar
+    ) {
+      flex: 1;
+      height: auto !important;
+      min-height: 0;
+    }
+
+    :global(
+      .process-route-maintenance-dialog.is-fullscreen .art-dialog__scrollbar > .el-scrollbar__wrap
+    ) {
+      position: absolute;
+      inset: 0;
+    }
+
+    :global(
+      .process-route-maintenance-dialog.is-fullscreen
+        .art-dialog__scrollbar
+        > .el-scrollbar__wrap
+        > .el-scrollbar__view
+    ) {
+      display: flex;
+      min-height: 100%;
+    }
+
+    :global(.process-route-maintenance-dialog.is-fullscreen .art-dialog__content),
+    :global(.process-route-maintenance-dialog.is-fullscreen .art-overlay-loading),
+    :global(.process-route-maintenance-dialog.is-fullscreen .art-overlay-loading__content) {
+      display: flex;
+      flex: 1;
+      width: 100%;
+      min-height: 0;
     }
   }
 </style>
