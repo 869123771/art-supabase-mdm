@@ -225,7 +225,12 @@
   ]
   const columns: ColumnOption<BomStructureNode>[] = [
     { type: 'index', label: '序号', width: 70 },
-    { prop: 'depth', label: '层级', width: 76, formatter: (row) => `第 ${row.depth} 层` },
+    {
+      prop: 'depth',
+      label: '层级',
+      width: 76,
+      formatter: (row) => (row.depth === 0 ? '根级' : `第 ${row.depth} 层`)
+    },
     { prop: 'materialCode', label: '物料编码', minWidth: 150 },
     { prop: 'materialName', label: '物料名称', minWidth: 180 },
     { prop: 'specificationModel', label: '规格型号', minWidth: 140 },

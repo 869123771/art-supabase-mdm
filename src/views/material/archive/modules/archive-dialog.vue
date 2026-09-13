@@ -219,6 +219,7 @@
   import ArtIconButton from '@/components/core/widget/art-icon-button/index.vue'
   import ArtSvgIcon from '@/components/core/base/art-svg-icon/index.vue'
   import { useUserStore } from '@/store/modules/user'
+  import TreeUtils from '@/utils/tree'
   import {
     saveMaterialArchive,
     type MaterialArchive,
@@ -239,9 +240,18 @@
   interface ArchiveFormModel extends MaterialArchiveInput {
     id?: string
   }
+  interface MaterialCategoryOption {
+    id: string
+    parentId?: string | null
+    label: string
+    value: string
+    sort: number
+    children?: MaterialCategoryOption[]
+  }
   export interface ArchiveDialogOpenData {
     row?: MaterialArchive
     copy?: boolean
+    presetCategoryId?: string
     tenantId: string
     tenantOptions: Array<{ label: string; value: string }>
     categories: MaterialCategory[]
@@ -478,10 +488,17 @@
   const unitOptions = computed(() =>
     option(scopedUnits.value, (item: UnitOfMeasure) => `${item.unitName} · ${item.unitCode}`)
   )
+  const categoryTreeUtils = new TreeUtils({ parentKey: 'parentId' })
   const categoryOptions = computed(() =>
-    option(
-      scopedCategories.value,
-      (item: MaterialCategory) => `${item.categoryName} · ${item.categoryCode}`
+    categoryTreeUtils.listToTree<MaterialCategoryOption>(
+      scopedCategories.value.map((item) => ({
+        id: item.id,
+        parentId: item.parentId,
+        label: `${item.categoryName} · ${item.categoryCode}`,
+        value: item.id,
+        sort: item.sort
+      })),
+      (left, right) => left.sort - right.sort || left.label.localeCompare(right.label, 'zh-CN')
     )
   )
   const typeOptions = computed(() =>
@@ -607,9 +624,15 @@
         {
           label: '物料分类',
           key: 'categoryId',
-          type: 'select',
+          type: 'treeSelect',
           options: categoryOptions.value,
-          props: { filterable: true }
+          props: {
+            checkStrictly: true,
+            defaultExpandAll: true,
+            filterable: true,
+            nodeKey: 'id',
+            placeholder: '请按层级选择物料分类'
+          }
         },
         {
           label: '物料类型',
@@ -1269,6 +1292,7 @@
     supplyRuleOptions.value = data.supplyRuleOptions
     if (data.row) Object.assign(formModel, cloneDeep(data.row))
     formModel.tenantId = data.row?.tenantId || data.tenantId
+    if (!data.row && data.presetCategoryId) formModel.categoryId = data.presetCategoryId
     if (data.copy) {
       formModel.id = undefined
       formModel.materialCode = ''

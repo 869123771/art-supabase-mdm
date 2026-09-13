@@ -367,6 +367,7 @@
   const dialogData = (row?: MaterialArchive, copy = false): ArchiveDialogOpenData => ({
     row,
     copy,
+    presetCategoryId: !row ? selectedCategoryId.value || undefined : undefined,
     tenantId: row?.tenantId || tenantId.value,
     tenantOptions: tenantOptions.value.map((tenant) => ({
       label: tenant.tenantName || tenant.tenantCode,

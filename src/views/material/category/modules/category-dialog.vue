@@ -41,6 +41,7 @@
   import ArtEmployeeSelect from '@/components/business/art-employee-select/index.vue'
   import ArtSvgIcon from '@/components/core/base/art-svg-icon/index.vue'
   import { useUserStore } from '@/store/modules/user'
+  import TreeUtils from '@/utils/tree'
   import {
     saveMaterialCategory,
     type MaterialCategory,
@@ -64,6 +65,14 @@
     validate: () => Promise<boolean>
     clearValidate: () => void
   }
+  interface CategoryTreeOption {
+    id: string
+    parentId?: string | null
+    label: string
+    value: string
+    sort: number
+    children?: CategoryTreeOption[]
+  }
 
   const emit = defineEmits<{ success: [] }>()
   const userStore = useUserStore()
@@ -74,7 +83,7 @@
   const sourceCategories = ref<MaterialCategory[]>([])
   const sourceMaterialTypes = ref<MaterialType[]>([])
   const sourceSites = ref<MaterialContextOption[]>([])
-  const categoryOptions = ref<Array<{ label: string; value: string }>>([])
+  const categoryTreeUtils = new TreeUtils({ parentKey: 'parentId' })
   const typeOptions = ref<Array<{ label: string; value: string }>>([])
   const siteOptions = ref<Array<{ label: string; value: string }>>([])
   const initialForm = (): MaterialCategory => ({
@@ -107,6 +116,27 @@
   })
   const formModel = reactive<MaterialCategory>(initialForm())
   const tenantId = computed(() => formModel.tenantId)
+  const categoryOptions = computed<CategoryTreeOption[]>(() => {
+    const scoped = sourceCategories.value.filter((item) => item.tenantId === formModel.tenantId)
+    const sourceTree = categoryTreeUtils.listToTree(scoped)
+    const blockedIds = new Set(
+      formModel.id
+        ? categoryTreeUtils.getDescendants(sourceTree, formModel.id, true).map((item) => item.id)
+        : []
+    )
+    return categoryTreeUtils.listToTree<CategoryTreeOption>(
+      scoped
+        .filter((item) => !blockedIds.has(item.id))
+        .map((item) => ({
+          id: item.id,
+          parentId: item.parentId,
+          label: `${item.categoryName} · ${item.categoryCode}`,
+          value: item.id,
+          sort: item.sort
+        })),
+      (left, right) => left.sort - right.sort || left.label.localeCompare(right.label, 'zh-CN')
+    )
+  })
   const formItems = computed<FormItem[]>(() => [
     {
       label: '目标租户',
@@ -123,9 +153,16 @@
     {
       label: '上级分类',
       key: 'parentId',
-      type: 'select',
+      type: 'treeSelect',
       options: categoryOptions.value,
-      props: { clearable: true, placeholder: '顶级分类' }
+      props: {
+        clearable: true,
+        filterable: true,
+        checkStrictly: true,
+        defaultExpandAll: true,
+        nodeKey: 'id',
+        placeholder: '顶级分类（不选择上级）'
+      }
     },
     {
       label: '物料类型',
@@ -252,9 +289,6 @@
     categoryName: [{ required: true, message: '请输入分类名称', trigger: 'blur' }]
   }
   const syncTenantOptions = (): void => {
-    categoryOptions.value = sourceCategories.value
-      .filter((item) => item.tenantId === formModel.tenantId && item.id !== formModel.id)
-      .map((item) => ({ label: `${item.categoryName} · ${item.categoryCode}`, value: item.id }))
     typeOptions.value = sourceMaterialTypes.value
       .filter((item) => item.tenantId === formModel.tenantId)
       .map((item) => ({ label: `${item.typeName} · ${item.typeCode}`, value: item.id }))
@@ -315,7 +349,11 @@
       if (value === previous) return
       syncTenantOptions()
       if (!previous) return
-      if (!categoryOptions.value.some((item) => item.value === formModel.parentId)) {
+      if (
+        !sourceCategories.value.some(
+          (item) => item.tenantId === value && item.id === formModel.parentId
+        )
+      ) {
         formModel.parentId = null
       }
       if (!typeOptions.value.some((item) => item.value === formModel.materialTypeId)) {

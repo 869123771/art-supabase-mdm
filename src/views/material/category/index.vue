@@ -169,7 +169,7 @@
       permission: 'MdmMaterialCategory:Add',
       type: 'add',
       label: '新增分类',
-      onClick: () => openDialog()
+      onClick: () => openDialog(undefined, false, selectedCategoryId.value || undefined)
     },
     { permission: 'MdmMaterialCategory:Export', type: 'export', label: '导出' },
     {
