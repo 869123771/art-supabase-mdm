@@ -1,5 +1,6 @@
 import { omit } from 'lodash-es'
 import { useSupabase } from '@/hooks'
+import { normalizeNullableText } from '@/utils/form/normalize'
 import type {
   ProductionEquipmentInput,
   ProductionEquipmentPage,
@@ -32,7 +33,7 @@ export async function fetchProductionEquipment(params: ProductionEquipmentQuery)
       supabase.rpc('mdm_list_production_equipment_v2_secure', {
         p_from: from,
         p_to: from + params.size - 1,
-        p_keyword: params.keyword?.trim() || null,
+        p_keyword: normalizeNullableText(params.keyword),
         p_category_id: params.categoryId || null,
         p_department_id: params.departmentId || null,
         p_location_id: params.locationId || null,

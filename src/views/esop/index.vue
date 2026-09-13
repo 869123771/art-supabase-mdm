@@ -288,7 +288,8 @@
 </template>
 
 <script setup lang="tsx">
-  import dayjs from 'dayjs'
+  import { createDateTimeFormatter } from '@/utils/ui/format'
+
   import { Search } from '@element-plus/icons-vue'
   import { ElMessage, ElTag, type TreeNodeData } from 'element-plus'
   import type { ColumnOption } from '@/types'
@@ -296,6 +297,7 @@
   import { useUserStore } from '@/store/modules/user'
   import { useTenantScopeStore } from '@/store/modules/tenantScope'
   import { exportExcel, viewAttachment } from '@/utils/file'
+  import { normalizeNullableText } from '@/utils/form/normalize'
   import TreeUtils from '@/utils/tree'
   import ArtPermissionGuard from '@/components/core/feedback/art-permission-guard/index.vue'
   import ArtEmptyState from '@/components/core/feedback/art-empty-state/index.vue'
@@ -566,10 +568,8 @@
       }))
     })
   }
-  const formatDateTime = (value?: string | null): string =>
-    value ? dayjs(value).format('YYYY-MM-DD HH:mm') : '—'
-  const formatDate = (value?: string | null): string =>
-    value ? dayjs(value).format('YYYY-MM-DD') : '—'
+  const formatDateTime = createDateTimeFormatter({ format: 'YYYY-MM-DD HH:mm', emptyText: '—' })
+  const formatDate = createDateTimeFormatter({ format: 'YYYY-MM-DD', emptyText: '—' })
   const formatSize = (value?: number | null): string => {
     if (value == null) return '大小未知'
     if (value >= 1024 * 1024) return `${(value / 1024 / 1024).toFixed(1)} MB`
@@ -798,8 +798,8 @@
             attachmentUrl.split('/').pop() || `${documentCode}.pdf`
           ),
           attachmentType: attachmentUrl.split('.').pop() || '',
-          description: String(row['说明'] || '').trim() || null,
-          effectiveDate: String(row['生效日期'] || '').trim() || null,
+          description: normalizeNullableText(String(row['说明'] || '')),
+          effectiveDate: normalizeNullableText(String(row['生效日期'] || '')),
           status: String(row['状态'] || '启用').trim() === '停用' ? 'disabled' : 'enabled',
           materialIds: [],
           routeIds: []

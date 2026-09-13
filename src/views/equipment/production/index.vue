@@ -240,6 +240,8 @@
 </template>
 
 <script setup lang="tsx">
+  import { createDateTimeFormatter } from '@/utils/ui/format'
+
   import dayjs from 'dayjs'
   import { ElImage, ElTag } from 'element-plus'
   import TreeUtils from '@/utils/tree'
@@ -674,7 +676,7 @@
     }
   ]
 
-  const formatDate = (value?: string | null) => (value ? dayjs(value).format('YYYY-MM-DD') : '—')
+  const formatDate = createDateTimeFormatter({ format: 'YYYY-MM-DD', emptyText: '—' })
   const formatTime = (value?: string | null) =>
     value ? dayjs(value).format('YYYY-MM-DD HH:mm') : '—'
   const identityDetails = computed(() =>

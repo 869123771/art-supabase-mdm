@@ -85,6 +85,8 @@
 </template>
 
 <script setup lang="tsx">
+  import { createDateTimeFormatter } from '@/utils/ui/format'
+
   import dayjs from 'dayjs'
   import ArtDescriptions from '@/components/core/base/art-descriptions/index.vue'
   import type { ArtDescriptionItem } from '@/components/core/base/art-descriptions/types'
@@ -106,8 +108,11 @@
     return Number.isFinite(amount) ? amount.toLocaleString('zh-CN', { maximumFractionDigits }) : '—'
   }
 
-  const formatDateTime = (value?: string | null): string =>
-    value && dayjs(value).isValid() ? dayjs(value).format('YYYY-MM-DD HH:mm') : '—'
+  const formatDateTime = createDateTimeFormatter({
+    format: 'YYYY-MM-DD HH:mm',
+    emptyText: '—',
+    invalidText: '—'
+  })
 
   const formatDate = (value?: string | null): string =>
     value && dayjs(value).isValid() ? dayjs(value).format('YYYY-MM-DD') : '—'

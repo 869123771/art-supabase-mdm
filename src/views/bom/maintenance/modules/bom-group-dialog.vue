@@ -40,6 +40,7 @@
   import ArtForm, { type FormItem } from '@/components/core/forms/art-form/index.vue'
   import ArtEntitySummary from '@/components/core/surfaces/art-entity-summary/index.vue'
   import { useUserStore } from '@/store/modules/user'
+  import { normalizeNullableText } from '@/utils/form/normalize'
   import { saveBomGroup, type BomGroup, type BomGroupInput } from '@mdm/api'
 
   export interface BomGroupDialogOpenData {
@@ -172,7 +173,7 @@
         code: form.model.code.trim().toUpperCase(),
         name: form.model.name.trim(),
         sort: Number(form.model.sort),
-        remark: form.model.remark?.trim() || null
+        remark: normalizeNullableText(form.model.remark)
       })
       emit('success', id || form.model.id || '', mode)
       return true

@@ -1,4 +1,5 @@
 import type { MaterialCategory, MaterialCategoryInput } from '@mdm/api'
+import { normalizeNullableText } from '@/utils/form/normalize'
 
 /**
  * Restrict category writes to columns owned by mdm_material_category. Read-only relations and
@@ -12,7 +13,7 @@ export function buildMaterialCategoryWriteInput(model: MaterialCategory): Materi
     codePrefix: model.codePrefix.trim() || model.categoryCode.trim(),
     categoryName: model.categoryName.trim(),
     materialTypeId: model.materialTypeId || null,
-    printName: model.printName?.trim() || null,
+    printName: normalizeNullableText(model.printName),
     compositionColumns: [...model.compositionColumns],
     compositionSeparator: model.compositionSeparator,
     overPurchasePercent: Number(model.overPurchasePercent || 0),
@@ -20,7 +21,7 @@ export function buildMaterialCategoryWriteInput(model: MaterialCategory): Materi
     maxReceiptQuantity: model.maxReceiptQuantity ?? null,
     autoReceive: Boolean(model.autoReceive),
     purchaserId: model.purchaserId || null,
-    purchaseOrganization: model.purchaseOrganization?.trim() || null,
+    purchaseOrganization: normalizeNullableText(model.purchaseOrganization),
     requiresInspection: Boolean(model.requiresInspection),
     createDeliveryNotice: Boolean(model.createDeliveryNotice),
     defaultSiteId: model.defaultSiteId || null,
@@ -28,7 +29,7 @@ export function buildMaterialCategoryWriteInput(model: MaterialCategory): Materi
     overReceiptQuantity: Number(model.overReceiptQuantity || 0),
     batchManaged: Boolean(model.batchManaged),
     valuationMethod: model.valuationMethod,
-    description: model.description?.trim() || null,
+    description: normalizeNullableText(model.description),
     status: model.status,
     sort: Number(model.sort || 0)
   }

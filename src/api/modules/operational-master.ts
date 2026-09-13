@@ -301,8 +301,8 @@ export async function fetchOperationalMasterReferences(
         tenantId
       ),
       fetchReference('mdm_employee', 'id,tenant_id,code:employee_no,name:employee_name', tenantId),
-      fetchReference('mdm_production_department', 'id,tenant_id,code,name', tenantId),
-      fetchReference('mdm_work_center', 'id,tenant_id,code,name', tenantId),
+      fetchReference('mdm_production_department', 'id,tenant_id,parent_id,code,name', tenantId),
+      fetchReference('mdm_work_center', 'id,tenant_id,department_id,code,name', tenantId),
       fetchReference('mdm_production_personnel', 'id,tenant_id,code:employee_no,name', tenantId),
       fetchReference('mdm_unit_of_measure', 'id,tenant_id,code:unit_code,name:unit_name', tenantId),
       fetchMenuReferences()

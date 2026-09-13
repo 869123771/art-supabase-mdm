@@ -157,6 +157,8 @@ export interface MasterReferenceOption {
   code: string
   name: string
   tenantId: string
+  parentId?: string | null
+  departmentId?: string | null
 }
 
 export interface OperationalMasterReferences {

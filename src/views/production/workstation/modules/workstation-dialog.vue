@@ -54,6 +54,7 @@
   import ArtForm, { type FormItem } from '@/components/core/forms/art-form/index.vue'
   import ArtEntitySummary from '@/components/core/surfaces/art-entity-summary/index.vue'
   import { useUserStore } from '@/store/modules/user'
+  import { normalizeNullableText } from '@/utils/form/normalize'
   import {
     fetchProductionPersonSelector,
     saveWorkstation,
@@ -199,7 +200,7 @@
           departmentId: form.model.departmentId,
           workCenterId: form.model.workCenterId,
           responsiblePersonId: form.model.responsiblePersonId || null,
-          andonSimNo: form.model.andonSimNo?.trim() || null,
+          andonSimNo: normalizeNullableText(form.model.andonSimNo),
           enabled: form.model.enabled,
           remark: form.model.remark.trim()
         },

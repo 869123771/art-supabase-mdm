@@ -1,5 +1,6 @@
 import type { EmployeeSelectorContractParams } from '@/api/integration/employees'
 import { useSupabase } from '@/hooks'
+import { normalizeNullableText } from '@/utils/form/normalize'
 import type { ProductionDepartment, ShiftPattern } from './production.types'
 
 export type ShiftScheduleDateMode = 'single' | 'ongoing' | 'range'
@@ -204,7 +205,7 @@ export async function fetchShiftSchedulePersonnel(
         p_department_id: departmentId,
         p_from: from,
         p_to: to,
-        p_keyword: params.keyword?.trim() || null
+        p_keyword: normalizeNullableText(params.keyword)
       }),
     readOptions
   )

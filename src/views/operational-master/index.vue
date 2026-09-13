@@ -513,6 +513,8 @@
       tenantId: row?.tenantId || effectiveTenantId.value || '',
       tenantOptions: tenantChoices(),
       groups: groupState.rows,
+      initialGroupId:
+        config.value.kind === 'operation' && !row ? groupState.selectedId || undefined : undefined,
       row: row ? cloneDeep(row) : undefined,
       copy,
       readonly

@@ -1,4 +1,5 @@
 import { cloneDeep, pick } from 'lodash-es'
+import { normalizeNonNullableText } from '@/utils/form/normalize'
 import type {
   OperationalMasterInput,
   OperationalMasterKind,
@@ -51,7 +52,7 @@ export function buildOperationalMasterWriteInput(
     const value = payloadRecord[key]
     if (typeof value !== 'string') continue
 
-    const normalizedValue = value.trim()
+    const normalizedValue = normalizeNonNullableText(value)
     payloadRecord[key] =
       nullableUuidFieldKeys.has(fieldKey) && normalizedValue.length === 0 ? null : normalizedValue
   }

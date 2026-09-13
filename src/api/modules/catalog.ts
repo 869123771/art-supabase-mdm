@@ -1,4 +1,5 @@
 import { useSupabase } from '@/hooks'
+import { normalizeNullableText } from '@/utils/form/normalize'
 import { mdmCatalogSourceDefinitions, type MdmCatalogScope } from './catalog-source-definitions'
 export {
   mdmCatalogSourceDefinitions,
@@ -231,7 +232,7 @@ export async function fetchMdmCatalogPage(
   const from = (current - 1) * size
   const rpcQuery = supabase.rpc('mdm_list_catalog_secure', {
     p_scope: scope,
-    p_keyword: query.keyword?.trim() || null,
+    p_keyword: normalizeNullableText(query.keyword),
     p_source_type: query.sourceType || null,
     p_state: query.state || null,
     p_quality: query.quality || null,

@@ -114,6 +114,7 @@
   import { useTenantScopeFormPolicy } from '@/hooks/core/useTenantScopeFormPolicy'
   import { useUserStore } from '@/store/modules/user'
   import { validateEmail, validatePhone, validateTelPhone } from '@/utils/form/validator'
+  import TreeUtils from '@/utils/tree'
   import type {
     MasterGroup,
     OperationalMasterInput,
@@ -134,6 +135,7 @@
     tenantId: string
     tenantOptions: Array<{ label: string; value: string }>
     groups: MasterGroup[]
+    initialGroupId?: string
     row?: OperationalMasterRecord
     copy?: boolean
     readonly?: boolean
@@ -143,6 +145,7 @@
   const userStore = useUserStore()
   const { shouldExposeTenantField } = useTenantScopeFormPolicy()
   const { getDictMap } = storeToRefs(userStore)
+  const referenceTree = new TreeUtils({ parentKey: 'parentId' })
   const dialogRef = ref<ArtDialogExpose<MasterDialogOpenData>>()
   const formRef = ref<InstanceType<typeof ArtForm>>()
   const emptyReferences = (): OperationalMasterReferences => ({
@@ -196,6 +199,15 @@
 
   const referenceOptions = (field: MasterFieldConfig) => {
     if (!field.reference) return []
+    if (field.reference === 'workCenters') {
+      if (!form.model.tenantId || !form.model.departmentId) return []
+      return form.references.workCenters
+        .filter(
+          (item) =>
+            item.tenantId === form.model.tenantId && item.departmentId === form.model.departmentId
+        )
+        .map((item) => ({ label: `${item.name} · ${item.code}`, value: item.id }))
+    }
     return form.references[field.reference].map((item) => ({
       label: `${item.name} · ${item.code}`,
       value: item.id
@@ -203,10 +215,40 @@
   }
 
   const groupOptions = computed(() =>
-    form.groups
-      .filter((group) => group.tenantId === form.model.tenantId)
-      .map((group) => ({ label: `${group.name} · ${group.code}`, value: group.id }))
+    referenceTree.listToTree(
+      form.groups
+        .filter((group) => group.tenantId === form.model.tenantId)
+        .map((group) => ({
+          id: group.id,
+          parentId: group.parentId,
+          label: `${group.name} · ${group.code}`,
+          value: group.id
+        }))
+    )
   )
+
+  const departmentOptions = computed(() =>
+    referenceTree.listToTree(
+      form.references.departments
+        .filter((item) => item.tenantId === form.model.tenantId)
+        .map((item) => ({
+          id: item.id,
+          parentId: item.parentId,
+          label: `${item.name} · ${item.code}`,
+          value: item.id
+        }))
+    )
+  )
+
+  const workCenterOptions = computed(() => {
+    if (!form.model.tenantId || !form.model.departmentId) return []
+    return form.references.workCenters
+      .filter(
+        (item) =>
+          item.tenantId === form.model.tenantId && item.departmentId === form.model.departmentId
+      )
+      .map((item) => ({ label: `${item.name} · ${item.code}`, value: item.id }))
+  })
 
   const employeeSelection = (id?: string | null): EmployeeIntegrationItem[] => {
     const item = form.references.employees.find((employee) => employee.id === id)
@@ -262,7 +304,13 @@
       ? dictionaryOptions(field.dictCode)
       : isGroup
         ? groupOptions.value
-        : referenceOptions(field)
+        : field.reference === 'departments'
+          ? departmentOptions.value
+          : field.reference === 'workCenters' && config.value.kind === 'operation'
+            ? workCenterOptions.value
+            : referenceOptions(field)
+    const isOperationWorkCenter =
+      config.value.kind === 'operation' && field.reference === 'workCenters'
     return [
       {
         key: String(field.key),
@@ -279,7 +327,17 @@
           resize: field.type === 'textarea' ? 'none' : undefined,
           showWordLimit: field.type === 'textarea',
           controlsPosition: field.type === 'number' ? 'right' : undefined,
-          placeholder: field.placeholder || `${isSelectable ? '请选择' : '请输入'}${field.label}`,
+          placeholder:
+            isOperationWorkCenter && !form.model.departmentId
+              ? '请先选择车间 / 产线'
+              : field.placeholder || `${isSelectable ? '请选择' : '请输入'}${field.label}`,
+          disabled: isOperationWorkCenter && !form.model.departmentId,
+          checkStrictly: field.type === 'treeSelect' ? true : undefined,
+          defaultExpandAll: field.type === 'treeSelect' ? true : undefined,
+          onChange:
+            config.value.kind === 'operation' && field.key === 'departmentId'
+              ? handleOperationDepartmentChange
+              : undefined,
           readonly: field.systemGenerated,
           class: field.type === 'number' ? '!w-full' : undefined
         },
@@ -287,9 +345,21 @@
           ? '由系统按 PJ + 年月 + 3 位流水号生成，每月从 001 重新开始。'
           : isGroup && !groupOptions.value.length
             ? `暂无${config.value.groupTitle || '业务分组'}，可先在左侧分组区新增。`
-            : undefined
+            : isOperationWorkCenter
+              ? !form.model.departmentId
+                ? '选择车间 / 产线后，仅显示该范围内的工作中心。'
+                : workCenterOptions.value.length
+                  ? '仅显示所选车间 / 产线下的工作中心。'
+                  : '当前车间 / 产线暂无可选工作中心。'
+              : undefined
       }
     ]
+  }
+
+  function handleOperationDepartmentChange(): void {
+    if (!Array.isArray(form.model.workCenterIds)) return
+    const availableIds = new Set(workCenterOptions.value.map((item) => item.value))
+    form.model.workCenterIds = form.model.workCenterIds.filter((id) => availableIds.has(id))
   }
 
   const formItems = computed<FormItem[]>(() => {
@@ -381,6 +451,9 @@
       else if (!(field.key in model)) model[field.key] = null as never
     }
     if (data.row) Object.assign(model, cloneDeep(data.row))
+    else if (data.config.kind === 'operation' && data.initialGroupId) {
+      model.groupId = data.initialGroupId
+    }
     if (data.copy) {
       model.id = ''
       for (const field of data.config.fields.filter((item) => item.systemGenerated)) {
@@ -395,6 +468,14 @@
     if (form.model.groupId && !form.groups.some((group) => group.id === form.model.groupId)) {
       form.model.groupId = null
     }
+    if (
+      config.value.kind === 'operation' &&
+      form.model.departmentId &&
+      !form.references.departments.some((item) => item.id === form.model.departmentId)
+    ) {
+      form.model.departmentId = null
+    }
+    if (config.value.kind === 'operation') handleOperationDepartmentChange()
   }
 
   function normalizePayload(): OperationalMasterInput {

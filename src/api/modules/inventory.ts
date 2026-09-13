@@ -1,4 +1,5 @@
 import { useSupabase } from '@/hooks'
+import { normalizeNullableText } from '@/utils/form/normalize'
 import type {
   InventoryRuleQuery,
   OutboundRule,
@@ -38,7 +39,7 @@ export async function fetchWarehouseWorkspace(
   let request = supabase.rpc('mdm_list_warehouses_secure', {
     p_from: from,
     p_to: from + params.size - 1,
-    p_keyword: params.keyword?.trim() || null,
+    p_keyword: normalizeNullableText(params.keyword),
     p_status: params.status || null,
     p_group_id: params.groupId || null
   })

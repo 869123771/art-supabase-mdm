@@ -230,7 +230,8 @@
 </template>
 
 <script setup lang="tsx">
-  import dayjs from 'dayjs'
+  import { createDateTimeFormatter } from '@/utils/ui/format'
+
   import { ElImage, ElTag } from 'element-plus'
   import { useArtFeedback } from '@/hooks/core/useArtFeedback'
   import { useUserStore } from '@/store/modules/user'
@@ -481,8 +482,7 @@
     '未识别类型'
   const baseUnitLabel = (row: MaterialArchive): string =>
     row.baseUnit?.unitName || unitLabel(row.baseUnitId || row.basicUnit)
-  const formatDateTime = (value?: string | null): string =>
-    value ? dayjs(value).format('YYYY-MM-DD HH:mm') : '—'
+  const formatDateTime = createDateTimeFormatter({ format: 'YYYY-MM-DD HH:mm', emptyText: '—' })
   const detailTypeLabel = computed(() =>
     detailRow.value ? materialTypeLabel(detailRow.value) : '—'
   )

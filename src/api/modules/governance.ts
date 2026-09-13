@@ -1,4 +1,5 @@
 import { useSupabase } from '@/hooks'
+import { normalizeNullableText } from '@/utils/form/normalize'
 import { buildOrIlikeFilter } from '@/utils/supabase/search'
 import type {
   MdmChangeRequest,
@@ -157,7 +158,7 @@ export async function transitionMdmQualityIssue(
       supabase.rpc('mdm_transition_quality_issue_secure', {
         p_issue_id: issueId,
         p_action: action,
-        p_comment: comment?.trim() || null
+        p_comment: normalizeNullableText(comment)
       }),
     { ...writeOptions, message: '质量问题状态已更新' }
   )
@@ -193,7 +194,7 @@ export async function transitionMdmChangeRequest(
       supabase.rpc('mdm_transition_change_request_secure', {
         p_request_id: requestId,
         p_action: action,
-        p_comment: comment?.trim() || null
+        p_comment: normalizeNullableText(comment)
       }),
     { ...writeOptions, message: '变更申请状态已更新' }
   )

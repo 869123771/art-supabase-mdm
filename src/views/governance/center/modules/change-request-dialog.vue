@@ -29,6 +29,7 @@
   import type { ArtDialogExpose } from '@/components/core/dialogs/art-dialog/types'
   import ArtForm, { type FormItem } from '@/components/core/forms/art-form/index.vue'
   import ArtSvgIcon from '@/components/core/base/art-svg-icon/index.vue'
+  import { normalizeNullableText } from '@/utils/form/normalize'
   import {
     createMdmChangeRequest,
     mdmCatalogSourceDefinitions,
@@ -209,7 +210,7 @@
     await createMdmChangeRequest({
       domainKey: form.domainKey,
       sourceType: form.sourceType,
-      sourceRecordId: form.sourceRecordId.trim() || null,
+      sourceRecordId: normalizeNullableText(form.sourceRecordId),
       operation: form.operation,
       title: form.title.trim(),
       reason: form.reason.trim(),

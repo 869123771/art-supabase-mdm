@@ -149,7 +149,8 @@
                 <ArtIconButton
                   class="parameter-panel__create"
                   icon="ri:add-line"
-                  label="新增参数分组"
+                  :label="model.purpose ? '新增参数分组' : '请先选择公式用途'"
+                  :disabled="!model.purpose"
                   @click="openParameterEditor('group')"
                 />
                 <ArtIconButton
@@ -232,26 +233,23 @@
                     v-auth="'MdmActivityFormula:ManageParameter'"
                     @click.stop
                   >
-                    <ElButton
+                    <ArtIconButton
                       v-if="data.nodeType === 'group'"
-                      link
-                      aria-label="新增下级"
+                      icon="ri:add-line"
+                      label="新增下级参数"
                       @click="openParameterEditor('parameter', undefined, data)"
-                      ><ArtSvgIcon icon="ri:add-line"
-                    /></ElButton>
-                    <ElButton
-                      link
-                      aria-label="编辑节点"
+                    />
+                    <ArtIconButton
+                      icon="ri:edit-line"
+                      label="编辑参数节点"
                       @click="openParameterEditor(data.nodeType, data)"
-                      ><ArtSvgIcon icon="ri:edit-line"
-                    /></ElButton>
-                    <ElButton
-                      link
-                      type="danger"
-                      aria-label="删除节点"
+                    />
+                    <ArtIconButton
+                      icon="ri:delete-bin-6-line"
+                      label="删除参数节点"
+                      tone="danger"
                       @click="removeParameter(data)"
-                      ><ArtSvgIcon icon="ri:delete-bin-6-line"
-                    /></ElButton>
+                    />
                   </span>
                   <ArtSvgIcon
                     v-if="data.nodeType === 'parameter' && !readonly"
@@ -416,8 +414,8 @@
         <ElFormItem label="节点编码" prop="code">
           <ElInput
             v-model="parameterEditor.model.code"
-            maxlength="64"
-            placeholder="大写字母、数字或下划线"
+            maxlength="60"
+            placeholder="以大写字母开头，可包含数字或下划线"
             @input="normalizeParameterCode"
           />
         </ElFormItem>
@@ -442,7 +440,7 @@
           <ElFormItem label="关联字段" prop="relatedField">
             <ElInput
               v-model="parameterEditor.model.relatedField"
-              maxlength="128"
+              maxlength="120"
               placeholder="例如 process_qty"
             />
           </ElFormItem>
@@ -451,7 +449,7 @@
           <ElInputNumber
             v-model="parameterEditor.model.sort"
             :min="0"
-            :max="9999"
+            :max="999999"
             controls-position="right"
           />
         </ElFormItem>
@@ -489,7 +487,6 @@
     saveActivityFormulaParameter,
     saveOperationalMaster,
     type ActivityFormulaParameter,
-    type ActivityFormulaParameterInput,
     type ActivityFormulaPurpose,
     type ActivityFormulaToken,
     type OperationalMasterRecord
@@ -506,6 +503,12 @@
     validateFormula,
     type ActivityFormulaParameterTreeNode
   } from './activity-formula-builder'
+  import { buildActivityFormulaWriteInput } from './activity-formula-payload'
+  import {
+    buildActivityFormulaParameterWriteInput,
+    isActivityFormulaPurpose,
+    type ActivityFormulaParameterFormModel
+  } from './activity-formula-parameter'
 
   const emit = defineEmits<{ success: [mode: 'add' | 'edit'] }>()
   const userStore = useUserStore()
@@ -605,14 +608,21 @@
     code: [
       { required: true, message: '请输入节点编码', trigger: 'blur' },
       {
-        pattern: /^[A-Z0-9_]+$/,
-        message: '仅支持大写字母、数字和下划线',
+        pattern: /^[A-Z][A-Z0-9_]{0,59}$/,
+        message: '须以大写字母开头，且只能包含大写字母、数字和下划线',
         trigger: 'blur'
       }
     ],
     name: [{ required: true, message: '请输入节点名称', trigger: 'blur' }],
     activityUnit: [{ required: true, message: '请选择活动单位', trigger: 'change' }],
-    relatedField: [{ required: true, message: '请输入关联字段', trigger: 'blur' }]
+    relatedField: [
+      { required: true, message: '请输入关联字段', trigger: 'blur' },
+      {
+        pattern: /^[A-Za-z_][A-Za-z0-9_.]{0,119}$/,
+        message: '须以字母或下划线开头，且只能包含字母、数字、下划线和点',
+        trigger: 'blur'
+      }
+    ]
   }
 
   function dictionaryOptions(code: string) {
@@ -646,10 +656,10 @@
   function createEmptyParameter(
     nodeType: 'group' | 'parameter',
     parentId: string | null = null
-  ): ActivityFormulaParameterInput {
+  ): ActivityFormulaParameterFormModel {
     return {
       tenantId: model.tenantId,
-      purpose: model.purpose as ActivityFormulaPurpose,
+      purpose: isActivityFormulaPurpose(model.purpose) ? model.purpose : null,
       parentId,
       nodeType,
       code: '',
@@ -737,6 +747,10 @@
     row?: ActivityFormulaParameter,
     parent?: ActivityFormulaParameter
   ): void {
+    if (!isActivityFormulaPurpose(model.purpose)) {
+      ElMessage.warning('请先选择公式用途，再维护参数层级')
+      return
+    }
     if (row) {
       const { id, ...input } = row
       parameterEditor.id = id
@@ -771,25 +785,18 @@
     parameterEditor.model.relatedField = ''
   }
   async function saveParameter(): Promise<boolean> {
-    const item = parameterEditor.model
     try {
       await parameterFormRef.value?.validate()
     } catch {
       return false
     }
-    const payload: ActivityFormulaParameterInput = {
-      ...item,
-      code: item.code.trim(),
-      name: item.name.trim(),
-      activityUnit: item.nodeType === 'group' ? null : item.activityUnit,
-      relatedField: item.nodeType === 'group' ? '' : item.relatedField.trim(),
-      remark: item.remark.trim()
-    }
     try {
+      const payload = buildActivityFormulaParameterWriteInput(parameterEditor.model)
       await saveActivityFormulaParameter(payload, parameterEditor.id || undefined)
       await loadParameters()
       return true
-    } catch {
+    } catch (error) {
+      if (error instanceof Error && !error.cause) ElMessage.warning(error.message)
       return false
     }
   }
@@ -859,23 +866,7 @@
           const translation = formulaTranslation.value
           await saveOperationalMaster(
             'activity-formula',
-            {
-              tenantId: model.tenantId,
-              code: model.code?.trim(),
-              name: model.name?.trim(),
-              purpose: model.purpose,
-              activityType: model.activityTypes?.[0] ?? '',
-              activityTypes: model.activityTypes,
-              isDefault: model.isDefault,
-              formulaExpression: expression,
-              formulaTranslation: translation,
-              formulaTokens: cloneDeep(model.formulaTokens),
-              planExpression: expression,
-              reportExpression: expression,
-              description: model.description?.trim() || null,
-              enabled: model.enabled,
-              remark: model.remark?.trim() || null
-            },
+            buildActivityFormulaWriteInput(model, expression, translation),
             data.row && !data.copy ? data.row.id : undefined
           )
           emit('success', data.row && !data.copy ? 'edit' : 'add')
@@ -1010,6 +1001,36 @@
     flex: 1;
     min-height: 330px;
     overflow: auto;
+
+    --el-tree-node-hover-bg-color: transparent;
+
+    :deep(.el-tree-node__content) {
+      height: auto;
+      min-height: 48px;
+      padding: 2px 6px 2px 0;
+      margin-bottom: 2px;
+      border: 1px solid transparent;
+      border-radius: var(--el-border-radius-base);
+      transition:
+        background-color var(--art-motion-duration-fast),
+        border-color var(--art-motion-duration-fast);
+
+      &:hover,
+      &:focus-within {
+        background: color-mix(in srgb, var(--theme-color) 8%, var(--default-box-color)) !important;
+        border-color: color-mix(in srgb, var(--theme-color) 20%, transparent);
+      }
+
+      &:hover .parameter-node__actions,
+      &:focus-within .parameter-node__actions {
+        pointer-events: auto;
+        opacity: 1;
+      }
+    }
+
+    :deep(.el-tree-node__expand-icon) {
+      color: var(--el-text-color-secondary);
+    }
   }
 
   .parameter-panel__empty {
@@ -1100,12 +1121,12 @@
   }
 
   .parameter-node__actions {
-    display: none;
-    flex: none;
-  }
-
-  .parameter-node:hover .parameter-node__actions {
     display: flex;
+    flex: none;
+    gap: 2px;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity var(--art-motion-duration-fast);
   }
 
   .parameter-node__insert {

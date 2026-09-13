@@ -258,6 +258,7 @@
   import ArtSvgIcon from '@/components/core/base/art-svg-icon/index.vue'
   import ArtEntitySummary from '@/components/core/surfaces/art-entity-summary/index.vue'
   import { useUserStore } from '@/store/modules/user'
+  import { normalizeNullableText } from '@/utils/form/normalize'
   import {
     fetchMaterialReferenceOptions,
     saveMaterialReference,
@@ -704,7 +705,7 @@
         ...shared,
         unitCode: form.model.unitCode.trim().toUpperCase(),
         unitName: form.model.unitName.trim(),
-        symbol: form.model.symbol.trim() || null,
+        symbol: normalizeNullableText(form.model.symbol),
         dimension: form.model.dimension.trim(),
         decimalPlaces: form.model.decimalPlaces,
         isBaseUnit: form.model.isBaseUnit,

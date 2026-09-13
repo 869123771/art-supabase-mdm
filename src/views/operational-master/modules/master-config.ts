@@ -600,7 +600,7 @@ const configurations: Record<string, OperationalMasterConfig> = {
       {
         key: 'departmentId',
         label: '车间 / 产线',
-        type: 'select',
+        type: 'treeSelect',
         reference: 'departments',
         minWidth: 170,
         table: true

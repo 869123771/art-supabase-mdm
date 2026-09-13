@@ -1,4 +1,5 @@
 import { useSupabase } from '@/hooks'
+import { normalizeNullableText } from '@/utils/form/normalize'
 import { buildOrIlikeFilter } from '@/utils/supabase/search'
 import { fetchAllRangePages } from '@/utils/supabase/pagination'
 import { keyBy, uniq } from 'lodash-es'
@@ -474,7 +475,7 @@ export async function fetchPersonnelWorkCenterConfigs(
   const { current, size, keyword, departmentIds, onlyUnconfigured } = params
   const query = supabase.rpc('mdm_list_personnel_common_work_centers', {
     p_department_ids: departmentIds?.length ? departmentIds : null,
-    p_keyword: keyword?.trim() || null,
+    p_keyword: normalizeNullableText(keyword),
     p_only_unconfigured: onlyUnconfigured ?? false,
     p_from: (current - 1) * size,
     p_to: current * size - 1

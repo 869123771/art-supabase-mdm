@@ -1,6 +1,5 @@
 import type { ProcessRouteInput, ProcessSequenceInput, ProcessStepInput } from '@mdm/api'
-
-const optionalId = (value: string | null): string | null => value?.trim() || null
+import { normalizeNullableText } from '@/utils/form/normalize'
 
 export function buildProcessRoutePayload(input: ProcessRouteInput): ProcessRouteInput {
   return {
@@ -10,12 +9,12 @@ export function buildProcessRoutePayload(input: ProcessRouteInput): ProcessRoute
     name: input.name.trim(),
     routeType: input.routeType,
     allocationMode: input.allocationMode,
-    groupId: optionalId(input.groupId),
+    groupId: normalizeNullableText(input.groupId),
     version: input.version.trim(),
     batchFrom: input.batchFrom,
     batchTo: input.batchTo,
-    productionUnitId: optionalId(input.productionUnitId),
-    departmentId: optionalId(input.departmentId),
+    productionUnitId: normalizeNullableText(input.productionUnitId),
+    departmentId: normalizeNullableText(input.departmentId),
     effectiveDate: input.effectiveDate.trim(),
     expiryDate: input.expiryDate.trim(),
     isDefault: input.isDefault,
@@ -32,8 +31,8 @@ export function buildProcessSequencePayload(input: ProcessSequenceInput): Proces
     routeId: input.routeId.trim(),
     sequenceNo: input.sequenceNo,
     sequenceType: input.sequenceType,
-    transferInStepId: optionalId(input.transferInStepId),
-    transferOutStepId: optionalId(input.transferOutStepId),
+    transferInStepId: normalizeNullableText(input.transferInStepId),
+    transferOutStepId: normalizeNullableText(input.transferOutStepId),
     remark: input.remark.trim()
   }
 }
@@ -41,17 +40,17 @@ export function buildProcessSequencePayload(input: ProcessSequenceInput): Proces
 export function buildProcessStepPayload(input: ProcessStepInput): ProcessStepInput {
   return {
     routeId: input.routeId.trim(),
-    sequenceId: optionalId(input.sequenceId),
+    sequenceId: normalizeNullableText(input.sequenceId),
     code: input.code.trim(),
     name: input.name.trim(),
-    operationId: optionalId(input.operationId),
+    operationId: normalizeNullableText(input.operationId),
     description: input.description.trim(),
-    unitId: optionalId(input.unitId),
+    unitId: normalizeNullableText(input.unitId),
     basicBatch: input.basicBatch,
-    workCenterId: optionalId(input.workCenterId),
-    departmentId: optionalId(input.departmentId),
+    workCenterId: normalizeNullableText(input.workCenterId),
+    departmentId: normalizeNullableText(input.departmentId),
     operationMode: input.operationMode,
-    controlCodeId: optionalId(input.controlCodeId),
+    controlCodeId: normalizeNullableText(input.controlCodeId),
     processingMode: input.processingMode,
     reportMode: input.reportMode,
     inspectionMode: input.inspectionMode,
