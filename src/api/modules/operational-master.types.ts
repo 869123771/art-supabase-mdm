@@ -1,7 +1,6 @@
 export type OperationalMasterKind =
   | 'customer'
   | 'project'
-  | 'document-type'
   | 'activity-formula'
   | 'operation-control-code'
   | 'operation'
@@ -75,8 +74,6 @@ export interface OperationalMasterRecord {
   customerName?: string
   projectCode?: string
   projectName?: string
-  documentTypeCode?: string
-  documentTypeName?: string
   controlCode?: string
   controlCodeName?: string
   workstationCode?: string

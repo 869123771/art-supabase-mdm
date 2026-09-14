@@ -210,6 +210,8 @@
     void configurationDialog.value?.handleOpen({
       mode,
       row,
+      departmentId: row?.departmentId || scope.selected,
+      departments: scope.departments,
       departmentIds: departmentIds(),
       scopeLabel: selectedScopeLabel.value
     })
@@ -237,10 +239,13 @@
     if (inlineSavingId.value) return
     inlineSavingId.value = row.id
     try {
-      await savePersonnelCommonWorkCenters(
-        row.id,
-        row.commonWorkCenters.filter((item) => item.id !== center.id).map((item) => item.id)
-      )
+      await savePersonnelCommonWorkCenters({
+        personnelId: row.id,
+        departmentId: row.departmentId,
+        workCenterIds: row.commonWorkCenters
+          .filter((item) => item.id !== center.id)
+          .map((item) => item.id)
+      })
       await refresh()
     } catch {
       /* API owns failure feedback. */

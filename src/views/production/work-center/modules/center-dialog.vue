@@ -1,6 +1,11 @@
 <template>
-  <ArtDialog ref="dialogRef" size="lg">
-    <div class="center-dialog">
+  <ArtDialog
+    ref="dialogRef"
+    size="xl"
+    show-fullscreen-button
+    @fullscreen-change="dialogFullscreen = $event"
+  >
+    <div class="center-dialog" :class="{ 'is-fullscreen': dialogFullscreen }">
       <ElAlert v-if="form.error" :title="form.error" type="error" :closable="false" show-icon />
       <ElTabs v-model="form.tab" stretch>
         <ElTabPane label="基本资料" name="基本资料">
@@ -85,6 +90,7 @@
               ref="activityEditorRef"
               v-model="form.activities"
               :formulas="form.activityFormulas"
+              :fullscreen="dialogFullscreen"
               :readonly="form.readonly"
             />
           </ArtSectionCard>
@@ -111,17 +117,6 @@
         </ElTabPane>
       </ElTabs>
     </div>
-    <template #footer-left>
-      <ElButton
-        v-if="form.id"
-        v-auth="'MdmWorkCenter:Delete'"
-        type="danger"
-        plain
-        :loading="deleting"
-        @click="deleteCenter"
-        >删除工作中心</ElButton
-      >
-    </template>
   </ArtDialog>
   <ArtDialog ref="automationDialog" size="md">
     <ElAlert
@@ -162,7 +157,11 @@
     type ProductionDepartment
   } from '@mdm/api'
   import { departmentOptions } from '../../modules/production-model'
-  import { createCenterPolicy, createWorkCenter } from './center-policy'
+  import {
+    centerPolicyDictionaryCodes,
+    createCenterPolicy,
+    createWorkCenter
+  } from './center-policy'
   import PolicyEditor from './policy-editor.vue'
   import ActivityEditor from './activity-editor.vue'
   interface OpenData {
@@ -170,7 +169,6 @@
     mode: 'add' | 'edit' | 'copy' | 'view'
     departments: ProductionDepartment[]
     departmentId?: string
-    onDelete?: () => Promise<boolean>
   }
   const emit = defineEmits<{ success: [] }>()
   const user = useUserStore()
@@ -179,17 +177,7 @@
   const activityEditorRef = ref<InstanceType<typeof ActivityEditor>>()
   const automationDialog = ref<ArtDialogExpose>()
   const automationPolicy = ref(createCenterPolicy())
-  const deleting = ref(false)
-  let currentDelete: OpenData['onDelete']
-  async function deleteCenter() {
-    if (!currentDelete || deleting.value) return
-    deleting.value = true
-    try {
-      if (await currentDelete()) await dialogRef.value?.handleClose()
-    } finally {
-      deleting.value = false
-    }
-  }
+  const dialogFullscreen = ref(false)
   async function configureAutomation() {
     automationPolicy.value = cloneDeep(form.model.policy)
     await automationDialog.value?.handleOpen(undefined, {
@@ -238,6 +226,15 @@
       hint: '自动化采用独立编辑，避免在查看策略时误改触发条件。'
     }
   } as const
+  const editorDictionaryCodes = [
+    'mdmCenter_personnelMode',
+    ...centerPolicyDictionaryCodes,
+    'mdmWorkCenterActivityName',
+    'mdmActivityType',
+    'mdmWorkCenterMaintenanceRule',
+    'mdmWorkCenterActivityUnit',
+    'commonBoolean'
+  ]
   const rules = {
     code: [{ required: true, message: '请输入工作中心编号', trigger: 'blur' }],
     name: [{ required: true, message: '请输入名称', trigger: 'blur' }],
@@ -346,7 +343,7 @@
     form.activityFormulas = result.data
   }
   async function handleOpen(data: OpenData) {
-    currentDelete = data.onDelete
+    dialogFullscreen.value = false
     Object.assign(form, {
       model: data.row
         ? (cloneDeep(pick(data.row, Object.keys(createWorkCenter()))) as WorkCenterInput)
@@ -384,15 +381,7 @@
       loading: true,
       onOpen: async (_data, api) => {
         try {
-          await Promise.all(
-            [
-              'mdmWorkCenterActivityName',
-              'mdmActivityType',
-              'mdmWorkCenterMaintenanceRule',
-              'mdmWorkCenterActivityUnit',
-              'commonBoolean'
-            ].map((code) => user.ensureDictLoaded(code))
-          )
+          await Promise.all(editorDictionaryCodes.map((code) => user.ensureDictLoaded(code)))
           const [defaults, people, activities] = await Promise.all([
             data.mode === 'add'
               ? fetchCenterDefaults(referenceTenantId.value || user.info.tenantId || '')
@@ -487,8 +476,12 @@
 <style scoped lang="scss">
   .center-dialog {
     display: grid;
-    gap: 12px;
+    gap: var(--art-space-3);
     min-width: 0;
+
+    &.is-fullscreen {
+      min-height: calc(100vh - 144px);
+    }
 
     :deep(.el-tabs__header) {
       margin-bottom: 16px;

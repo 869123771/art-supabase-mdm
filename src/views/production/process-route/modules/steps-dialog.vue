@@ -38,7 +38,7 @@
           :loading="sequenceState.loading"
           :empty="!sequenceState.loading && !sequenceState.rows.length"
           empty-title="暂无工序序列"
-          empty-description="先创建一条标准工序序列，再添加路线中的工序节点。"
+          empty-description="先创建一条标准序列，再添加路线中的工序节点。"
           body-class="route-maintenance__sequence-body"
           :min-height="320"
         >
@@ -46,50 +46,83 @@
             <ArtIconButton
               v-auth="'MdmProcessRoute:Edit'"
               icon="ri:add-line"
-              label="新增序列"
+              :label="sequenceCreateActionLabel"
+              :disabled="sequenceState.rows.length > 0 && !canCreateParallelSequence"
               @click="openSequence()"
             />
           </template>
           <template v-if="!readonly" #empty-action>
             <ElButton v-auth="'MdmProcessRoute:Edit'" type="primary" @click="openSequence()">
-              创建标准工序
+              创建标准序列
             </ElButton>
           </template>
           <ElScrollbar class="route-maintenance__sequence-scroll">
-            <div
-              v-for="item in sequenceState.rows"
-              :key="item.id"
-              class="route-maintenance__sequence"
-              :class="{ 'is-current': sequenceState.selectedId === item.id }"
-            >
-              <button
-                type="button"
-                class="route-maintenance__sequence-select"
-                :aria-current="sequenceState.selectedId === item.id ? 'true' : undefined"
-                @click="selectSequence(item.id)"
+            <ul class="route-maintenance__sequence-tree" aria-label="工序序列层次">
+              <li
+                v-for="item in sequenceState.rows"
+                :key="item.id"
+                class="route-maintenance__sequence-branch"
               >
-                <span class="route-maintenance__sequence-index">{{ item.sequenceNo }}</span>
-                <span class="route-maintenance__sequence-copy">
-                  <strong>{{ sequenceTypeLabel(item.sequenceType) }}</strong>
-                  <small>{{ item.remark || '未填写序列说明' }}</small>
-                </span>
-              </button>
-              <span v-if="!readonly" class="route-maintenance__sequence-actions">
-                <ArtIconButton
-                  v-auth="'MdmProcessRoute:Edit'"
-                  icon="ri:edit-line"
-                  label="编辑序列"
-                  @click.stop="openSequence(item)"
-                />
-                <ArtIconButton
-                  v-auth="'MdmProcessRoute:Edit'"
-                  icon="ri:delete-bin-6-line"
-                  label="删除序列"
-                  tone="danger"
-                  @click.stop="removeSequence(item)"
-                />
-              </span>
-            </div>
+                <div
+                  class="route-maintenance__sequence"
+                  :class="{ 'is-current': sequenceState.selectedId === item.id }"
+                >
+                  <button
+                    type="button"
+                    class="route-maintenance__sequence-select"
+                    :aria-current="sequenceState.selectedId === item.id ? 'true' : undefined"
+                    @click="selectSequence(item.id)"
+                  >
+                    <span class="route-maintenance__sequence-index">{{ item.sequenceNo }}</span>
+                    <span class="route-maintenance__sequence-copy">
+                      <strong>{{ sequenceTypeLabel(item.sequenceType) }}</strong>
+                      <small>{{ sequenceNodeDescription(item) }}</small>
+                    </span>
+                  </button>
+                  <span v-if="!readonly" class="route-maintenance__sequence-actions">
+                    <ArtIconButton
+                      v-auth="'MdmProcessRoute:Edit'"
+                      icon="ri:edit-line"
+                      label="编辑序列"
+                      @click.stop="openSequence(item)"
+                    />
+                    <ArtIconButton
+                      v-if="item.sequenceType !== 'main'"
+                      v-auth="'MdmProcessRoute:Edit'"
+                      icon="ri:delete-bin-6-line"
+                      label="删除序列"
+                      tone="danger"
+                      @click.stop="removeSequence(item)"
+                    />
+                  </span>
+                </div>
+
+                <ul
+                  v-if="getSequenceSteps(item.id).length"
+                  class="route-maintenance__sequence-children"
+                  :aria-label="`${sequenceTypeLabel(item.sequenceType)}包含的工序`"
+                >
+                  <li v-for="step in getSequenceSteps(item.id)" :key="step.id">
+                    <button
+                      type="button"
+                      class="route-maintenance__sequence-step"
+                      :title="`${step.code} ${step.name}${step.operation?.code ? `｜${step.operation.code}` : ''}`"
+                      @click="selectSequence(item.id)"
+                    >
+                      <span class="route-maintenance__sequence-step-code">{{ step.code }}</span>
+                      <span class="route-maintenance__sequence-step-name">{{ step.name }}</span>
+                      <span
+                        v-if="step.operation?.code"
+                        class="route-maintenance__sequence-step-operation"
+                      >
+                        {{ step.operation.code }}
+                      </span>
+                    </button>
+                  </li>
+                </ul>
+                <p v-else class="route-maintenance__sequence-empty">暂无工序</p>
+              </li>
+            </ul>
           </ElScrollbar>
         </ArtSectionCard>
 
@@ -156,17 +189,69 @@
     </template>
   </ArtDialog>
 
-  <ArtDialog ref="sequenceDialog" size="sm">
-    <ArtForm
-      ref="sequenceFormRef"
-      v-model="sequenceForm"
-      :items="sequenceItems"
-      :rules="sequenceRules"
-      :span="24"
-      label-position="top"
-      :show-reset="false"
-      :show-submit="false"
-    />
+  <ArtDialog ref="sequenceDialog" size="md">
+    <div class="sequence-editor">
+      <div v-if="isCreatingParallelSequence" class="sequence-editor__guide">
+        <span class="sequence-editor__guide-icon" aria-hidden="true">
+          <ArtSvgIcon icon="ri:git-branch-line" />
+        </span>
+        <div>
+          <strong>建立标准序列的并行分支</strong>
+          <p>从标准序列中选择分支的转入或转出位置，确认后即可继续维护并行工序。</p>
+        </div>
+      </div>
+
+      <ArtForm
+        ref="sequenceFormRef"
+        v-model="sequenceForm"
+        :items="sequenceItems"
+        :rules="sequenceRules"
+        :span="24"
+        label-position="top"
+        :show-reset="false"
+        :show-submit="false"
+      >
+        <template #transferInStepId>
+          <ArtTableSingleSelect
+            v-model="transferInStepId"
+            :selected-data="transferInSelection"
+            :data="transferInStepRows"
+            :columns="transferStepColumns"
+            :label-key="transferStepLabel"
+            :description-key="transferStepDescription"
+            title="选择转入工序"
+            subtitle="并行分支从所选标准工序之后开始"
+            placeholder="从标准序列选择转入工序"
+            search-placeholder="搜索工序号、名称或工序编码"
+            empty-text="暂无可选转入工序"
+            empty-description="标准序列的末道工序不能作为并行分支的转入位置。"
+            :show-pagination="false"
+          />
+        </template>
+        <template #transferOutStepId>
+          <ArtTableSingleSelect
+            v-model="transferOutStepId"
+            :selected-data="transferOutSelection"
+            :data="transferOutStepRows"
+            :columns="transferStepColumns"
+            :label-key="transferStepLabel"
+            :description-key="transferStepDescription"
+            title="选择转出工序"
+            subtitle="并行分支在所选标准工序之前汇回"
+            placeholder="从标准序列选择转出工序"
+            search-placeholder="搜索工序号、名称或工序编码"
+            empty-text="暂无可选转出工序"
+            empty-description="标准序列的首道工序不能作为并行分支的转出位置。"
+            :show-pagination="false"
+          />
+        </template>
+      </ArtForm>
+
+      <div v-if="isCreatingParallelSequence" class="sequence-editor__automation-note">
+        <ElTag type="primary" effect="plain" size="small">自动创建</ElTag>
+        <span>同时新增工序号为 10 的“待维护工序”，并继承当前路线的生产单位与部门。</span>
+      </div>
+    </div>
   </ArtDialog>
 
   <ArtDialog ref="editDialog" size="xl">
@@ -519,7 +604,7 @@
 </template>
 
 <script setup lang="tsx">
-  import { cloneDeep } from 'lodash-es'
+  import { cloneDeep, groupBy } from 'lodash-es'
   import { useArtFeedback } from '@/hooks/core/useArtFeedback'
   import ArtForm, { type FormItem } from '@/components/core/forms/art-form/index.vue'
   import ArtButtonTable from '@/components/core/forms/art-button-table/index.vue'
@@ -532,6 +617,7 @@
   import ArtSectionCard from '@/components/core/surfaces/art-section-card/index.vue'
   import BusinessTableRowActions from '@/components/business/business-table-row-actions/index.vue'
   import ArtUploadFile from '@/components/core/forms/art-upload-file/index.vue'
+  import ArtTableSingleSelect from '@/components/core/forms/art-data-select/table-single.vue'
   import ArtTableMultipleSelect from '@/components/core/forms/art-data-select/table-multiple.vue'
   import type { ArtDialogExpose } from '@/components/core/dialogs/art-dialog/types'
   import type {
@@ -611,6 +697,7 @@
   })
   const sequenceState = reactive({ loading: false, selectedId: '', rows: [] as ProcessSequence[] })
   const stepRows = ref<ProcessStep[]>([])
+  const sequenceStepRows = ref<ProcessStep[]>([])
   const mainStepRows = ref<ProcessStep[]>([])
   const selectedOperationIds = ref<DataSelectKey[]>([])
   const selectedOperations = ref<OperationalMasterRecord[]>([])
@@ -625,10 +712,11 @@
     sequenceType: 'main',
     transferInStepId: null as string | null,
     transferOutStepId: null as string | null,
-    remark: '标准工序'
+    remark: '标准序列'
   })
   const sequenceForm = reactive(initialSequence())
   const sequenceEditId = ref('')
+  const sequenceCreateType = ref<'main' | 'parallel'>('main')
   const initialStep = (): Omit<ProcessStepInput, 'routeId'> => ({
     sequenceId: null,
     code: '10',
@@ -673,13 +761,66 @@
   const sopForm = reactive({ documentIds: [] as string[], attachments: [] as string[] })
   const activityRows = ref<ActivityRow[]>([])
   const sequenceTypeLabel = (value: string) =>
-    value === 'main'
-      ? '标准工序'
-      : getDictMap.value.mdmProcessRouteSequenceType?.find((item) => item.value === value)?.label ||
-        value
+    getDictMap.value.mdmProcessRouteSequenceType?.find((item) => item.value === value)?.label ||
+    (value === 'main' ? '标准序列' : value)
+  const meaningfulSequenceRemark = (item: ProcessSequence): string => {
+    const remark = item.remark.trim()
+    return remark && remark !== sequenceTypeLabel(item.sequenceType) ? remark : ''
+  }
+  const sequenceNodeDescription = (item: ProcessSequence): string => {
+    const remark = meaningfulSequenceRemark(item)
+    if (remark) return remark
+    if (item.sequenceType === 'main') return '标准主线'
+    if (item.sequenceType === 'parallel') return '并行分支'
+    return '返工路径'
+  }
   const currentSequence = computed(() =>
     sequenceState.rows.find((item) => item.id === sequenceState.selectedId)
   )
+  const sequenceStepsById = computed(() =>
+    groupBy(sequenceStepRows.value, (item) => item.sequenceId || '')
+  )
+  const getSequenceSteps = (sequenceId: string) => sequenceStepsById.value[sequenceId] || []
+  const transferInStepRows = computed(() => mainStepRows.value.filter((item) => !item.isLast))
+  const transferOutStepRows = computed(() => mainStepRows.value.filter((item) => !item.isFirst))
+  const transferInStepId = computed<DataSelectKey | undefined>({
+    get: () => sequenceForm.transferInStepId || undefined,
+    set: (value) => {
+      sequenceForm.transferInStepId = value ? String(value) : null
+    }
+  })
+  const transferOutStepId = computed<DataSelectKey | undefined>({
+    get: () => sequenceForm.transferOutStepId || undefined,
+    set: (value) => {
+      sequenceForm.transferOutStepId = value ? String(value) : null
+    }
+  })
+  const transferInSelection = computed(() =>
+    transferInStepRows.value.filter((item) => item.id === sequenceForm.transferInStepId)
+  )
+  const transferOutSelection = computed(() =>
+    transferOutStepRows.value.filter((item) => item.id === sequenceForm.transferOutStepId)
+  )
+  const transferStepColumns = [
+    { prop: 'code', label: '工序号', minWidth: 110 },
+    { prop: 'name', label: '工序名称', minWidth: 180 },
+    { prop: 'operation.code', label: '工序编码', minWidth: 140 }
+  ]
+  const transferStepLabel = (row: DataSelectRecord) => `${row.code}｜${row.name}`
+  const transferStepDescription = (row: DataSelectRecord) =>
+    row.operation?.code ? `工序编码 ${row.operation.code}` : '未关联标准工序'
+  const isCreatingParallelSequence = computed(
+    () => !sequenceEditId.value && sequenceCreateType.value === 'parallel'
+  )
+  const canCreateParallelSequence = computed(
+    () => transferInStepRows.value.length > 0 && transferOutStepRows.value.length > 0
+  )
+  const sequenceCreateActionLabel = computed(() => {
+    if (!sequenceState.rows.length) return '创建标准序列'
+    return canCreateParallelSequence.value
+      ? '新增并行序列'
+      : '至少维护两道标准工序后，才可新增并行序列'
+  })
   const routeSummaryDescription = computed(() =>
     [
       route.value?.code,
@@ -783,7 +924,8 @@
   )
   const currentSequenceDescription = computed(() =>
     currentSequence.value
-      ? currentSequence.value.remark || '维护该路径下的工序、工作中心与工艺参数。'
+      ? meaningfulSequenceRemark(currentSequence.value) ||
+        '维护该路径下的工序、工作中心与工艺参数。'
       : '从左侧选择现有序列，或创建一条新的工艺路径。'
   )
   const stepEmptyDescription = computed(() =>
@@ -832,52 +974,40 @@
       key: 'sequenceNo',
       label: '工序序列',
       type: 'number',
-      props: { min: 1, precision: 0, class: '!w-full' }
+      props: {
+        min: 1,
+        precision: 0,
+        class: '!w-full',
+        disabled: Boolean(sequenceEditId.value) && sequenceForm.sequenceType === 'main'
+      }
     },
     {
       key: 'sequenceType',
       label: '序列类型',
       type: 'select',
-      options: getDictMap.value.mdmProcessRouteSequenceType ?? []
+      options: getDictMap.value.mdmProcessRouteSequenceType ?? [],
+      props: {
+        disabled:
+          !sequenceEditId.value ||
+          (Boolean(sequenceEditId.value) && sequenceForm.sequenceType === 'main')
+      }
     },
     {
       key: 'transferInStepId',
       label: '转入工序',
-      type: 'select',
-      options: transferInStepOptions.value,
-      props: {
-        clearable: true,
-        filterable: true,
-        disabled: sequenceForm.sequenceType !== 'parallel',
-        placeholder: '选择标准工序中的前置工序'
-      },
+      type: 'slot',
+      hidden: sequenceForm.sequenceType !== 'parallel',
       help: '仅并行序列可设置，不能选择标准工序的末序。'
     },
     {
       key: 'transferOutStepId',
       label: '转出工序',
-      type: 'select',
-      options: transferOutStepOptions.value,
-      props: {
-        clearable: true,
-        filterable: true,
-        disabled: sequenceForm.sequenceType !== 'parallel',
-        placeholder: '选择返回标准工序的位置'
-      },
+      type: 'slot',
+      hidden: sequenceForm.sequenceType !== 'parallel',
       help: '仅并行序列可设置，不能选择标准工序的首序。'
     },
     { key: 'remark', label: '备注', type: 'textarea', props: { rows: 3, maxlength: 500 } }
   ])
-  const transferInStepOptions = computed(() =>
-    mainStepRows.value
-      .filter((item) => !item.isLast)
-      .map((item) => ({ label: `${item.code}｜${item.name}`, value: item.id }))
-  )
-  const transferOutStepOptions = computed(() =>
-    mainStepRows.value
-      .filter((item) => !item.isFirst)
-      .map((item) => ({ label: `${item.code}｜${item.name}`, value: item.id }))
-  )
   const sequenceRules = {
     sequenceNo: [{ required: true, message: '请输入工序序列号', trigger: 'blur' }],
     sequenceType: [{ required: true, message: '请选择序列类型', trigger: 'change' }],
@@ -1542,22 +1672,21 @@
     if (!route.value) return
     sequenceState.loading = true
     try {
-      sequenceState.rows = await fetchProcessSequences(route.value.id)
-      if (!sequenceState.rows.some((item) => item.id === sequenceState.selectedId))
-        sequenceState.selectedId = sequenceState.rows[0]?.id || ''
-      const mainSequenceId = sequenceState.rows.find((item) => item.sequenceType === 'main')?.id
-      if (mainSequenceId) {
-        const mainSteps = await fetchProcessSteps({
+      const [sequences, steps] = await Promise.all([
+        fetchProcessSequences(route.value.id),
+        fetchProcessSteps({
           tenantId: route.value.tenantId,
           routeId: route.value.id,
-          sequenceId: mainSequenceId,
           current: 1,
           size: 1000
         })
-        mainStepRows.value = mainSteps.data
-      } else {
-        mainStepRows.value = []
-      }
+      ])
+      sequenceState.rows = sequences
+      sequenceStepRows.value = steps.data
+      if (!sequenceState.rows.some((item) => item.id === sequenceState.selectedId))
+        sequenceState.selectedId = sequenceState.rows[0]?.id || ''
+      const mainSequenceId = sequenceState.rows.find((item) => item.sequenceType === 'main')?.id
+      mainStepRows.value = mainSequenceId ? getSequenceSteps(mainSequenceId) : []
     } finally {
       sequenceState.loading = false
     }
@@ -1569,19 +1698,39 @@
   async function openSequence(row?: ProcessSequence) {
     if (!route.value) return
     sequenceEditId.value = row?.id || ''
+    sequenceCreateType.value = row
+      ? row.sequenceType === 'main'
+        ? 'main'
+        : 'parallel'
+      : sequenceState.rows.length
+        ? 'parallel'
+        : 'main'
     Object.assign(
       sequenceForm,
       row
         ? cloneDeep(row)
         : {
             ...initialSequence(),
-            sequenceNo: (sequenceState.rows.at(-1)?.sequenceNo || 0) + 1,
-            sequenceType: sequenceState.rows.length ? 'parallel' : 'main'
+            sequenceNo: Math.max(0, ...sequenceState.rows.map((item) => item.sequenceNo)) + 1,
+            sequenceType: sequenceCreateType.value,
+            remark: sequenceCreateType.value === 'parallel' ? '并行序列' : '标准序列'
           }
     )
     await sequenceDialog.value?.handleOpen(undefined, {
-      title: row ? '编辑工序序列' : '新增工序序列',
-      confirmText: row ? '保存更改' : '创建序列',
+      title: row
+        ? '编辑工序序列'
+        : sequenceCreateType.value === 'parallel'
+          ? '新增并行序列'
+          : '创建标准序列',
+      subtitle:
+        sequenceCreateType.value === 'parallel'
+          ? '定义并行分支与标准序列的衔接位置'
+          : '建立工艺路线的默认主路径',
+      confirmText: row
+        ? '保存更改'
+        : sequenceCreateType.value === 'parallel'
+          ? '创建并行序列'
+          : '创建序列',
       onOpen: () => sequenceFormRef.value?.clearValidate(),
       onConfirm: async () => {
         try {
@@ -1590,10 +1739,31 @@
             sequenceForm.transferInStepId = null
             sequenceForm.transferOutStepId = null
           }
-          await saveProcessSequence(
+          const createdSequenceId = await saveProcessSequence(
             buildProcessSequencePayload({ routeId: route.value!.id, ...sequenceForm }),
             sequenceEditId.value || undefined
           )
+          if (isCreatingParallelSequence.value) {
+            if (!createdSequenceId) throw new Error('并行序列创建后未返回记录标识')
+            try {
+              await saveProcessStep(
+                buildProcessStepPayload({
+                  routeId: route.value!.id,
+                  ...initialStep(),
+                  sequenceId: createdSequenceId,
+                  name: '待维护工序',
+                  unitId: route.value!.productionUnitId,
+                  departmentId: route.value!.departmentId,
+                  isFirst: true,
+                  isLast: true
+                })
+              )
+            } catch (error) {
+              await deleteProcessSequence(createdSequenceId)
+              throw error
+            }
+            sequenceState.selectedId = createdSequenceId
+          }
           await loadSequences()
           await tableRef.value?.refreshData()
           return true
@@ -1604,6 +1774,7 @@
     })
   }
   async function removeSequence(row: ProcessSequence) {
+    if (row.sequenceType === 'main') return
     try {
       await confirmAction(
         `确认删除序列“${row.sequenceNo} · ${sequenceTypeLabel(row.sequenceType)}”？`,
@@ -1836,7 +2007,7 @@
             }),
             stepEditId.value || undefined
           )
-          await tableRef.value?.refreshData()
+          await Promise.all([tableRef.value?.refreshData(), loadSequences()])
           return true
         } catch {
           return false
@@ -1861,6 +2032,8 @@
     maintenanceFullscreen.value = false
     search.keyword = ''
     sequenceState.selectedId = ''
+    sequenceStepRows.value = []
+    mainStepRows.value = []
     await Promise.all(
       [
         'mdmProcessRouteSequenceType',
@@ -1934,7 +2107,7 @@
 
     &__workspace {
       display: grid;
-      grid-template-columns: minmax(300px, 0.34fr) minmax(0, 1fr);
+      grid-template-columns: minmax(280px, 0.3fr) minmax(0, 1fr);
       gap: var(--art-space-4);
       align-items: stretch;
       height: clamp(400px, 52vh, 520px);
@@ -1949,7 +2122,7 @@
 
       :deep(.art-section-card__header) {
         align-items: center;
-        margin-bottom: var(--art-space-3);
+        margin-bottom: var(--art-space-2);
       }
 
       :deep(.art-section-card__identity p) {
@@ -1970,14 +2143,29 @@
       min-height: 0;
     }
 
+    &__sequence-tree,
+    &__sequence-children {
+      padding: 0;
+      margin: 0;
+      list-style: none;
+    }
+
+    &__sequence-branch {
+      min-width: 0;
+
+      & + & {
+        margin-top: 2px;
+      }
+    }
+
     &__sequence {
       display: flex;
-      gap: var(--art-space-2);
+      gap: var(--art-space-1);
       align-items: center;
       justify-content: space-between;
       width: 100%;
-      min-height: 64px;
-      padding: var(--art-space-2);
+      min-height: 52px;
+      padding: var(--art-space-1);
       color: var(--el-text-color-regular);
       text-align: left;
       background: transparent;
@@ -1998,12 +2186,12 @@
       &-select {
         display: grid;
         flex: 1;
-        grid-template-columns: 34px minmax(0, 1fr);
+        grid-template-columns: 30px minmax(0, 1fr);
         gap: var(--art-space-2);
         align-items: center;
         min-width: 0;
-        min-height: 44px;
-        padding: var(--art-space-1);
+        min-height: 40px;
+        padding: 2px;
         font: inherit;
         color: inherit;
         text-align: left;
@@ -2026,15 +2214,108 @@
       }
 
       small {
+        font-size: var(--art-font-size-caption);
+        line-height: 18px;
         color: var(--el-text-color-secondary);
       }
+    }
+
+    &__sequence-children {
+      position: relative;
+      display: grid;
+      gap: 0;
+      padding: 0 0 var(--art-space-1) var(--art-space-3);
+      margin: 0 var(--art-space-1) 0 21px;
+      border-left: 1px solid color-mix(in srgb, var(--theme-color) 24%, var(--art-card-border));
+
+      > li {
+        position: relative;
+        min-width: 0;
+
+        &::before {
+          position: absolute;
+          top: 50%;
+          left: calc(-1 * var(--art-space-3));
+          width: 10px;
+          height: 1px;
+          content: '';
+          background: color-mix(in srgb, var(--theme-color) 24%, var(--art-card-border));
+        }
+      }
+    }
+
+    &__sequence-step {
+      display: grid;
+      grid-template-columns: minmax(24px, auto) minmax(0, max-content) minmax(0, max-content);
+      gap: var(--art-space-1);
+      align-items: center;
+      justify-content: start;
+      width: 100%;
+      min-width: 0;
+      min-height: 28px;
+      padding: 2px var(--art-space-1);
+      font: inherit;
+      font-size: var(--art-font-size-caption);
+      color: var(--el-text-color-regular);
+      text-align: left;
+      cursor: pointer;
+      background: transparent;
+      border: 0;
+      border-radius: var(--el-border-radius-small);
+      transition:
+        color var(--art-motion-duration-fast),
+        background-color var(--art-motion-duration-fast);
+
+      &:hover {
+        color: var(--el-text-color-primary);
+        background: color-mix(in srgb, var(--theme-color) 7%, var(--default-box-color));
+      }
+
+      &:focus-visible {
+        outline: 2px solid var(--theme-color);
+        outline-offset: 1px;
+      }
+
+      &-code {
+        font-weight: 700;
+        font-variant-numeric: tabular-nums;
+        color: var(--theme-color);
+      }
+
+      &-name {
+        max-width: 112px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      &-operation {
+        max-width: 80px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        color: var(--el-text-color-secondary);
+        white-space: nowrap;
+
+        &::before {
+          color: var(--el-border-color);
+          content: '｜';
+        }
+      }
+    }
+
+    &__sequence-empty {
+      padding: 0 0 var(--art-space-1) 53px;
+      margin: 0;
+      font-size: var(--art-font-size-caption);
+      line-height: 24px;
+      color: var(--el-text-color-placeholder);
     }
 
     &__sequence-index {
       display: grid;
       place-items: center;
-      width: 34px;
-      height: 34px;
+      width: 30px;
+      height: 30px;
       font-size: 12px;
       font-weight: 700;
       font-variant-numeric: tabular-nums;
@@ -2046,14 +2327,14 @@
 
     &__sequence-copy {
       display: grid;
-      gap: 2px;
+      gap: 0;
       min-width: 0;
     }
 
     &__sequence-actions,
     &__activity-actions {
       display: flex;
-      gap: 2px;
+      gap: 0;
       align-items: center;
     }
 
@@ -2069,19 +2350,19 @@
 
     &__sequence-context {
       display: grid;
-      grid-template-columns: 40px minmax(0, 1fr) auto;
-      gap: var(--art-space-3);
+      grid-template-columns: 36px minmax(0, 1fr) auto;
+      gap: var(--art-space-2);
       align-items: center;
-      padding: var(--art-space-3);
+      padding: var(--art-space-2);
       background: color-mix(in srgb, var(--theme-color) 6%, var(--default-box-color));
       border-radius: var(--art-control-radius);
 
       &-icon {
         display: grid;
         place-items: center;
-        width: 40px;
-        height: 40px;
-        font-size: 18px;
+        width: 36px;
+        height: 36px;
+        font-size: 16px;
         color: var(--theme-color);
         background: var(--default-box-color);
         border: 1px solid color-mix(in srgb, var(--theme-color) 14%, var(--art-card-border));
@@ -2128,8 +2409,8 @@
       &-count {
         display: grid;
         gap: 1px;
-        min-width: 56px;
-        padding-left: var(--art-space-3);
+        min-width: 52px;
+        padding-left: var(--art-space-2);
         text-align: right;
         border-left: 1px solid color-mix(in srgb, var(--theme-color) 16%, transparent);
 
@@ -2288,6 +2569,68 @@
 
     &__tab-empty {
       min-height: 220px;
+    }
+  }
+
+  .sequence-editor {
+    display: grid;
+    gap: var(--art-space-4);
+
+    &__guide {
+      display: grid;
+      grid-template-columns: 40px minmax(0, 1fr);
+      gap: var(--art-space-3);
+      align-items: center;
+      padding: var(--art-space-3);
+      background: color-mix(in srgb, var(--theme-color) 6%, var(--default-box-color));
+      border: 1px solid color-mix(in srgb, var(--theme-color) 14%, var(--art-card-border));
+      border-radius: var(--art-control-radius);
+
+      &-icon {
+        display: grid;
+        place-items: center;
+        width: 40px;
+        height: 40px;
+        font-size: 18px;
+        color: var(--theme-color);
+        background: var(--default-box-color);
+        border: 1px solid color-mix(in srgb, var(--theme-color) 16%, var(--art-card-border));
+        border-radius: var(--art-control-radius);
+      }
+
+      strong,
+      p {
+        display: block;
+        margin: 0;
+      }
+
+      strong {
+        color: var(--el-text-color-primary);
+      }
+
+      p {
+        margin-top: 2px;
+        font-size: var(--art-font-size-caption);
+        line-height: 20px;
+        color: var(--el-text-color-secondary);
+      }
+    }
+
+    &__automation-note {
+      display: flex;
+      gap: var(--art-space-2);
+      align-items: flex-start;
+      padding: var(--art-space-3);
+      font-size: var(--art-font-size-caption);
+      line-height: 22px;
+      color: var(--el-text-color-secondary);
+      background: var(--el-fill-color-extra-light);
+      border-radius: var(--art-control-radius);
+
+      :deep(.el-tag) {
+        flex: none;
+        margin-top: 1px;
+      }
     }
   }
 
@@ -2472,7 +2815,7 @@
       }
 
       &__workspace {
-        grid-template-columns: minmax(280px, 0.36fr) minmax(0, 1fr);
+        grid-template-columns: minmax(264px, 0.32fr) minmax(0, 1fr);
       }
     }
   }

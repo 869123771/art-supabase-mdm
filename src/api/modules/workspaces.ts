@@ -28,6 +28,7 @@ import type {
   ProcessStepInput,
   ProcessRouteReferences,
   CenterPolicy,
+  PersonnelCommonWorkCenterInput,
   PersonnelWorkCenterConfig,
   PersonnelWorkCenterQuery,
   Workstation,
@@ -193,11 +194,13 @@ export async function saveWorkCenter(
   activities: WorkCenterActivityInput[],
   id?: string
 ) {
+  const { policy, ...fields } = input
+
   const { data } = await responseHandle<string>(
     () =>
       supabase.rpc('mdm_save_work_center_with_activities', {
         p_center_id: id || null,
-        p_center: keysToSnakeDeep(input),
+        p_center: { ...keysToSnakeDeep(fields), policy },
         p_activities: keysToSnakeDeep(activities)
       }),
     { ...write, requireAffected: false, message: id ? '工作中心已更新' : '工作中心已创建' }
@@ -526,12 +529,13 @@ export async function fetchUnconfiguredPersonnelSelector(
     fieldAccess: { contactDetails: true, identityDetails: false }
   }
 }
-export async function savePersonnelCommonWorkCenters(personnelId: string, workCenterIds: string[]) {
+export async function savePersonnelCommonWorkCenters(input: PersonnelCommonWorkCenterInput) {
   await responseHandle<number>(
     () =>
       supabase.rpc('mdm_save_personnel_common_work_centers', {
-        p_personnel_id: personnelId,
-        p_work_center_ids: uniq(workCenterIds)
+        p_personnel_id: input.personnelId,
+        p_department_id: input.departmentId,
+        p_work_center_ids: uniq(input.workCenterIds)
       }),
     { ...write, requireAffected: false, message: '常用工作中心已保存' }
   )

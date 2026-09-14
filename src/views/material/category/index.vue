@@ -44,6 +44,7 @@
                 : '点击新增分类，建立企业物料分类体系。'
             }"
             focusable
+            focus-scope-selector=".material-category-page__workspace"
           />
         </div>
       </div>
@@ -382,8 +383,10 @@
   }
 
   .material-category-page__table-pane {
+    display: flex;
     min-width: 0;
     min-height: 0;
+    overflow: hidden;
   }
 
   :deep(.material-category-page__identity) {
@@ -412,8 +415,8 @@
 
   @media (width <= 820px) {
     .material-category-page__workspace {
-      grid-template-columns: 1fr;
       grid-template-rows: minmax(260px, 38vh) minmax(520px, 1fr);
+      grid-template-columns: 1fr;
     }
   }
 </style>

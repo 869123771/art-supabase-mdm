@@ -6,7 +6,6 @@ import { resolveMasterConfig } from './master-config'
 const masterKinds = [
   'customer',
   'project',
-  'document-type',
   'activity-formula',
   'operation-control-code',
   'operation',

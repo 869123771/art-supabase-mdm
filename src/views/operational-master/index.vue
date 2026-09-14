@@ -1,5 +1,7 @@
 <template>
-  <ArtPermissionGuard :permission="`${config.routeName}:View`" :resource-name="config.title">
+  <BusinessTypePage v-if="isBusinessTypeRoute" />
+  <DocumentTypePage v-else-if="isDocumentTypeRoute" />
+  <ArtPermissionGuard v-else :permission="`${config.routeName}:View`" :resource-name="config.title">
     <div class="operational-master-page business-workspace-page art-full-height">
       <BusinessWorkspaceHeader
         :eyebrow="config.eyebrow"
@@ -108,6 +110,8 @@
   import MasterDialog, { type MasterDialogOpenData } from './modules/master-dialog.vue'
   import MasterGroupPanel from './modules/master-group-panel.vue'
   import { resolveMasterConfig } from './modules/master-config'
+  import DocumentTypePage from '../document-type/index.vue'
+  import BusinessTypePage from '../business-type/index.vue'
 
   defineOptions({ name: 'MdmOperationalMaster' })
   const declaredPermissions = [
@@ -127,12 +131,6 @@
     'MdmSalesProject:Import',
     'MdmSalesProject:Export',
     'MdmSalesProject:ManageGroup',
-    'MdmDocumentType:View',
-    'MdmDocumentType:Add',
-    'MdmDocumentType:Copy',
-    'MdmDocumentType:Edit',
-    'MdmDocumentType:Delete',
-    'MdmDocumentType:Export',
     'MdmActivityFormula:View',
     'MdmActivityFormula:Add',
     'MdmActivityFormula:Copy',
@@ -164,6 +162,8 @@
   void declaredPermissions
 
   const route = useRoute()
+  const isDocumentTypeRoute = computed(() => route.path.endsWith('/document-type'))
+  const isBusinessTypeRoute = computed(() => route.path.endsWith('/business-type'))
   const { confirmDelete } = useArtFeedback()
   const userStore = useUserStore()
   const { getDictMap } = storeToRefs(userStore)
@@ -611,7 +611,14 @@
     await tableRef.value?.getData()
   }
 
-  watch([() => route.path, effectiveTenantId], () => void loadContext(), { immediate: true })
+  watch(
+    [() => route.path, effectiveTenantId],
+    () => {
+      if (isDocumentTypeRoute.value || isBusinessTypeRoute.value) return
+      void loadContext()
+    },
+    { immediate: true }
+  )
 </script>
 
 <style scoped lang="scss">

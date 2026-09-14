@@ -47,12 +47,6 @@ const resources: Record<OperationalMasterKind, ResourceDefinition> = {
     nameColumn: 'project_name',
     keywordColumns: ['project_code', 'project_name', 'contact_name', 'contact_phone', 'region']
   },
-  'document-type': {
-    table: 'mdm_document_type',
-    codeColumn: 'document_type_code',
-    nameColumn: 'document_type_name',
-    keywordColumns: ['document_type_code', 'document_type_name', 'remark']
-  },
   'activity-formula': {
     table: 'mdm_activity_formula',
     codeColumn: 'code',

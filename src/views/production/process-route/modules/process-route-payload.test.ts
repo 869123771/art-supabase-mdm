@@ -93,7 +93,7 @@ test('normalizes optional UUIDs and strips extra fields from sequence and step w
       sequenceType: 'main',
       transferInStepId: '',
       transferOutStepId: null,
-      remark: ' 主干序列 '
+      remark: ' 标准序列 '
     } satisfies ProcessSequenceInput,
     { id: 'sequence-id', tenantId: 'tenant-id' }
   )
@@ -136,7 +136,7 @@ test('normalizes optional UUIDs and strips extra fields from sequence and step w
   const stepPayload = buildProcessStepPayload(step)
 
   assert.equal(sequencePayload.transferInStepId, null)
-  assert.equal(sequencePayload.remark, '主干序列')
+  assert.equal(sequencePayload.remark, '标准序列')
   assert.equal(Object.hasOwn(sequencePayload, 'id'), false)
   assert.equal(stepPayload.operationId, null)
   assert.equal(stepPayload.workCenterId, null)

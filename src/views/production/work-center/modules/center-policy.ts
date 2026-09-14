@@ -134,6 +134,8 @@ export const centerPolicyFields: CenterPolicyField[] = [
   },
   { key: 'autoStart', label: '自动开始', section: '自动化', values: ['关闭', '班次开始'] }
 ]
+export const centerPolicyDictionaryCodes = centerPolicyFields.map(({ key }) => `mdmCenter_${key}`)
+
 export const createCenterPolicy = (): CenterPolicy => ({
   ...Object.fromEntries(
     centerPolicyFields.map((f) => [f.key, f.multiple ? [f.values[0]] : f.values[0]])

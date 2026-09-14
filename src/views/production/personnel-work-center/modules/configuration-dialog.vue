@@ -28,8 +28,9 @@
             :clearable="form.mode === 'add'"
             :display-fields="['organization', 'jobTitle', 'phone']"
             title="选择生产人员"
-            subtitle="仅显示尚未配置常用工作中心的启用人员"
+            :subtitle="personnelSubtitle"
             search-placeholder="姓名 / 工号 / 手机号"
+            @confirm="handlePersonnelConfirm"
           />
         </template>
         <template #workCenterIds>
@@ -58,7 +59,7 @@
 </template>
 
 <script setup lang="ts">
-  import { reactive, ref } from 'vue'
+  import { computed, reactive, ref } from 'vue'
   import ArtEmployeeSelect from '@/components/business/art-employee-select/index.vue'
   import ArtForm, { type FormItem } from '@/components/core/forms/art-form/index.vue'
   import ArtTableMultipleSelect from '@/components/core/forms/art-data-select/table-multiple.vue'
@@ -76,18 +77,24 @@
     fetchWorkCenters,
     savePersonnelCommonWorkCenters,
     type CommonWorkCenter,
-    type PersonnelWorkCenterConfig
+    type PersonnelWorkCenterConfig,
+    type ProductionDepartment
   } from '@mdm/api'
+  import { departmentOptions } from '../../modules/production-model'
+  import { employeeDepartmentId, personnelDepartmentScopeIds } from './configuration-policy'
 
   interface OpenData {
     mode: 'add' | 'edit'
     row?: PersonnelWorkCenterConfig
+    departmentId?: string
+    departments: ProductionDepartment[]
     departmentIds?: string[]
     scopeLabel: string
   }
 
   interface FormModel {
     personnelId?: string
+    departmentId: string
     workCenterIds: string[]
   }
 
@@ -97,14 +104,36 @@
   const formRef = ref<InstanceType<typeof ArtForm>>()
   const form = reactive({
     mode: 'add' as OpenData['mode'],
-    model: { personnelId: undefined, workCenterIds: [] } as FormModel,
+    model: { personnelId: undefined, departmentId: '', workCenterIds: [] } as FormModel,
     people: [] as EmployeeIntegrationItem[],
     centers: [] as CommonWorkCenter[],
+    departments: [] as ProductionDepartment[],
     departmentIds: undefined as string[] | undefined,
     scopeLabel: '全部部门与产线',
     error: ''
   })
-  const formItems: FormItem[] = [
+  const selectedDepartment = computed(() =>
+    form.departments.find((department) => department.id === form.model.departmentId)
+  )
+  const personnelSubtitle = computed(() =>
+    selectedDepartment.value
+      ? `仅显示“${selectedDepartment.value.name}”及下级尚未配置的启用人员`
+      : '仅显示尚未配置常用工作中心的启用人员'
+  )
+  const formItems = computed<FormItem[]>(() => [
+    {
+      key: 'departmentId',
+      label: '所属部门',
+      type: 'treeSelect',
+      options: departmentOptions(form.departments),
+      props: {
+        checkStrictly: true,
+        filterable: true,
+        clearable: false,
+        placeholder: '请选择所属部门'
+      },
+      help: '默认跟随左侧部门；选择员工后会校准为其当前所属部门，也可手动改选。'
+    },
     {
       key: 'personnelId',
       label: '员工',
@@ -115,8 +144,9 @@
       label: '常用工作中心',
       help: '支持多选；保存后作业员可在工作台快速找到这些工作中心。'
     }
-  ]
+  ])
   const rules = {
+    departmentId: [{ required: true, message: '请选择所属部门', trigger: 'change' }],
     personnelId: [{ required: true, message: '请选择员工', trigger: 'change' }],
     workCenterIds: [
       {
@@ -135,7 +165,10 @@
   ]
 
   const fetchPeople = (params: Parameters<typeof fetchUnconfiguredPersonnelSelector>[0]) =>
-    fetchUnconfiguredPersonnelSelector(params, form.departmentIds)
+    fetchUnconfiguredPersonnelSelector(
+      params,
+      personnelDepartmentScopeIds(form.departments, form.model.departmentId)
+    )
 
   async function fetchCenters(params: DataSelectFetchParams) {
     const result = await fetchWorkCenters({
@@ -172,6 +205,11 @@
     }))
   }
 
+  function handlePersonnelConfirm(_id: string | undefined, rows: EmployeeIntegrationItem[]) {
+    form.model.departmentId = employeeDepartmentId(rows[0], form.model.departmentId)
+    form.error = ''
+  }
+
   function toEmployee(row: PersonnelWorkCenterConfig): EmployeeIntegrationItem {
     return {
       id: row.id,
@@ -196,10 +234,12 @@
       mode: data.mode,
       model: {
         personnelId: data.row?.id,
+        departmentId: data.row?.departmentId || data.departmentId || '',
         workCenterIds: data.row?.commonWorkCenters.map((center) => center.id) ?? []
       },
       people: data.row ? [toEmployee(data.row)] : [],
       centers: data.row?.commonWorkCenters ?? [],
+      departments: data.departments,
       departmentIds: data.departmentIds,
       scopeLabel: data.scopeLabel,
       error: ''
@@ -213,7 +253,11 @@
         try {
           await formRef.value?.validate()
           if (!form.model.personnelId) return false
-          await savePersonnelCommonWorkCenters(form.model.personnelId, form.model.workCenterIds)
+          await savePersonnelCommonWorkCenters({
+            personnelId: form.model.personnelId,
+            departmentId: form.model.departmentId,
+            workCenterIds: form.model.workCenterIds
+          })
           emit('success')
           return true
         } catch {

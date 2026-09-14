@@ -147,6 +147,11 @@ export interface PersonnelWorkCenterConfig {
 export interface PersonnelWorkCenterQuery extends WorkspaceQuery {
   onlyUnconfigured?: boolean
 }
+export interface PersonnelCommonWorkCenterInput {
+  personnelId: string
+  departmentId: string
+  workCenterIds: string[]
+}
 export interface CenterAdjustmentInput {
   workCenterId: string
   personId: string

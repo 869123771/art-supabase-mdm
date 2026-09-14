@@ -18,7 +18,8 @@
       ref="tableRef"
       :data="model"
       :columns="columns"
-      :height="360"
+      :height="tableHeight"
+      :empty-height="tableHeight"
       :show-pagination="false"
       :show-table-header="false"
       :highlight-current-row="!readonly"
@@ -46,6 +47,7 @@
 
   const props = defineProps<{
     formulas: WorkCenterReference[]
+    fullscreen?: boolean
     readonly?: boolean
   }>()
   const model = defineModel<WorkCenterActivityInput[]>({ required: true })
@@ -56,6 +58,7 @@
   const currentIndex = computed(() =>
     currentRow.value ? model.value.indexOf(currentRow.value) : -1
   )
+  const tableHeight = computed(() => (props.fullscreen ? 'calc(100vh - 330px)' : '440px'))
 
   const dictOptions = (code: string) => getDictMap.value[code] ?? []
   const formulaLabel = (id: string | null) => {
@@ -74,7 +77,7 @@
     props.readonly ? (
       dictDisplay(code, row[field])
     ) : (
-      <ElSelect v-model={row[field]} placeholder={placeholder}>
+      <ElSelect v-model={row[field]} placeholder={placeholder} filterable clearable class="w-full">
         {dictOptions(code).map((item) => (
           <ElOption key={item.value} label={item.label} value={item.value} />
         ))}
@@ -94,6 +97,7 @@
         clearable
         placeholder="请选择活动公式"
         onChange={(id: string) => applyFormulaType(row, id)}
+        class="w-full"
       >
         {props.formulas.map((item) => (
           <ElOption key={item.id} label={`${item.name} · ${item.code}`} value={item.id} />

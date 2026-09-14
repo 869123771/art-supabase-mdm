@@ -216,8 +216,7 @@
       mode,
       row,
       departments: scope.departments,
-      departmentId: scope.selected,
-      onDelete: row ? () => remove(row) : undefined
+      departmentId: scope.selected
     })
   async function remove(row: WorkCenter) {
     try {

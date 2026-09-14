@@ -316,44 +316,6 @@ const configurations: Record<string, OperationalMasterConfig> = {
       ...baseFields
     ]
   },
-  'document-type': {
-    kind: 'document-type',
-    routeName: 'MdmDocumentType',
-    title: '单据类型',
-    description: '按系统功能目录治理单据编码与名称，供工单等业务统一引用。',
-    icon: 'ri:file-list-3-line',
-    eyebrow: 'GOVERNANCE CATALOG',
-    codeKey: 'documentTypeCode',
-    nameKey: 'documentTypeName',
-    formSections: [
-      {
-        key: 'catalog',
-        title: '目录与类型标识',
-        description: '将单据类型绑定到系统功能，并维护稳定的业务编码和名称。',
-        fieldKeys: ['menuId', 'documentTypeCode', 'documentTypeName']
-      },
-      {
-        key: 'status',
-        title: '状态与说明',
-        description: '控制类型是否可被业务引用，并记录维护说明。',
-        fieldKeys: ['enabled', 'remark']
-      }
-    ],
-    fields: [
-      {
-        key: 'menuId',
-        label: '所属功能',
-        type: 'select',
-        reference: 'menus',
-        required: true,
-        minWidth: 220,
-        table: true
-      },
-      { key: 'documentTypeCode', label: '类型编码', required: true, minWidth: 160, table: true },
-      { key: 'documentTypeName', label: '类型名称', required: true, minWidth: 220, table: true },
-      ...baseFields
-    ]
-  },
   'activity-formula': {
     kind: 'activity-formula',
     routeName: 'MdmActivityFormula',

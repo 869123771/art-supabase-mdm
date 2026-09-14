@@ -27,7 +27,7 @@
   import type { ArtDialogExpose } from '@/components/core/dialogs/art-dialog/types'
   import { useUserStore } from '@/store/modules/user'
   import { fetchCenterDefaults, saveCenterDefaults } from '@mdm/api'
-  import { createCenterPolicy } from './center-policy'
+  import { centerPolicyDictionaryCodes, createCenterPolicy } from './center-policy'
   import PolicyEditor from './policy-editor.vue'
   const dialogRef = ref<ArtDialogExpose>()
   const policy = ref(createCenterPolicy())
@@ -53,8 +53,11 @@
       loading: true,
       onOpen: async (_d, api) => {
         try {
-          policy.value =
-            (await fetchCenterDefaults(user.info.tenantId || '')) || createCenterPolicy()
+          const [defaults] = await Promise.all([
+            fetchCenterDefaults(user.info.tenantId || ''),
+            Promise.all(centerPolicyDictionaryCodes.map((code) => user.ensureDictLoaded(code)))
+          ])
+          policy.value = defaults || createCenterPolicy()
         } catch {
           error.value = '默认配置加载失败，请关闭后重试'
         } finally {
