@@ -46,6 +46,12 @@ export interface WorkCenterInput {
   personnelMode: string
   headcount: number
   personIds: string[]
+  capacityMode: 'finite' | 'infinite'
+  dailyCapacityMinutes: number
+  efficiencyPercent: number
+  utilizationPercent: number
+  parallelCapacity: number
+  queueMinutes: number
   policy: CenterPolicy
   sort: number
   remark: string
@@ -216,6 +222,20 @@ export interface ProcessSequenceInput {
 export interface ProcessSequence extends ProcessSequenceInput, WorkspaceAudit {
   stepCount?: number
 }
+export interface ProcessStepActivity {
+  sourceWorkCenterId: string | null
+  sourceWorkCenterName: string
+  name: string
+  activityType: string
+  maintenanceRule: string
+  basicQuantity: number
+  activityUnit: string
+  planExpression: string
+  reportExpression: string
+  backflush: boolean
+  remark: string
+  sort: number
+}
 export interface ProcessStepInput {
   routeId: string
   sequenceId: string | null
@@ -226,7 +246,18 @@ export interface ProcessStepInput {
   unitId: string | null
   basicBatch: number
   workCenterId: string | null
+  workCenterIds: string[]
   departmentId: string | null
+  runOutputQuantity: number
+  runProcessingMinutes: number
+  runGreenMinutes: number | null
+  setupMinutes: number
+  operatorCount: number
+  machineCount: number
+  queueMinutes: number
+  transferMinutes: number
+  minimumTransferQuantity: number
+  overlapEnabled: boolean
   operationMode: string
   controlCodeId: string | null
   processingMode: string
@@ -241,7 +272,7 @@ export interface ProcessStepInput {
   isLast: boolean
   critical: boolean
   unitConversion: Record<string, unknown>
-  activities: Array<Record<string, unknown>>
+  activities: ProcessStepActivity[]
   outsourcing: Record<string, unknown>
   inspection: Record<string, unknown>
   sopDocuments: Array<Record<string, unknown>>
@@ -258,6 +289,7 @@ export interface ProcessStep extends ProcessStepInput, WorkspaceAudit {
   unit: { id: string; unitCode: string; unitName: string; symbol: string } | null
   department: { id: string; code: string; name: string } | null
   configUpdatedAt: string | null
+  componentAssignmentCount?: number
 }
 
 export interface ProcessRouteReference {

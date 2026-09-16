@@ -40,10 +40,28 @@
         </template>
       </ArtForm>
 
+      <ElAlert
+        v-if="form.materialId && !routeLoading && !processRoutes.length"
+        type="warning"
+        :closable="false"
+        show-icon
+        title="该父项物料尚未维护可用工艺路线"
+        description="可以继续维护 BOM；建立工艺路线后再次编辑，未分配组件会自动归入第一道工序。"
+      />
+
       <section class="bom-dialog__components">
         <header>
-          <div><strong>组件明细</strong><small>按装配顺序维护用量、损耗率和工序位置</small></div>
+          <div>
+            <strong>组件明细</strong
+            ><small>按装配顺序维护；新增或未分配组件默认归入第一道工序</small>
+          </div>
           <div class="bom-dialog__component-actions">
+            <ElButton
+              :disabled="!firstProcessStep || !form.items.length"
+              @click="assignAllComponentsToFirstStep"
+            >
+              <ArtSvgIcon icon="ri:route-line" />全部归首工序
+            </ElButton>
             <ArtTableMultipleSelect
               v-model="selectedComponentIds"
               :selected-data="selectedComponents"
@@ -82,7 +100,7 @@
         />
         <footer
           ><span>共 {{ form.items.length }} 项组件</span
-          ><span>有效用量已包含损耗率口径</span></footer
+          ><span>已分配 {{ assignedComponentCount }} 项 · 有效用量已包含损耗率口径</span></footer
         >
       </section>
     </div>
@@ -93,7 +111,9 @@
   import { cloneDeep } from 'lodash-es'
   import dayjs from 'dayjs'
   import {
+    ElAlert,
     ElDatePicker,
+    ElCheckbox,
     ElInput,
     ElInputNumber,
     ElMessage,
@@ -119,10 +139,14 @@
     DataSelectRecord
   } from '@/components/core/forms/art-data-select/types'
   import {
+    fetchBomProcessRoutes,
+    fetchBomProcessRouteSteps,
     fetchMaterialArchives,
     saveBom,
     type BomGroup,
     type BomInput,
+    type BomProcessRouteOption,
+    type BomProcessRouteStepOption,
     type BomRecord,
     type MaterialArchive,
     type UnitOfMeasure
@@ -156,6 +180,10 @@
   const tenantOptions = ref<Array<{ label: string; value: string }>>([])
   const units = ref<UnitOfMeasure[]>([])
   const groups = ref<BomGroup[]>([])
+  const processRoutes = ref<BomProcessRouteOption[]>([])
+  const processSteps = ref<BomProcessRouteStepOption[]>([])
+  const routeLoading = ref(false)
+  const stepLoading = ref(false)
   const selectedParent = ref<MaterialArchive[]>([])
   const selectedComponents = ref<MaterialArchive[]>([])
   const selectedComponentIds = ref<Array<string | number>>([])
@@ -164,6 +192,7 @@
     tenantId: '',
     bomCode: '',
     materialId: '',
+    processRouteId: null,
     version: '',
     purpose: 'production',
     status: 'design',
@@ -183,6 +212,10 @@
     const parent = selectedParent.value[0]
     return parent?.productionUnitId || parent?.baseUnitId || ''
   })
+  const firstProcessStep = computed(() => processSteps.value[0] ?? null)
+  const assignedComponentCount = computed(
+    () => form.items.filter((item) => Boolean(item.processRouteStepId)).length
+  )
   const materialColumns = [
     { prop: 'materialCode', label: '物料编码', minWidth: 150 },
     { prop: 'materialName', label: '物料名称', minWidth: 180 },
@@ -203,6 +236,24 @@
     },
     { key: 'identity', label: 'BOM 身份', type: 'divider', span: 24 },
     { key: 'materialId', label: '父项物料', type: 'slot', span: 16 },
+    {
+      key: 'processRouteId',
+      label: '组件分配工艺路线',
+      type: 'select',
+      options: processRoutes.value.map((route) => ({
+        label: `${route.name} · ${route.code}${route.isDefault ? '（默认）' : ''}`,
+        value: route.id
+      })),
+      span: 8,
+      props: {
+        clearable: false,
+        filterable: true,
+        loading: routeLoading.value,
+        disabled: !form.materialId || routeLoading.value || !processRoutes.value.length,
+        placeholder: form.materialId ? '请选择组件分配路线' : '请先选择父项物料',
+        onChange: handleProcessRouteChange
+      }
+    },
     {
       key: 'bomCode',
       label: 'BOM 编码',
@@ -306,6 +357,77 @@
       keyword: params.keyword,
       status: 'enabled'
     })
+  const processStepLabel = (step: BomProcessRouteStepOption): string => {
+    const sequence = step.sequence?.sequenceNo
+    return [sequence ? `序列 ${sequence}` : '', step.code, step.name].filter(Boolean).join(' · ')
+  }
+  const syncComponentAssignment = (
+    row: BomComponentInput,
+    stepId: string | null | undefined
+  ): void => {
+    const step = processSteps.value.find((item) => item.id === stepId)
+    row.processRouteStepId = step?.id ?? null
+    row.operationName = step?.name ?? ''
+  }
+  const normalizeComponentAssignments = (forceFirst = false): void => {
+    const validIds = new Set(processSteps.value.map((step) => step.id))
+    const firstStep = firstProcessStep.value
+    form.items.forEach((item) => {
+      if (!forceFirst && item.processRouteStepId && validIds.has(item.processRouteStepId)) {
+        syncComponentAssignment(item, item.processRouteStepId)
+        return
+      }
+      syncComponentAssignment(item, firstStep?.id)
+    })
+  }
+  const loadProcessSteps = async (routeId?: string | null, forceFirst = false): Promise<void> => {
+    processSteps.value = []
+    if (!routeId || !form.tenantId) {
+      normalizeComponentAssignments(forceFirst)
+      return
+    }
+    stepLoading.value = true
+    try {
+      const rows = await fetchBomProcessRouteSteps(form.tenantId, routeId)
+      processSteps.value = [...rows].sort(
+        (left, right) =>
+          (left.sequence?.sequenceNo ?? 0) - (right.sequence?.sequenceNo ?? 0) ||
+          left.sort - right.sort ||
+          left.code.localeCompare(right.code)
+      )
+      normalizeComponentAssignments(forceFirst)
+    } finally {
+      stepLoading.value = false
+    }
+  }
+  const loadProcessRoutes = async (
+    materialId?: string,
+    preferredRouteId?: string | null
+  ): Promise<void> => {
+    processRoutes.value = []
+    processSteps.value = []
+    if (!materialId || !form.tenantId) {
+      form.processRouteId = null
+      return
+    }
+    routeLoading.value = true
+    try {
+      processRoutes.value = await fetchBomProcessRoutes(form.tenantId, materialId)
+      const preferred = processRoutes.value.find((route) => route.id === preferredRouteId)
+      form.processRouteId = preferred?.id ?? processRoutes.value[0]?.id ?? null
+      await loadProcessSteps(form.processRouteId)
+    } finally {
+      routeLoading.value = false
+    }
+  }
+  const handleProcessRouteChange = async (value: string): Promise<void> => {
+    form.processRouteId = value || null
+    await loadProcessSteps(form.processRouteId, true)
+  }
+  const assignAllComponentsToFirstStep = (): void => {
+    normalizeComponentAssignments(true)
+    if (firstProcessStep.value) ElMessage.success(`已全部分配到${firstProcessStep.value.name}`)
+  }
   const materialById = (id: string) =>
     [...selectedParent.value, ...selectedComponents.value].find((item) => item.id === id)
   const componentRowLabel = (row: BomComponentInput, rowIndex: number): string => {
@@ -379,6 +501,19 @@
         <ArtDictDisplay
           dictCode="mdmMaterialSource"
           value={materialById(row.componentMaterialId)?.materialSource || ''}
+        />
+      )
+    },
+    {
+      prop: 'virtualPart',
+      label: '虚拟件项',
+      width: 100,
+      align: 'center',
+      formatter: (row) => (
+        <ElCheckbox
+          modelValue={materialById(row.componentMaterialId)?.specialPurchaseType === 'virtual_part'}
+          disabled
+          aria-label="虚拟件项"
         />
       )
     },
@@ -499,17 +634,24 @@
       )
     },
     {
-      prop: 'operationName',
-      label: '工序',
-      width: 160,
+      prop: 'processRouteStepId',
+      label: '分配工序',
+      width: 260,
       formatter: (row) => (
-        <ElInput
-          v-model={row.operationName}
+        <ElSelect
+          v-model={row.processRouteStepId}
           clearable
-          maxlength={120}
-          placeholder="填写工序"
-          aria-label="组件工序"
-        />
+          filterable
+          loading={stepLoading.value}
+          disabled={!processSteps.value.length}
+          placeholder={processSteps.value.length ? '选择对应工序' : '暂无可分配工序'}
+          aria-label="组件分配工序"
+          onChange={(value: string) => syncComponentAssignment(row, value)}
+        >
+          {processSteps.value.map((step) => (
+            <ElOption key={step.id} label={processStepLabel(step)} value={step.id} />
+          ))}
+        </ElSelect>
       )
     },
     {
@@ -542,10 +684,11 @@
       )
     }
   ])
-  const handleParentChange = (_value: unknown, rows: DataSelectRecord[]) => {
+  const handleParentChange = async (_value: unknown, rows: DataSelectRecord[]) => {
     const row = rows[0] as MaterialArchive | undefined
     selectedParent.value = row ? [row] : []
     form.baseUnitId = row?.productionUnitId || row?.baseUnitId || ''
+    await loadProcessRoutes(row?.id)
     if (row && !form.baseUnitId) {
       ElMessage.warning('该父项物料未维护生产单位，请在“生产单位”字段补充后保存')
     }
@@ -575,7 +718,8 @@
       selectedComponents.value,
       rows as MaterialArchive[],
       form.materialId,
-      dayjs().format('YYYY-MM-DD')
+      dayjs().format('YYYY-MM-DD'),
+      firstProcessStep.value
     )
     form.items = result.items
     syncComponentSelection(result.materials)
@@ -628,6 +772,7 @@
       item.effectiveFrom ||= form.effectiveFrom
       item.effectiveTo ||= form.effectiveTo
     })
+    await loadProcessRoutes(form.materialId, data.row?.processRouteId)
     if (data.copy) {
       form.id = undefined
       form.bomCode = ''
@@ -651,8 +796,11 @@
     (value, previous) => {
       if (value === previous || !previous) return
       form.materialId = ''
+      form.processRouteId = null
       form.baseUnitId = ''
       form.items = []
+      processRoutes.value = []
+      processSteps.value = []
       selectedParent.value = []
       selectedComponents.value = []
       selectedComponentIds.value = []

@@ -10,7 +10,8 @@ export interface BomComponentSelectionResult {
 const createComponent = (
   material: MaterialArchive,
   sequenceNo: number,
-  effectiveFrom: string
+  effectiveFrom: string,
+  defaultStep?: { id: string; name: string } | null
 ): BomComponentInput => ({
   componentMaterialId: material.id,
   sequenceNo,
@@ -24,7 +25,8 @@ const createComponent = (
   overIssueControlMethod: material.overIssueControlMethod || null,
   projectText: '',
   positionNo: '',
-  operationName: '',
+  processRouteStepId: defaultStep?.id ?? null,
+  operationName: defaultStep?.name ?? '',
   effectiveFrom,
   effectiveTo: '9999-12-31',
   remark: ''
@@ -35,7 +37,8 @@ export const mergeBomComponentSelection = (
   knownMaterials: MaterialArchive[],
   selectedMaterials: MaterialArchive[],
   parentMaterialId: string,
-  effectiveFrom: string
+  effectiveFrom: string,
+  defaultStep?: { id: string; name: string } | null
 ): BomComponentSelectionResult => {
   const allowedSelections = selectedMaterials.filter((material) => material.id !== parentMaterialId)
   const existingIds = new Set(items.map((item) => item.componentMaterialId))
@@ -50,7 +53,7 @@ export const mergeBomComponentSelection = (
     .filter((material) => !existingIds.has(material.id))
     .map((material) => {
       sequenceNo += 10
-      return createComponent(material, sequenceNo, effectiveFrom)
+      return createComponent(material, sequenceNo, effectiveFrom, defaultStep)
     })
   const mergedItems = [...items, ...additions]
   const mergedIds = new Set(mergedItems.map((item) => item.componentMaterialId))

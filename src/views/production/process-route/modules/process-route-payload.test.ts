@@ -108,7 +108,18 @@ test('normalizes optional UUIDs and strips extra fields from sequence and step w
       unitId: null,
       basicBatch: 1,
       workCenterId: '',
+      workCenterIds: [],
       departmentId: '',
+      runOutputQuantity: 1,
+      runProcessingMinutes: 1,
+      runGreenMinutes: null,
+      setupMinutes: 0,
+      operatorCount: 1,
+      machineCount: 1,
+      queueMinutes: 0,
+      transferMinutes: 0,
+      minimumTransferQuantity: 1,
+      overlapEnabled: false,
       operationMode: 'individual',
       controlCodeId: null,
       processingMode: '',
@@ -140,6 +151,7 @@ test('normalizes optional UUIDs and strips extra fields from sequence and step w
   assert.equal(Object.hasOwn(sequencePayload, 'id'), false)
   assert.equal(stepPayload.operationId, null)
   assert.equal(stepPayload.workCenterId, null)
+  assert.deepEqual(stepPayload.workCenterIds, [])
   assert.equal(stepPayload.departmentId, null)
   assert.equal(stepPayload.name, '装配')
   assert.equal(Object.hasOwn(stepPayload, 'operation'), false)

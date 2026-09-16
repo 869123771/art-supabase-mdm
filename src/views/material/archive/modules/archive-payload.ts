@@ -66,6 +66,7 @@ const nullableMaterialArchiveStringFields = [
   'issuingWarehouseId',
   'costUnitId',
   'purchaseOrganization',
+  'specialPurchaseType',
   'batchPolicy',
   'salesOrganization',
   'abcClassification',

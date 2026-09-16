@@ -279,6 +279,47 @@
       span: 24,
       hidden: form.model.personnelMode !== '指定人员'
     },
+    { key: 'capacity', label: '产能与排程', type: 'divider', span: 24 },
+    {
+      key: 'capacityMode',
+      label: '产能模式',
+      type: 'select',
+      options: [
+        { label: '有限产能', value: 'finite' },
+        { label: '无限产能', value: 'infinite' }
+      ],
+      help: '有限产能会避让同一工作中心已有排程。'
+    },
+    {
+      key: 'dailyCapacityMinutes',
+      label: '日可用分钟',
+      type: 'number',
+      props: { min: 1, max: 1440, precision: 0 }
+    },
+    {
+      key: 'efficiencyPercent',
+      label: '效率(%)',
+      type: 'number',
+      props: { min: 1, max: 200, precision: 2 }
+    },
+    {
+      key: 'utilizationPercent',
+      label: '利用率(%)',
+      type: 'number',
+      props: { min: 1, max: 100, precision: 2 }
+    },
+    {
+      key: 'parallelCapacity',
+      label: '并行台数',
+      type: 'number',
+      props: { min: 1, max: 999, precision: 0 }
+    },
+    {
+      key: 'queueMinutes',
+      label: '默认排队时长(分钟)',
+      type: 'number',
+      props: { min: 0, precision: 2 }
+    },
     { key: 'sort', label: '排序', type: 'number', props: { min: 0, precision: 0 } },
     {
       key: 'remark',
@@ -295,6 +336,7 @@
     { key: 'operationControlCode', label: '工序控制码' },
     { key: 'main', label: '主工序位' },
     { key: 'staff', label: '人员安排' },
+    { key: 'capacity', label: '标准产能' },
     { key: 'remark', label: '备注' }
   ].map((item) => ({ ...item, field: item.key }))
   const basicDisplay = computed(() => ({
@@ -308,7 +350,10 @@
     staff:
       form.model.personnelMode === '指定人数'
         ? `指定人数 ${form.model.headcount} 人`
-        : form.people.map((p) => `${p.employeeName} · ${p.employeeNo}`).join('、')
+        : form.people.map((p) => `${p.employeeName} · ${p.employeeNo}`).join('、'),
+    capacity:
+      `${form.model.capacityMode === 'finite' ? '有限' : '无限'} · ` +
+      `${form.model.dailyCapacityMinutes} 分钟/日 · ${form.model.parallelCapacity} 台并行`
   }))
   const disabledCenter = (r: DataSelectRecord) => r.id === form.id
   const fetchCenters = (p: DataSelectFetchParams) =>

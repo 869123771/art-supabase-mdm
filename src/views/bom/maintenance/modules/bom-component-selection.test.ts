@@ -25,10 +25,25 @@ const component = (id: string, sequenceNo = 10): BomInput['items'][number] => ({
   overIssueControlMethod: null,
   projectText: '',
   positionNo: '',
+  processRouteStepId: null,
   operationName: '',
   effectiveFrom: '2026-09-12',
   effectiveTo: '9999-12-31',
   remark: ''
+})
+
+test('new BOM components default to the first route operation', () => {
+  const result = mergeBomComponentSelection(
+    [],
+    [],
+    [material('component-a')],
+    'parent',
+    '2026-09-12',
+    { id: 'step-10', name: '首道装配' }
+  )
+
+  assert.equal(result.items[0].processRouteStepId, 'step-10')
+  assert.equal(result.items[0].operationName, '首道装配')
 })
 
 test('BOM selection preserves edited rows and appends only new components', () => {

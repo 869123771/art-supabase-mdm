@@ -143,6 +143,14 @@
     { key: 'bomCode', label: 'BOM 编码', field: 'bomCode', copyable: true },
     { key: 'version', label: '版本', field: 'version' },
     { key: 'purpose', label: 'BOM 用途', field: 'purpose', dictCode: 'mdmBomPurpose' },
+    {
+      key: 'processRoute',
+      label: '组件分配路线',
+      value: (row: BomRecord) =>
+        row.processRoute
+          ? `${row.processRoute.name} · ${row.processRoute.code} · ${row.processRoute.version}`
+          : '未关联工艺路线'
+    },
     { key: 'status', label: '生命周期', field: 'status', dictCode: 'mdmBomStatus' },
     { key: 'sort', label: '显示顺序', field: 'sort', format: 'number' }
   ]
@@ -240,6 +248,17 @@
       }
     },
     {
+      prop: 'virtualPart',
+      label: '虚拟件项',
+      width: 100,
+      align: 'center',
+      dict: {
+        code: 'commonBoolean',
+        display: 'text',
+        value: (row) => String(row.component?.specialPurchaseType === 'virtual_part')
+      }
+    },
+    {
       prop: 'quantity',
       label: '用量',
       width: 120,
@@ -302,10 +321,20 @@
       formatter: (row) => formatQuantity(row.scrapRate, 2)
     },
     {
-      prop: 'operationName',
-      label: '工序',
-      width: 160,
-      formatter: (row) => formatText(row.operationName)
+      prop: 'processRouteStepId',
+      label: '分配工序',
+      width: 220,
+      formatter: (row) => {
+        const step = row.processRouteStep
+        if (!step) return formatText(row.operationName)
+        return [
+          step.sequence?.sequenceNo ? `序列 ${step.sequence.sequenceNo}` : '',
+          step.code,
+          step.name
+        ]
+          .filter(Boolean)
+          .join(' · ')
+      }
     },
     {
       prop: 'positionNo',

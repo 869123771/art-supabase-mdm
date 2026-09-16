@@ -385,6 +385,7 @@
     basicUnit: '',
     materialType: '',
     materialSource: 'purchase',
+    specialPurchaseType: null,
     materialTypeId: null,
     baseUnitId: null,
     auxiliaryUnitId: null,
@@ -477,6 +478,10 @@
     selfMadeProductionDays: null,
     productionPostprocessDays: null,
     productionInspectionLeadDays: null,
+    schedulingPriority: 50,
+    schedulingStrategy: 'inherit',
+    planningTimeFenceDays: 0,
+    batchRoundingQuantity: null,
     issuingWarehouseId: null,
     materialIssueMethod: null,
     backflushMethod: null,
@@ -723,6 +728,14 @@
           key: 'materialSource',
           type: 'select',
           options: getDictMap.value.mdmMaterialSource ?? []
+        },
+        {
+          label: '特殊采购类',
+          key: 'specialPurchaseType',
+          type: 'select',
+          options: getDictMap.value.mdmMaterialSpecialPurchaseType ?? [],
+          help: '虚拟件用于 BOM 展开标识；外协件用于区分需外部协作加工的物料。',
+          props: { clearable: true, placeholder: '非特殊采购物料' }
         },
         commonUnitItem('基本单位', 'baseUnitId'),
         commonUnitItem('辅助单位', 'auxiliaryUnitId'),
@@ -1174,6 +1187,39 @@
           type: 'number',
           props: { min: 0, precision: 4, class: '!w-full' }
         },
+        { key: 'scheduling', label: '排产默认值', type: 'divider', span: 24 },
+        {
+          label: '排产优先级',
+          key: 'schedulingPriority',
+          type: 'number',
+          help: '1 最低、100 最高；创建工单时冻结为工单优先级。',
+          props: { min: 1, max: 100, precision: 0, class: '!w-full' }
+        },
+        {
+          label: '排产方向',
+          key: 'schedulingStrategy',
+          type: 'select',
+          help: '继承表示使用所选排产规则的方向。',
+          options: [
+            { label: '继承排产规则', value: 'inherit' },
+            { label: '正向排产', value: 'forward' },
+            { label: '反向排产', value: 'backward' }
+          ]
+        },
+        {
+          label: '计划冻结期(天)',
+          key: 'planningTimeFenceDays',
+          type: 'number',
+          help: '冻结期内已排任务默认不被自动排产覆盖。',
+          props: { min: 0, max: 365, precision: 0, class: '!w-full' }
+        },
+        {
+          label: '批量圆整数量',
+          key: 'batchRoundingQuantity',
+          type: 'number',
+          help: '留空表示不圆整；填写后可作为工单数量与排产批次校验依据。',
+          props: { min: 0.000001, precision: 6, class: '!w-full' }
+        },
         { key: 'productionLead', label: '物料提前期', type: 'divider', span: 24 },
         {
           label: '固定提前期(天)',
@@ -1273,6 +1319,7 @@
   void Promise.all(
     [
       'mdmMaterialSource',
+      'mdmMaterialSpecialPurchaseType',
       'commonEnabledStatus',
       'mdmMaterialMrpType',
       'mdmMaterialValuationMethod',

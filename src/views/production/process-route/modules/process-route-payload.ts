@@ -1,4 +1,5 @@
 import type { ProcessRouteInput, ProcessSequenceInput, ProcessStepInput } from '@mdm/api'
+import { uniq } from 'lodash-es'
 import { normalizeNullableText } from '@/utils/form/normalize'
 
 export function buildProcessRoutePayload(input: ProcessRouteInput): ProcessRouteInput {
@@ -38,6 +39,7 @@ export function buildProcessSequencePayload(input: ProcessSequenceInput): Proces
 }
 
 export function buildProcessStepPayload(input: ProcessStepInput): ProcessStepInput {
+  const workCenterIds = uniq(input.workCenterIds.filter(Boolean))
   return {
     routeId: input.routeId.trim(),
     sequenceId: normalizeNullableText(input.sequenceId),
@@ -47,8 +49,19 @@ export function buildProcessStepPayload(input: ProcessStepInput): ProcessStepInp
     description: input.description.trim(),
     unitId: normalizeNullableText(input.unitId),
     basicBatch: input.basicBatch,
-    workCenterId: normalizeNullableText(input.workCenterId),
+    workCenterId: workCenterIds[0] ?? null,
+    workCenterIds,
     departmentId: normalizeNullableText(input.departmentId),
+    runOutputQuantity: input.runOutputQuantity,
+    runProcessingMinutes: input.runProcessingMinutes,
+    runGreenMinutes: input.runGreenMinutes,
+    setupMinutes: input.setupMinutes,
+    operatorCount: input.operatorCount,
+    machineCount: input.machineCount,
+    queueMinutes: input.queueMinutes,
+    transferMinutes: input.transferMinutes,
+    minimumTransferQuantity: input.minimumTransferQuantity,
+    overlapEnabled: input.overlapEnabled,
     operationMode: input.operationMode,
     controlCodeId: normalizeNullableText(input.controlCodeId),
     processingMode: input.processingMode,

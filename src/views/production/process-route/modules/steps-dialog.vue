@@ -319,7 +319,31 @@
             label-position="top"
             :show-reset="false"
             :show-submit="false"
-          />
+          >
+            <template #humanMachineRatio>
+              <div class="step-editor__ratio-field">
+                <ElInputNumber
+                  v-model="stepForm.operatorCount"
+                  :min="1"
+                  :max="999"
+                  :precision="0"
+                  controls-position="right"
+                  aria-label="人机系数人数"
+                />
+                <span>人</span>
+                <b aria-hidden="true">:</b>
+                <ElInputNumber
+                  v-model="stepForm.machineCount"
+                  :min="1"
+                  :max="999"
+                  :precision="0"
+                  controls-position="right"
+                  aria-label="人机系数设备数"
+                />
+                <span>台</span>
+              </div>
+            </template>
+          </ArtForm>
         </div>
         <div v-show="activeTab === 'unit'" class="step-editor__content">
           <ElAlert
@@ -361,8 +385,8 @@
             <span>
               {{
                 editorReadonly
-                  ? '按执行顺序展示活动公式、资源及计划与汇报表达式。'
-                  : '活动公式会自动带入计划与汇报表达式，仍可按工序调整。'
+                  ? '按执行顺序展示工作中心活动，可追溯默认来源。'
+                  : '默认带入所选工作中心的活动信息，活动名称及其余参数可按工序调整。'
               }}
             </span>
             <ElButton
@@ -379,7 +403,7 @@
               v-if="!activityRows.length"
               class="route-maintenance__tab-empty"
               title="暂无活动配置"
-              description="活动用于计算计划与汇报数量，可按需引用活动公式。"
+              description="选择车间与工作中心后可自动带入活动，也可手工新增。"
             >
               <template v-if="!editorReadonly" #default>
                 <ElButton v-auth="'MdmProcessRoute:Edit'" type="primary" plain @click="addActivity"
@@ -392,9 +416,10 @@
               class="route-maintenance__activity-row is-header"
               :class="{ 'is-readonly': editorReadonly }"
             >
-              <span>#</span><span>活动公式</span><span>活动名称</span><span>活动类型</span
-              ><span>基本数量</span><span>活动单位</span><span>资源</span><span>计划活动量公式</span
-              ><span>汇报活动量公式</span
+              <span>#</span><span>来源工作中心</span><span>活动名称</span><span>活动类型</span
+              ><span>维护规则</span><span>基数数量</span><span>活动单位</span
+              ><span>计划活动量公式</span><span>汇报活动量公式</span><span>倒冲</span
+              ><span>备注</span
               ><span v-if="!editorReadonly" class="route-maintenance__activity-operation"
                 >操作</span
               >
@@ -407,8 +432,8 @@
             >
               <span class="route-maintenance__activity-index">{{ index + 1 }}</span>
               <template v-if="editorReadonly">
-                <span class="route-maintenance__activity-value is-strong">
-                  {{ activityFormulaLabel(activity.formulaId) }}
+                <span class="route-maintenance__activity-value">
+                  {{ activity.sourceWorkCenterName || '手工维护' }}
                 </span>
                 <span class="route-maintenance__activity-value is-strong">
                   {{ activity.name || '—' }}
@@ -416,14 +441,14 @@
                 <span class="route-maintenance__activity-value">
                   {{ dictLabel('mdmActivityType', activity.activityType) }}
                 </span>
+                <span class="route-maintenance__activity-value">
+                  {{ dictLabel('mdmWorkCenterMaintenanceRule', activity.maintenanceRule) }}
+                </span>
                 <span class="route-maintenance__activity-value is-number">
                   {{ formatQuantity(activity.basicQuantity) }}
                 </span>
                 <span class="route-maintenance__activity-value">
-                  {{ referenceLabel(references.units, activity.unitId) }}
-                </span>
-                <span class="route-maintenance__activity-value">
-                  {{ activity.resource || '—' }}
+                  {{ dictLabel('mdmWorkCenterActivityUnit', activity.activityUnit) }}
                 </span>
                 <span class="route-maintenance__activity-value is-code">
                   {{ activity.planExpression || '—' }}
@@ -431,35 +456,51 @@
                 <span class="route-maintenance__activity-value is-code">
                   {{ activity.reportExpression || '—' }}
                 </span>
+                <span class="route-maintenance__activity-value">
+                  {{ activity.backflush ? '是' : '否' }}
+                </span>
+                <span class="route-maintenance__activity-value">
+                  {{ activity.remark || '—' }}
+                </span>
               </template>
               <template v-else>
-                <ElSelect
-                  v-model="activity.formulaId"
-                  :aria-label="`第 ${index + 1} 行活动公式`"
-                  filterable
-                  clearable
-                  placeholder="活动公式"
-                  @change="applyFormula(activity)"
-                >
-                  <ElOption
-                    v-for="item in references.activityFormulas"
-                    :key="item.id"
-                    :label="`${item.name} · ${item.code}`"
-                    :value="item.id"
-                  />
-                </ElSelect>
+                <span class="route-maintenance__activity-value">
+                  {{ activity.sourceWorkCenterName || '手工维护' }}
+                </span>
                 <ElInput
                   v-model="activity.name"
                   :aria-label="`第 ${index + 1} 行活动名称`"
                   maxlength="100"
                   placeholder="活动名称"
                 />
-                <ElInput
-                  :model-value="dictLabel('mdmActivityType', activity.activityType)"
+                <ElSelect
+                  v-model="activity.activityType"
                   :aria-label="`第 ${index + 1} 行活动类型`"
-                  readonly
-                  placeholder="由活动公式带入"
-                />
+                  filterable
+                  clearable
+                  placeholder="活动类型"
+                >
+                  <ElOption
+                    v-for="item in getDictMap.mdmActivityType ?? []"
+                    :key="item.value"
+                    :label="item.label"
+                    :value="item.value"
+                  />
+                </ElSelect>
+                <ElSelect
+                  v-model="activity.maintenanceRule"
+                  :aria-label="`第 ${index + 1} 行维护规则`"
+                  filterable
+                  clearable
+                  placeholder="维护规则"
+                >
+                  <ElOption
+                    v-for="item in getDictMap.mdmWorkCenterMaintenanceRule ?? []"
+                    :key="item.value"
+                    :label="item.label"
+                    :value="item.value"
+                  />
+                </ElSelect>
                 <ElInputNumber
                   v-model="activity.basicQuantity"
                   :aria-label="`第 ${index + 1} 行基本数量`"
@@ -468,25 +509,19 @@
                   controls-position="right"
                 />
                 <ElSelect
-                  v-model="activity.unitId"
+                  v-model="activity.activityUnit"
                   :aria-label="`第 ${index + 1} 行活动单位`"
                   filterable
                   clearable
                   placeholder="活动单位"
                 >
                   <ElOption
-                    v-for="item in references.units"
-                    :key="item.id"
-                    :label="`${item.name} · ${item.code}`"
-                    :value="item.id"
+                    v-for="item in getDictMap.mdmWorkCenterActivityUnit ?? []"
+                    :key="item.value"
+                    :label="item.label"
+                    :value="item.value"
                   />
                 </ElSelect>
-                <ElInput
-                  v-model="activity.resource"
-                  :aria-label="`第 ${index + 1} 行资源`"
-                  maxlength="200"
-                  placeholder="资源"
-                />
                 <ElInput
                   v-model="activity.planExpression"
                   :aria-label="`第 ${index + 1} 行计划活动量公式`"
@@ -496,6 +531,13 @@
                   v-model="activity.reportExpression"
                   :aria-label="`第 ${index + 1} 行汇报活动量公式`"
                   placeholder="汇报活动量公式"
+                />
+                <ElSwitch v-model="activity.backflush" :aria-label="`第 ${index + 1} 行倒冲`" />
+                <ElInput
+                  v-model="activity.remark"
+                  :aria-label="`第 ${index + 1} 行备注`"
+                  maxlength="500"
+                  placeholder="备注"
                 />
                 <div class="route-maintenance__activity-actions">
                   <ArtIconButton
@@ -649,6 +691,7 @@
     type ProcessRouteReference,
     type ProcessRouteReferences,
     type ProcessSequence,
+    type ProcessStepActivity,
     type ProcessStep,
     type ProcessStepInput,
     type OperationalMasterRecord,
@@ -656,16 +699,8 @@
   } from '@mdm/api'
   import { buildProcessSequencePayload, buildProcessStepPayload } from './process-route-payload'
 
-  interface ActivityRow {
+  interface ActivityRow extends ProcessStepActivity {
     key: string
-    formulaId: string
-    activityType: string
-    name: string
-    basicQuantity: number
-    unitId: string
-    resource: string
-    planExpression: string
-    reportExpression: string
   }
 
   const user = useUserStore()
@@ -726,7 +761,18 @@
     unitId: null,
     basicBatch: 1,
     workCenterId: null,
+    workCenterIds: [],
     departmentId: null,
+    runOutputQuantity: 1,
+    runProcessingMinutes: 1,
+    runGreenMinutes: null,
+    setupMinutes: 0,
+    operatorCount: 1,
+    machineCount: 1,
+    queueMinutes: 0,
+    transferMinutes: 0,
+    minimumTransferQuantity: 1,
+    overlapEnabled: false,
     operationMode: 'individual',
     controlCodeId: null,
     processingMode: '',
@@ -760,6 +806,11 @@
   const inspectionForm = reactive({ method: '', standard: '', samplingRule: '', remark: '' })
   const sopForm = reactive({ documentIds: [] as string[], attachments: [] as string[] })
   const activityRows = ref<ActivityRow[]>([])
+  const departmentWorkCenters = computed(() =>
+    stepForm.departmentId
+      ? references.workCenters.filter((item) => item.departmentId === stepForm.departmentId)
+      : references.workCenters
+  )
   const sequenceTypeLabel = (value: string) =>
     getDictMap.value.mdmProcessRouteSequenceType?.find((item) => item.value === value)?.label ||
     (value === 'main' ? '标准序列' : value)
@@ -956,8 +1007,12 @@
     const row = rows.find((item) => item.id === id)
     return row ? `${row.name} · ${row.code}` : '—'
   }
-  const activityFormulaLabel = (id: string): string =>
-    referenceLabel(references.activityFormulas, id)
+  const workCenterSelectionLabel = (ids: string[]): string =>
+    ids.length
+      ? ids.map((id) => referenceLabel(references.workCenters, id)).join('、')
+      : stepForm.departmentId
+        ? '全部工作中心'
+        : '未指定车间'
   const formatQuantity = (value: number): string =>
     Number(value || 0).toLocaleString('zh-CN', { maximumFractionDigits: 6 })
   const fetchOperationOptions = (params: DataSelectFetchParams) =>
@@ -1061,19 +1116,93 @@
       props: { min: 0.000001, precision: 6, class: '!w-full' }
     },
     {
-      key: 'workCenterId',
-      label: '工作中心',
-      type: 'select',
-      options: option(references.workCenters),
-      props: { clearable: true, filterable: true, onChange: applyWorkCenter }
-    },
-    {
       key: 'departmentId',
-      label: '加工车间',
+      label: '车间',
       type: 'select',
       options: option(references.departments),
-      props: { clearable: true, filterable: true }
+      help: '选择该工序实际生产所属的车间。',
+      props: { clearable: true, filterable: true, onChange: applyDepartment }
     },
+    {
+      key: 'workCenterIds',
+      label: '工作中心',
+      type: 'select',
+      options: option(departmentWorkCenters.value),
+      help: '支持多选；不选择代表该车间内全部工作中心均可生产。',
+      props: {
+        multiple: true,
+        collapseTags: true,
+        collapseTagsTooltip: true,
+        clearable: true,
+        filterable: true,
+        placeholder: stepForm.departmentId ? '不选代表全部工作中心' : '请先选择车间',
+        disabled: !stepForm.departmentId,
+        onChange: applyWorkCenters
+      }
+    },
+    { key: 'timing', label: '工时与产能参数', type: 'divider', span: 24 },
+    {
+      key: 'runOutputQuantity',
+      label: '单趟产出数量（pcs）',
+      type: 'number',
+      help: '产品单趟生产的理论良品数量。',
+      props: { min: 0.000001, precision: 6, class: '!w-full' }
+    },
+    {
+      key: 'runProcessingMinutes',
+      label: '单趟加工时长（分钟）',
+      type: 'number',
+      help: '包含上下料时长；员工标准工时以此为计件基数。',
+      props: { min: 0.000001, precision: 6, class: '!w-full' }
+    },
+    {
+      key: 'runGreenMinutes',
+      label: '单趟绿灯时长（分钟）',
+      type: 'number',
+      help: '剔除上下料时长；留空时按单趟加工时长核算理论生产进度。',
+      props: { precision: 6, class: '!w-full', clearable: true }
+    },
+    {
+      key: 'setupMinutes',
+      label: '调机时长（分钟）',
+      type: 'number',
+      help: '生产前换模、调机与调试的理论用时，排产时计入当前工序。',
+      props: { min: 0, precision: 6, class: '!w-full' }
+    },
+    {
+      key: 'queueMinutes',
+      label: '排队时长（分钟）',
+      type: 'number',
+      help: '工序进入工作中心后的标准等待时间，按规则决定是否计入排产。',
+      props: { min: 0, precision: 6, class: '!w-full' }
+    },
+    {
+      key: 'transferMinutes',
+      label: '转运时长（分钟）',
+      type: 'number',
+      help: '当前工序完成后转移至下一工序的标准时间。',
+      props: { min: 0, precision: 6, class: '!w-full' }
+    },
+    {
+      key: 'minimumTransferQuantity',
+      label: '最小转移批量',
+      type: 'number',
+      props: { min: 0.000001, precision: 6, class: '!w-full' }
+    },
+    {
+      key: 'overlapEnabled',
+      label: '允许重叠加工',
+      type: 'switch',
+      help: '开启后允许达到最小转移批量时提前流转，供高级排产使用。'
+    },
+    {
+      key: 'humanMachineRatio',
+      label: '人机系数',
+      type: 'slot',
+      span: 24,
+      help: '按“人数 : 设备数”维护，例如 1 : 3 表示 1 人同时操作 3 台设备；不影响排产。'
+    },
+    { key: 'control', label: '控制属性', type: 'divider', span: 24 },
     {
       key: 'operationMode',
       label: '作业类型',
@@ -1264,16 +1393,66 @@
     },
     { key: 'basicBatch', label: '基本批量', field: 'basicBatch', format: 'number' },
     {
-      key: 'workCenterId',
+      key: 'workCenterIds',
       label: '工作中心',
-      field: 'workCenterId',
-      formatter: (value) => referenceLabel(references.workCenters, value)
+      field: 'workCenterIds',
+      formatter: (value) => workCenterSelectionLabel(Array.isArray(value) ? value : [])
     },
     {
       key: 'departmentId',
-      label: '加工车间',
+      label: '车间',
       field: 'departmentId',
       formatter: (value) => referenceLabel(references.departments, value)
+    },
+    {
+      key: 'runOutputQuantity',
+      label: '单趟产出数量',
+      value: () => `${formatQuantity(stepForm.runOutputQuantity)} pcs`
+    },
+    {
+      key: 'runProcessingMinutes',
+      label: '单趟加工时长',
+      value: () => `${formatQuantity(stepForm.runProcessingMinutes)} 分钟`
+    },
+    {
+      key: 'runGreenMinutes',
+      label: '单趟绿灯时长',
+      value: () =>
+        stepForm.runGreenMinutes == null
+          ? `跟随加工时长（${formatQuantity(stepForm.runProcessingMinutes)} 分钟）`
+          : `${formatQuantity(stepForm.runGreenMinutes)} 分钟`
+    },
+    {
+      key: 'setupMinutes',
+      label: '调机时长',
+      value: () => `${formatQuantity(stepForm.setupMinutes)} 分钟`
+    },
+    {
+      key: 'queueMinutes',
+      label: '排队时长',
+      value: () => `${formatQuantity(stepForm.queueMinutes)} 分钟`
+    },
+    {
+      key: 'transferMinutes',
+      label: '转运时长',
+      value: () => `${formatQuantity(stepForm.transferMinutes)} 分钟`
+    },
+    {
+      key: 'minimumTransferQuantity',
+      label: '最小转移批量',
+      field: 'minimumTransferQuantity',
+      format: 'number'
+    },
+    {
+      key: 'overlapEnabled',
+      label: '重叠加工',
+      field: 'overlapEnabled',
+      formatter: (value) => (value ? '允许' : '不允许')
+    },
+    {
+      key: 'humanMachineRatio',
+      label: '人机系数',
+      value: () => `${stepForm.operatorCount} 人 : ${stepForm.machineCount} 台`
     },
     {
       key: 'operationMode',
@@ -1432,7 +1611,10 @@
   const stepRules = {
     sequenceId: [{ required: true, message: '请选择工序序列', trigger: 'change' }],
     code: [{ required: true, message: '请输入工序号', trigger: 'blur' }],
-    name: [{ required: true, message: '请输入工序名称', trigger: 'blur' }]
+    name: [{ required: true, message: '请输入工序名称', trigger: 'blur' }],
+    departmentId: [{ required: true, message: '请选择生产车间', trigger: 'change' }],
+    runOutputQuantity: [{ required: true, message: '请输入单趟产出数量', trigger: 'blur' }],
+    runProcessingMinutes: [{ required: true, message: '请输入单趟加工时长', trigger: 'blur' }]
   }
   const fetchRows = async (p: WorkspaceQuery, o?: { signal?: AbortSignal }) => {
     const result = await fetchProcessSteps(
@@ -1464,6 +1646,13 @@
     { prop: 'code', label: '工序号', width: 100 },
     { prop: 'name', label: '工序名称', minWidth: 150, showOverflowTooltip: true },
     {
+      prop: 'componentAssignmentCount',
+      label: '分配组件',
+      width: 96,
+      align: 'right',
+      formatter: (row) => row.componentAssignmentCount ?? 0
+    },
+    {
       prop: 'operation',
       label: '工序编码',
       minWidth: 140,
@@ -1480,12 +1669,20 @@
     {
       prop: 'workCenter',
       label: '工作中心',
-      minWidth: 140,
-      formatter: (row) => row.workCenter?.name || '未指定'
+      minWidth: 180,
+      showOverflowTooltip: true,
+      formatter: (row) =>
+        row.workCenterIds?.length
+          ? row.workCenterIds
+              .map((id) => references.workCenters.find((item) => item.id === id)?.name || id)
+              .join('、')
+          : row.departmentId
+            ? '全部工作中心'
+            : '未指定'
     },
     {
       prop: 'department',
-      label: '加工车间',
+      label: '车间',
       minWidth: 130,
       formatter: (row) => row.department?.name || '未指定'
     },
@@ -1794,25 +1991,45 @@
     stepForm.name = operation.name
     if (!stepForm.description) stepForm.description = operation.name
   }
-  async function applyWorkCenter(value: string) {
-    const center = references.workCenters.find((item) => item.id === value)
-    if (!center) return
-    if (center.departmentId) stepForm.departmentId = center.departmentId
-    const activities = await fetchWorkCenterActivities(value)
-    activityRows.value = activities.map((item) => ({
-      key: crypto.randomUUID(),
-      formulaId: item.planFormulaId || item.reportFormulaId || '',
-      activityType: item.activityType,
-      name: item.activityName,
-      basicQuantity: item.baseQuantity,
-      unitId:
-        references.units.find(
-          (unit) => unit.id === item.activityUnit || unit.code === item.activityUnit
-        )?.id || '',
-      resource: '',
-      planExpression: item.planFormula?.expression || '',
-      reportExpression: item.reportFormula?.expression || ''
-    }))
+  async function applyDepartment(value: string) {
+    stepForm.departmentId = value || null
+    const validIds = stepForm.workCenterIds.filter((id) =>
+      departmentWorkCenters.value.some((item) => item.id === id)
+    )
+    await applyWorkCenters(validIds)
+  }
+  async function applyWorkCenters(value: string[]) {
+    stepForm.workCenterIds = value
+    stepForm.workCenterId = value[0] ?? null
+    const sourceIds = value.length
+      ? value
+      : stepForm.departmentId
+        ? departmentWorkCenters.value.map((item) => item.id)
+        : []
+    const activitiesByCenter = await Promise.all(
+      sourceIds.map(async (centerId) => ({
+        centerId,
+        activities: await fetchWorkCenterActivities(centerId)
+      }))
+    )
+    activityRows.value = activitiesByCenter.flatMap(({ centerId, activities }) => {
+      const center = references.workCenters.find((item) => item.id === centerId)
+      return activities.map((item, index) => ({
+        key: crypto.randomUUID(),
+        sourceWorkCenterId: centerId,
+        sourceWorkCenterName: center?.name || '',
+        activityType: item.activityType,
+        maintenanceRule: item.maintenanceRule,
+        name: item.activityName,
+        basicQuantity: item.baseQuantity,
+        activityUnit: item.activityUnit,
+        planExpression: item.planFormula?.expression || '',
+        reportExpression: item.reportFormula?.expression || '',
+        backflush: item.backflush,
+        remark: item.remark,
+        sort: index
+      }))
+    })
   }
   function applyControlCode(value: string) {
     const controlCode = references.controlCodes.find((item) => item.id === value)
@@ -1825,26 +2042,56 @@
       needInspection: Boolean(controlCode?.inspectionMode && controlCode.inspectionMode !== 'none')
     })
   }
-  function applyFormula(row: ActivityRow) {
-    const formula = references.activityFormulas.find((item) => item.id === row.formulaId)
-    if (!formula) return
-    row.activityType = formula.activityType || ''
-    row.name ||= formula.name
-    row.planExpression = formula.planExpression || ''
-    row.reportExpression = formula.reportExpression || ''
-  }
   function addActivity() {
     activityRows.value.push({
       key: crypto.randomUUID(),
-      formulaId: '',
+      sourceWorkCenterId: null,
+      sourceWorkCenterName: '',
       activityType: '',
+      maintenanceRule: 'no_check',
       name: '',
-      basicQuantity: 1,
-      unitId: '',
-      resource: '',
+      basicQuantity: 0,
+      activityUnit: 'minute',
       planExpression: '',
-      reportExpression: ''
+      reportExpression: '',
+      backflush: false,
+      remark: '',
+      sort: activityRows.value.length
     })
+  }
+  const activityText = (value: unknown): string => (typeof value === 'string' ? value : '')
+  function normalizeActivityUnit(value: unknown): string {
+    const raw = activityText(value)
+    if (!raw) return 'minute'
+    if (['hour', 'minute', 'second'].includes(raw)) return raw
+    const unit = references.units.find((item) => item.id === raw || item.code === raw)
+    const code = (unit?.code || raw).toLowerCase()
+    if (['h', 'hr', 'hour'].includes(code)) return 'hour'
+    if (['s', 'sec', 'second'].includes(code)) return 'second'
+    if (['min', 'minute'].includes(code)) return 'minute'
+    return raw
+  }
+  function normalizeActivity(item: unknown, index: number): ActivityRow {
+    const source: Record<string, unknown> =
+      item && typeof item === 'object' ? (item as Record<string, unknown>) : {}
+    return {
+      key: crypto.randomUUID(),
+      sourceWorkCenterId:
+        typeof source.sourceWorkCenterId === 'string' ? source.sourceWorkCenterId : null,
+      sourceWorkCenterName: activityText(source.sourceWorkCenterName || source.resource),
+      name: activityText(source.name || source.activityName),
+      activityType: activityText(source.activityType),
+      maintenanceRule: activityText(source.maintenanceRule) || 'no_check',
+      basicQuantity: Number.isFinite(Number(source.basicQuantity ?? source.baseQuantity))
+        ? Number(source.basicQuantity ?? source.baseQuantity)
+        : 0,
+      activityUnit: normalizeActivityUnit(source.activityUnit || source.unitId),
+      planExpression: activityText(source.planExpression),
+      reportExpression: activityText(source.reportExpression),
+      backflush: source.backflush === true,
+      remark: activityText(source.remark),
+      sort: Number.isInteger(Number(source.sort)) ? Number(source.sort) : index
+    }
   }
   function moveActivity(index: number, delta: number) {
     const target = index + delta
@@ -1875,6 +2122,7 @@
         description: operation.remark || operation.name || '',
         unitId: route.value!.productionUnitId,
         workCenterId: operation.workCenterIds?.[0] || null,
+        workCenterIds: operation.workCenterIds || [],
         departmentId: operation.departmentId || route.value!.departmentId,
         isFirst: stepRows.value.length === 0 && index === 0,
         isLast: index === operations.length - 1
@@ -1886,14 +2134,11 @@
     await Promise.all([tableRef.value?.refreshData(), loadSequences()])
   }
   type StepOpenMode = 'add' | 'insert' | 'copy' | 'view' | 'edit'
-  const insertionSort = (anchor?: ProcessStep): number => {
-    if (!anchor) return Math.max(0, ...stepRows.value.map((item) => item.sort)) + 10
-    const rows = [...stepRows.value].sort((left, right) => left.sort - right.sort)
-    const index = rows.findIndex((item) => item.id === anchor.id)
-    const nextSort = rows[index + 1]?.sort
-    return nextSort && nextSort - anchor.sort > 1
-      ? Math.floor((anchor.sort + nextSort) / 2)
-      : anchor.sort + 1
+  const nextStepNumber = (): number => {
+    const generatedNumbers = stepRows.value
+      .map((item) => Number(item.code))
+      .filter((value) => Number.isInteger(value) && value > 0)
+    return Math.floor(Math.max(0, ...generatedNumbers) / 10) * 10 + 10
   }
   async function openStep(row?: ProcessStep, mode: StepOpenMode = row ? 'edit' : 'add') {
     if (!route.value || !sequenceState.selectedId) return
@@ -1903,20 +2148,21 @@
     const inserting = mode === 'insert'
     editorReadonly.value = viewing || readonly.value
     stepEditId.value = editing ? row?.id || '' : ''
-    const nextSort = insertionSort(inserting ? row : undefined)
+    const nextCode = nextStepNumber()
+    const nextSort = Math.max(0, ...stepRows.value.map((item) => item.sort)) + 10
     Object.assign(
       stepForm,
       row && !inserting
         ? {
             ...cloneDeep(row),
             ...(cloning
-              ? { code: String(nextSort), sort: nextSort, isFirst: false, isLast: false }
+              ? { code: String(nextCode), sort: nextSort, isFirst: false, isLast: false }
               : {})
           }
         : {
             ...initialStep(),
             sequenceId: sequenceState.selectedId,
-            code: String(nextSort),
+            code: String(nextCode),
             sort: nextSort,
             unitId: route.value.productionUnitId,
             departmentId: route.value.departmentId,
@@ -1924,6 +2170,17 @@
             isLast: true
           }
     )
+    stepForm.workCenterIds =
+      row && !inserting
+        ? [
+            ...(row.workCenterIds?.length
+              ? row.workCenterIds
+              : row.workCenterId
+                ? [row.workCenterId]
+                : [])
+          ]
+        : []
+    stepForm.workCenterId = stepForm.workCenterIds[0] ?? null
     Object.assign(unitForm, {
       productionFactor: 1,
       operationFactor: 1,
@@ -1945,18 +2202,7 @@
       remark: '',
       ...(!inserting && row?.inspection ? row.inspection : {})
     })
-    activityRows.value = (!inserting ? row?.activities || [] : []).map((item) => ({
-      key: crypto.randomUUID(),
-      formulaId: '',
-      activityType: '',
-      name: '',
-      basicQuantity: 1,
-      unitId: '',
-      resource: '',
-      planExpression: '',
-      reportExpression: '',
-      ...item
-    })) as ActivityRow[]
+    activityRows.value = (!inserting ? row?.activities || [] : []).map(normalizeActivity)
     const sop = !inserting ? row?.sopDocuments || [] : []
     sopForm.documentIds = sop.filter((item) => item.type === 'esop').map((item) => String(item.id))
     sopForm.attachments = sop
@@ -1983,20 +2229,32 @@
         if (editorReadonly.value) return true
         try {
           await formRef.value?.validate()
+          if (
+            stepForm.runGreenMinutes !== null &&
+            (!Number.isFinite(stepForm.runGreenMinutes) || stepForm.runGreenMinutes <= 0)
+          ) {
+            ElMessage.warning('单趟绿灯时长需大于 0，留空则自动采用单趟加工时长')
+            activeTab.value = 'basic'
+            return false
+          }
           await saveProcessStep(
             buildProcessStepPayload({
               routeId: route.value!.id,
               ...stepForm,
               unitConversion: cloneDeep(unitForm),
               activities: activityRows.value.map((item) => ({
-                formulaId: item.formulaId,
+                sourceWorkCenterId: item.sourceWorkCenterId,
+                sourceWorkCenterName: item.sourceWorkCenterName,
                 activityType: item.activityType,
+                maintenanceRule: item.maintenanceRule,
                 name: item.name,
                 basicQuantity: item.basicQuantity,
-                unitId: item.unitId,
-                resource: item.resource,
+                activityUnit: item.activityUnit,
                 planExpression: item.planExpression,
-                reportExpression: item.reportExpression
+                reportExpression: item.reportExpression,
+                backflush: item.backflush,
+                remark: item.remark,
+                sort: activityRows.value.indexOf(item)
               })),
               outsourcing: cloneDeep(outsourcingForm),
               inspection: cloneDeep(inspectionForm),
@@ -2046,7 +2304,9 @@
         'mdmSequenceControl',
         'mdmReworkMode',
         'mdmMaterialPurchaseOrganization',
-        'mdmActivityType'
+        'mdmActivityType',
+        'mdmWorkCenterMaintenanceRule',
+        'mdmWorkCenterActivityUnit'
       ].map((code) => user.ensureDictLoaded(code))
     )
     await dialogRef.value?.handleOpen(undefined, {
@@ -2469,12 +2729,12 @@
     &__activity-row {
       display: grid;
       grid-template-columns:
-        28px minmax(170px, 1fr) minmax(160px, 1fr) minmax(130px, 0.8fr) 140px
-        minmax(145px, 0.8fr)
-        minmax(150px, 1fr) minmax(200px, 1fr) minmax(200px, 1fr) 112px;
+        28px minmax(150px, 1fr) minmax(160px, 1fr) minmax(130px, 0.8fr) 140px
+        minmax(130px, 0.8fr) minmax(135px, 0.8fr) minmax(200px, 1fr) minmax(200px, 1fr)
+        84px minmax(180px, 1fr) 112px;
       gap: var(--art-space-3);
       align-items: center;
-      min-width: 1640px;
+      min-width: 1860px;
       min-height: 60px;
       padding: 10px var(--art-space-3);
       border-bottom: 1px solid var(--el-border-color-lighter);
@@ -2482,10 +2742,10 @@
 
       &.is-readonly {
         grid-template-columns:
-          28px minmax(170px, 1fr) minmax(160px, 1fr) minmax(130px, 0.8fr) 140px
-          minmax(145px, 0.8fr)
-          minmax(150px, 1fr) minmax(200px, 1fr) minmax(200px, 1fr);
-        min-width: 1516px;
+          28px minmax(150px, 1fr) minmax(160px, 1fr) minmax(130px, 0.8fr) 140px
+          minmax(130px, 0.8fr) minmax(135px, 0.8fr) minmax(200px, 1fr) minmax(200px, 1fr)
+          84px minmax(180px, 1fr);
+        min-width: 1736px;
       }
 
       &:not(.is-header):hover {
@@ -2749,6 +3009,25 @@
       display: grid;
       gap: var(--art-space-4);
       min-width: 0;
+    }
+
+    &__ratio-field {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto auto minmax(0, 1fr) auto;
+      gap: var(--art-space-2);
+      align-items: center;
+
+      :deep(.el-input-number) {
+        width: 100%;
+      }
+
+      span {
+        color: var(--el-text-color-secondary);
+      }
+
+      b {
+        color: var(--theme-color);
+      }
     }
 
     &__detail,

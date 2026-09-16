@@ -300,6 +300,19 @@
       )
     },
     {
+      prop: 'dailyCapacityMinutes',
+      label: '标准产能',
+      minWidth: 190,
+      formatter: (r) => (
+        <div class="production-workspace__stack">
+          <strong>{r.capacityMode === 'finite' ? '有限产能' : '无限产能'}</strong>
+          <small>
+            {r.dailyCapacityMinutes} 分钟/日 · {r.parallelCapacity} 台并行
+          </small>
+        </div>
+      )
+    },
+    {
       prop: 'operation',
       label: '操作',
       width: 164,

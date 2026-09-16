@@ -365,6 +365,7 @@
     }
   ])
   void userStore.ensureDictLoaded('commonEnabledStatus')
+  void userStore.ensureDictLoaded('mdmMaterialSpecialPurchaseType')
   const dialogData = (row?: MaterialArchive, copy = false): ArchiveDialogOpenData => ({
     row,
     copy,
@@ -559,7 +560,19 @@
                   string
                 >
               )[row.mrpType || ''] || '—'
-          }
+          },
+          { label: '排产优先级', value: String(row.schedulingPriority ?? 50) },
+          {
+            label: '排产方向',
+            value: (
+              { inherit: '继承规则', forward: '正向排产', backward: '反向排产' } as Record<
+                string,
+                string
+              >
+            )[row.schedulingStrategy || 'inherit']
+          },
+          { label: '计划冻结期', value: `${row.planningTimeFenceDays ?? 0} 天` },
+          { label: '批量圆整', value: row.batchRoundingQuantity ?? '—' }
         ]
       },
       {
@@ -660,6 +673,12 @@
     },
     { prop: 'description', label: '物料描述', minWidth: 240, showOverflowTooltip: true },
     { prop: 'materialTypeId', label: '物料类型', minWidth: 130, formatter: materialTypeLabel },
+    {
+      prop: 'specialPurchaseType',
+      label: '特殊采购类',
+      width: 120,
+      dict: { code: 'mdmMaterialSpecialPurchaseType', display: 'tag' }
+    },
     { prop: 'drawingNo', label: '图号', minWidth: 130, showOverflowTooltip: true },
     { prop: 'materialComposition', label: '材质', minWidth: 120, showOverflowTooltip: true },
     { prop: 'brand', label: '品牌', minWidth: 110, showOverflowTooltip: true },

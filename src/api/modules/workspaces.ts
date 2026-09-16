@@ -690,7 +690,7 @@ export async function fetchProcessSteps(
   if (p.tenantId) query = query.eq('tenant_id', p.tenantId)
   if (p.routeId) query = query.eq('route_id', p.routeId)
   if (p.sequenceId) query = query.eq('sequence_id', p.sequenceId)
-  if (p.workCenterId) query = query.eq('work_center_id', p.workCenterId)
+  if (p.workCenterId) query = query.contains('work_center_ids', [p.workCenterId])
   if (typeof p.bound === 'boolean')
     query = p.bound ? query.not('template_id', 'is', null) : query.is('template_id', null)
   if (p.keyword) query = query.or(buildOrIlikeFilter(['code', 'name', 'description'], p.keyword))
@@ -698,7 +698,36 @@ export async function fetchProcessSteps(
     () => (options?.signal ? query.abortSignal(options.signal) : query),
     read
   )
-  return { data: data ?? [], total: total ?? 0, current: p.current, size: p.size }
+  const rows = data ?? []
+  if (!rows.length) return { data: rows, total: total ?? 0, current: p.current, size: p.size }
+  const { data: assignments } = await responseHandle<Array<{ processRouteStepId: string }>>(
+    () =>
+      supabase
+        .from('mdm_bom_item')
+        .select('process_route_step_id')
+        .in(
+          'process_route_step_id',
+          rows.map((row) => row.id)
+        )
+        .limit(10000),
+    read
+  )
+  const assignmentCounts = new Map<string, number>()
+  for (const assignment of assignments ?? []) {
+    assignmentCounts.set(
+      assignment.processRouteStepId,
+      (assignmentCounts.get(assignment.processRouteStepId) ?? 0) + 1
+    )
+  }
+  return {
+    data: rows.map((row) => ({
+      ...row,
+      componentAssignmentCount: assignmentCounts.get(row.id) ?? 0
+    })),
+    total: total ?? 0,
+    current: p.current,
+    size: p.size
+  }
 }
 
 export async function saveProcessStep(input: ProcessStepInput, id?: string) {
@@ -727,7 +756,7 @@ export async function saveProcessSteps(inputs: ProcessStepInput[]) {
 export async function deleteProcessStep(id: string) {
   await responseHandle(
     () => supabase.from('mdm_process_route_step').delete().eq('id', id).select('id'),
-    write
+    { ...write, errorMessage: '删除失败，请先将 BOM 组件改分配到其他工序' }
   )
 }
 export async function deleteProcessSteps(ids: string[]) {

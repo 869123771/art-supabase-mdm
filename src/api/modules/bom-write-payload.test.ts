@@ -9,6 +9,7 @@ test('BOM write payload excludes joined records and audit-only fields', () => {
     tenantId: 'tenant-1',
     bomCode: 'BOM-0001',
     materialId: 'material-1',
+    processRouteId: 'route-1',
     groupId: 'group-1',
     version: 'V1.0',
     purpose: 'production',
@@ -37,6 +38,7 @@ test('BOM write payload excludes joined records and audit-only fields', () => {
         overIssueControlMethod: null,
         projectText: null,
         positionNo: null,
+        processRouteStepId: 'step-10',
         operationName: null,
         effectiveFrom: null,
         effectiveTo: null,
@@ -52,6 +54,7 @@ test('BOM write payload excludes joined records and audit-only fields', () => {
     'tenantId',
     'bomCode',
     'materialId',
+    'processRouteId',
     'groupId',
     'version',
     'purpose',
@@ -66,4 +69,5 @@ test('BOM write payload excludes joined records and audit-only fields', () => {
   assert.equal('material' in result.header, false)
   assert.equal('id' in result.items[0], false)
   assert.equal('component' in result.items[0], false)
+  assert.equal(result.items[0].processRouteStepId, 'step-10')
 })

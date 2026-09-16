@@ -1,4 +1,5 @@
 export type MdmMaterialStatus = 'enabled' | 'disabled'
+export type MaterialSpecialPurchaseType = 'virtual_part' | 'outsourced_part'
 
 export interface MaterialReferenceBase {
   id: string
@@ -125,6 +126,7 @@ export interface MaterialArchive extends Omit<MaterialReferenceBase, 'remark'> {
   basicUnit: string
   materialType: string
   materialSource: 'purchase' | 'self_made' | 'outsourcing'
+  specialPurchaseType?: MaterialSpecialPurchaseType | null
   materialTypeId?: string | null
   materialTypeRef?: Pick<MaterialType, 'id' | 'typeCode' | 'typeName'> | null
   baseUnitId?: string | null
@@ -225,6 +227,10 @@ export interface MaterialArchive extends Omit<MaterialReferenceBase, 'remark'> {
   selfMadeProductionDays?: number | null
   productionPostprocessDays?: number | null
   productionInspectionLeadDays?: number | null
+  schedulingPriority: number
+  schedulingStrategy: 'inherit' | 'forward' | 'backward'
+  planningTimeFenceDays: number
+  batchRoundingQuantity?: number | null
   issuingWarehouseId?: string | null
   materialIssueMethod?: string | null
   backflushMethod?: string | null

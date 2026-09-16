@@ -155,6 +155,12 @@ export const createWorkCenter = (): WorkCenterInput => ({
   personnelMode: '指定人数',
   headcount: 1,
   personIds: [],
+  capacityMode: 'finite',
+  dailyCapacityMinutes: 480,
+  efficiencyPercent: 100,
+  utilizationPercent: 100,
+  parallelCapacity: 1,
+  queueMinutes: 0,
   policy: createCenterPolicy(),
   sort: 0,
   remark: ''

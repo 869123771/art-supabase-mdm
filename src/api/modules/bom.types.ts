@@ -13,6 +13,7 @@ export type BomMaterialReference = Pick<
   | 'drawingNo'
   | 'description'
   | 'materialSource'
+  | 'specialPurchaseType'
   | 'baseUnitId'
   | 'productionUnitId'
   | 'defaultWarehouseId'
@@ -66,6 +67,8 @@ export interface BomItem {
   overIssueControlMethod?: string | null
   projectText?: string | null
   positionNo?: string | null
+  processRouteStepId?: string | null
+  processRouteStep?: BomProcessRouteStepOption | null
   operationName?: string | null
   effectiveFrom?: string | null
   effectiveTo?: string | null
@@ -78,6 +81,8 @@ export interface BomRecord {
   bomCode: string
   materialId: string
   material?: BomMaterialReference | null
+  processRouteId?: string | null
+  processRoute?: BomProcessRouteOption | null
   groupId?: string | null
   group?: Pick<BomGroup, 'id' | 'code' | 'name'> | null
   version: string
@@ -113,6 +118,7 @@ export interface BomInput {
   tenantId: string
   bomCode?: string
   materialId: string
+  processRouteId?: string | null
   groupId?: string | null
   version: string
   purpose: BomPurpose
@@ -137,12 +143,38 @@ export interface BomInput {
       | 'overIssueControlMethod'
       | 'projectText'
       | 'positionNo'
+      | 'processRouteStepId'
       | 'operationName'
       | 'effectiveFrom'
       | 'effectiveTo'
       | 'remark'
     >
   >
+}
+
+export interface BomProcessRouteOption {
+  id: string
+  tenantId: string
+  materialId: string
+  code: string
+  name: string
+  version: string
+  isDefault: boolean
+  enabled: boolean
+}
+
+export interface BomProcessRouteStepOption {
+  id: string
+  tenantId: string
+  routeId: string
+  code: string
+  name: string
+  sort: number
+  sequence?: {
+    id: string
+    sequenceNo: number
+    sequenceType: string
+  } | null
 }
 
 export interface BomStructureNode {
