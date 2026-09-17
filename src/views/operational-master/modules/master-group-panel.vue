@@ -14,6 +14,12 @@
   >
     <template #actions>
       <div class="master-group-panel__actions">
+        <ArtTreeExpandToggle
+          :tree="treeRef"
+          :data="treeData"
+          label="分组树"
+          :default-expanded="groups.length < 18"
+        />
         <ArtIconButton
           v-auth="managePermission"
           icon="ri:add-line"
@@ -92,6 +98,7 @@
   import type { ElTree } from 'element-plus'
   import TreeUtils from '@/utils/tree'
   import ArtIconButton from '@/components/core/widget/art-icon-button/index.vue'
+  import ArtTreeExpandToggle from '@/components/core/widget/art-tree-expand-toggle/index.vue'
   import ArtSectionCard from '@/components/core/surfaces/art-section-card/index.vue'
   import ArtSvgIcon from '@/components/core/base/art-svg-icon/index.vue'
   import type { MasterGroup } from '@mdm/api'

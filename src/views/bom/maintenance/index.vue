@@ -72,6 +72,7 @@
     type BusinessWorkspaceMetric
   } from '@/components/business/business-workspace-header/index.vue'
   import BusinessTableWorkspaceActions from '@/components/business/business-table-workspace-actions/index.vue'
+  import BusinessTableRowActions from '@/components/business/business-table-row-actions/index.vue'
   import type { SearchFormItem } from '@/components/core/forms/art-search-bar/index.vue'
   import type {
     ArtTableQueryExpose,
@@ -420,7 +421,7 @@
       width: 176,
       fixed: 'right',
       formatter: (row) => (
-        <div class="bom-maintenance-page__actions">
+        <BusinessTableRowActions>
           <ArtButtonTable
             type="view"
             permission="MdmBomMaintenance:View"
@@ -436,7 +437,7 @@
             list={() => moreActions(row)}
             onClick={(item) => void handleMore(item, row)}
           />
-        </div>
+        </BusinessTableRowActions>
       )
     }
   ]
@@ -531,13 +532,6 @@
   :deep(.bom-maintenance-page__code strong) {
     font-family: var(--art-font-family-mono, Consolas, monospace);
     color: var(--theme-color);
-  }
-
-  :deep(.bom-maintenance-page__actions) {
-    display: flex;
-    gap: 4px;
-    align-items: center;
-    justify-content: center;
   }
 
   @media (width <= 980px) {

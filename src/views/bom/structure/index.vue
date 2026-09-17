@@ -31,6 +31,7 @@
           primary-min="320px"
           primary-max="520px"
           :breakpoint="980"
+          :primary-collapsed="navigatorCollapsed"
           stacked-primary-size="440px"
         >
           <template #primary>
@@ -40,6 +41,15 @@
               title="树形 BOM"
               subtitle="选择父项物料并控制展开层级"
             >
+              <template #actions>
+                <ArtTreeExpandToggle
+                  :tree="treeRef"
+                  :data="tree"
+                  node-key="nodeId"
+                  label=" BOM 树"
+                  default-expanded
+                />
+              </template>
               <div class="bom-structure-page__controls">
                 <label class="bom-structure-page__material-control"
                   ><span>物料描述</span>
@@ -87,6 +97,7 @@
                   @retry="loadStructure"
                 >
                   <ElTree
+                    ref="treeRef"
                     :data="tree"
                     node-key="nodeId"
                     :props="{ children: 'children', label: 'materialName' }"
@@ -125,7 +136,7 @@
             empty-title="选择物料查询 BOM"
             empty-description="系统会通过物料 ID 定位 BOM，并在左侧完整展开结构。"
           >
-            <template v-if="selectedBom || focusMode" #actions>
+            <template #actions>
               <ArtDictDisplay
                 v-if="selectedBom"
                 dict-code="mdmBomStatus"
@@ -133,6 +144,11 @@
                 display="tag"
               />
               <BusinessWorkspaceFocusToggle v-if="focusMode" v-model="focusMode" />
+              <ArtIconButton
+                :icon="navigatorCollapsed ? 'ri:sidebar-unfold-line' : 'ri:sidebar-fold-line'"
+                :label="navigatorCollapsed ? '展开树形 BOM 面板' : '收起树形 BOM 面板'"
+                @click="navigatorCollapsed = !navigatorCollapsed"
+              />
             </template>
             <div v-if="selectedBom" class="bom-structure-page__root">
               <span><ArtSvgIcon icon="ri:box-3-line" /></span>
@@ -166,12 +182,15 @@
 </template>
 
 <script setup lang="tsx">
+  import type { TreeInstance } from 'element-plus'
   import ArtPermissionGuard from '@/components/core/feedback/art-permission-guard/index.vue'
   import ArtAsyncState from '@/components/core/feedback/art-async-state/index.vue'
   import ArtTableSingleSelect from '@/components/core/forms/art-data-select/table-single.vue'
   import ArtSvgIcon from '@/components/core/base/art-svg-icon/index.vue'
   import ArtDictDisplay from '@/components/core/base/art-dict-display/index.vue'
   import ArtSectionCard from '@/components/core/surfaces/art-section-card/index.vue'
+  import ArtIconButton from '@/components/core/widget/art-icon-button/index.vue'
+  import ArtTreeExpandToggle from '@/components/core/widget/art-tree-expand-toggle/index.vue'
   import BusinessWorkspaceHeader, {
     type BusinessWorkspaceMetric
   } from '@/components/business/business-workspace-header/index.vue'
@@ -196,6 +215,8 @@
 
   defineOptions({ name: 'MdmBomStructure' })
   const { focusMode } = useWorkspaceFocus()
+  const navigatorCollapsed = ref(false)
+  const treeRef = ref<TreeInstance>()
   const { effectiveTenantId } = storeToRefs(useTenantScopeStore())
   const tenantId = computed(() => effectiveTenantId.value ?? '')
   const selectedMaterialId = ref<string | number>()
@@ -315,8 +336,9 @@
         requestBomId,
         mode.value === 'single' ? 1 : maxDepth.value
       )
-      if (requestBomId === selectedBom.value?.id)
+      if (requestBomId === selectedBom.value?.id) {
         tree.value = treeUtils.listToTree(nodes) as BomStructureNode[]
+      }
     } catch (error) {
       loadError.value = error instanceof Error ? error : new Error('BOM 结构加载失败')
     } finally {

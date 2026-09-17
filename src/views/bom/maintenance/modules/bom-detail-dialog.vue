@@ -5,6 +5,7 @@
     :show-cancel-button="false"
     confirm-text="关闭"
     content-max-height="76vh"
+    show-fullscreen-button
   >
     <div v-if="record" class="bom-detail-dialog">
       <section class="bom-detail-dialog__identity art-card-xs">
@@ -321,6 +322,22 @@
       formatter: (row) => formatQuantity(row.scrapRate, 2)
     },
     {
+      prop: 'processSequenceNo',
+      label: '工序序列',
+      width: 100,
+      align: 'center',
+      formatter: (row) => row.processRouteStep?.sequence?.sequenceNo ?? '—'
+    },
+    {
+      prop: 'processSequenceType',
+      label: '序列类型',
+      width: 120,
+      dict: {
+        code: 'mdmProcessRouteSequenceType',
+        value: (row) => row.processRouteStep?.sequence?.sequenceType
+      }
+    },
+    {
       prop: 'processRouteStepId',
       label: '分配工序',
       width: 220,
@@ -335,6 +352,14 @@
           .filter(Boolean)
           .join(' · ')
       }
+    },
+    {
+      prop: 'workCenter',
+      label: '工作中心',
+      width: 180,
+      formatter: (row) =>
+        row.processRouteStep?.workCenter?.name ||
+        (row.processRouteStep?.workCenterIds?.length ? '已配置工作中心' : '未指定')
     },
     {
       prop: 'positionNo',

@@ -7,6 +7,11 @@ export interface BomComponentSelectionResult {
   materials: MaterialArchive[]
 }
 
+export interface BomComponentAssignmentStep {
+  id: string
+  name: string
+}
+
 const createComponent = (
   material: MaterialArchive,
   sequenceNo: number,
@@ -72,3 +77,20 @@ export const removeBomComponentSelection = (
   items: items.filter((item) => item.componentMaterialId !== componentMaterialId),
   materials: materials.filter((material) => material.id !== componentMaterialId)
 })
+
+export const assignBomComponentsToStep = (
+  items: BomComponentInput[],
+  componentMaterialIds: string[],
+  step: BomComponentAssignmentStep
+): BomComponentInput[] => {
+  const selectedIds = new Set(componentMaterialIds)
+  return items.map((item) =>
+    selectedIds.has(item.componentMaterialId)
+      ? {
+          ...item,
+          processRouteStepId: step.id,
+          operationName: step.name
+        }
+      : item
+  )
+}

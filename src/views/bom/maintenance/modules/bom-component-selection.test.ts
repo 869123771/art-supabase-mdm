@@ -1,7 +1,11 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import type { BomInput, MaterialArchive } from '@mdm/api'
-import { mergeBomComponentSelection, removeBomComponentSelection } from './bom-component-selection'
+import {
+  assignBomComponentsToStep,
+  mergeBomComponentSelection,
+  removeBomComponentSelection
+} from './bom-component-selection'
 
 const material = (id: string): MaterialArchive =>
   ({
@@ -100,5 +104,26 @@ test('BOM selection removes the row and selected-state material together', () =>
   assert.deepEqual(
     result.materials.map((item) => item.id),
     ['component-b']
+  )
+})
+
+test('batch assignment updates only the selected BOM components', () => {
+  const result = assignBomComponentsToStep(
+    [component('component-a'), component('component-b', 20), component('component-c', 30)],
+    ['component-a', 'component-c'],
+    { id: 'step-20', name: '总装' }
+  )
+
+  assert.deepEqual(
+    result.map((item) => ({
+      id: item.componentMaterialId,
+      stepId: item.processRouteStepId,
+      operationName: item.operationName
+    })),
+    [
+      { id: 'component-a', stepId: 'step-20', operationName: '总装' },
+      { id: 'component-b', stepId: null, operationName: '' },
+      { id: 'component-c', stepId: 'step-20', operationName: '总装' }
+    ]
   )
 })

@@ -12,9 +12,10 @@
     @retry="$emit('refresh')"
     body-class="production-tree__body"
   >
-    <template #actions
-      ><ArtIconButton label="刷新部门树" icon="ri:refresh-line" @click="$emit('refresh')"
-    /></template>
+    <template #actions>
+      <ArtTreeExpandToggle :tree="treeRef" :data="nodes" label="组织树" />
+      <ArtIconButton label="刷新部门树" icon="ri:refresh-line" @click="$emit('refresh')" />
+    </template>
     <ElInput
       v-model="keyword"
       placeholder="搜索组织名称或编码"
@@ -77,6 +78,7 @@
   import { ref, computed, watch, nextTick } from 'vue'
   import type { ElTree } from 'element-plus'
   import type { ProductionDepartment } from '@mdm/api'
+  import ArtTreeExpandToggle from '@/components/core/widget/art-tree-expand-toggle/index.vue'
   import { productionTree } from './production-model'
   const props = withDefaults(
     defineProps<{

@@ -14,6 +14,12 @@
   >
     <template #actions>
       <div class="material-category-tree__actions">
+        <ArtTreeExpandToggle
+          :tree="treeRef"
+          :data="treeData"
+          label="分类树"
+          :default-expanded="categories.length < 24"
+        />
         <ArtIconButton
           v-if="!navigationOnly"
           v-auth="'MdmMaterialCategory:Add'"
@@ -87,6 +93,7 @@
   import type { ElTree } from 'element-plus'
   import TreeUtils from '@/utils/tree'
   import ArtIconButton from '@/components/core/widget/art-icon-button/index.vue'
+  import ArtTreeExpandToggle from '@/components/core/widget/art-tree-expand-toggle/index.vue'
   import ArtSectionCard from '@/components/core/surfaces/art-section-card/index.vue'
   import ArtSvgIcon from '@/components/core/base/art-svg-icon/index.vue'
   import type { MaterialCategory } from '@mdm/api'

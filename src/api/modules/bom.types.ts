@@ -170,6 +170,13 @@ export interface BomProcessRouteStepOption {
   code: string
   name: string
   sort: number
+  workCenterId?: string | null
+  workCenterIds?: string[]
+  workCenter?: {
+    id: string
+    code: string
+    name: string
+  } | null
   sequence?: {
     id: string
     sequenceNo: number

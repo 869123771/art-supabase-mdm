@@ -95,7 +95,7 @@
 </template>
 
 <script setup lang="ts">
-  import { h } from 'vue'
+  import { h, nextTick } from 'vue'
   import { cloneDeep } from 'lodash-es'
   import ArtDictDisplay from '@/components/core/base/art-dict-display/index.vue'
   import ArtDialog from '@/components/core/dialogs/art-dialog/index.vue'
@@ -287,7 +287,8 @@
           h('small', section.description)
         ]),
       type: 'divider',
-      span: 24
+      span: 24,
+      props: { accessibleLabel: section.title }
     }
   }
 
@@ -392,13 +393,14 @@
         ]
       : []
 
-    const sectionItems = config.value.formSections.flatMap((section) => [
-      createSectionDivider(section),
-      ...section.fieldKeys.flatMap((fieldKey) => {
+    const sectionItems = config.value.formSections.flatMap((section) => {
+      const fieldItems = section.fieldKeys.flatMap((fieldKey) => {
         const field = config.value.fields.find((item) => item.key === fieldKey)
         return field ? createFieldItems(field) : []
       })
-    ])
+
+      return [createSectionDivider(section), ...fieldItems]
+    })
 
     return [...tenantItems, ...sectionItems]
   })
@@ -514,6 +516,8 @@
       onOpen: async (_openData, api) => {
         try {
           await reloadReferences()
+          await nextTick()
+          formRef.value?.resetCollapsedSections()
           formRef.value?.clearValidate()
         } finally {
           api.setLoading(false)

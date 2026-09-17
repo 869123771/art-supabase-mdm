@@ -1,5 +1,5 @@
 <template>
-  <ArtDialog ref="dialogRef" size="xl">
+  <ArtDialog ref="dialogRef" size="xl" show-fullscreen-button>
     <div class="bom-dialog">
       <ArtEntitySummary
         icon="ri:git-merge-line"
@@ -57,11 +57,41 @@
           </div>
           <div class="bom-dialog__component-actions">
             <ElButton
+              v-if="canMaintainBom"
               :disabled="!firstProcessStep || !form.items.length"
               @click="assignAllComponentsToFirstStep"
             >
               <ArtSvgIcon icon="ri:route-line" />全部归首工序
             </ElButton>
+            <ArtTableSingleSelect
+              v-model="batchSelectedStepId"
+              :selected-data="batchSelectedSteps"
+              :data="processSteps"
+              :columns="batchStepColumns"
+              :label-key="batchStepLabel"
+              :description-key="batchStepDescription"
+              title="批量分配组件工序"
+              :subtitle="`将所选工序分配给已勾选的 ${selectedComponentRows.length} 项 BOM 组件`"
+              placeholder="选择目标工序"
+              search-placeholder="搜索工序号、工序名称或工作中心"
+              empty-text="暂无可分配工序"
+              empty-description="请先为父项物料选择一条包含工序的工艺路线。"
+              dialog-width="xl"
+              @confirm="handleBatchStepConfirm"
+            >
+              <template #trigger="{ open }">
+                <ElButton
+                  v-if="canMaintainBom"
+                  :disabled="!selectedComponentRows.length || !processSteps.length"
+                  @click="open"
+                >
+                  <ArtSvgIcon icon="ri:git-merge-line" />
+                  批量分配工序<span v-if="selectedComponentRows.length"
+                    >（{{ selectedComponentRows.length }}）</span
+                  >
+                </ElButton>
+              </template>
+            </ArtTableSingleSelect>
             <ArtTableMultipleSelect
               v-model="selectedComponentIds"
               :selected-data="selectedComponents"
@@ -77,7 +107,7 @@
               @confirm="handleComponentsConfirm"
             >
               <template #trigger="{ open }">
-                <ElButton type="primary" plain @click="open"
+                <ElButton v-if="canMaintainBom" type="primary" plain @click="open"
                   ><ArtSvgIcon icon="ri:add-line" />添加组件</ElButton
                 >
               </template>
@@ -97,6 +127,7 @@
           max-height="360"
           empty-text="暂无 BOM 组件"
           empty-description="点击“添加组件”建立父项与子项的装配关系。"
+          @selection-change="handleComponentSelectionChange"
         />
         <footer
           ><span>共 {{ form.items.length }} 项组件</span
@@ -131,10 +162,12 @@
   import ArtDictDisplay from '@/components/core/base/art-dict-display/index.vue'
   import ArtSvgIcon from '@/components/core/base/art-svg-icon/index.vue'
   import ArtEntitySummary from '@/components/core/surfaces/art-entity-summary/index.vue'
+  import { useAuth } from '@/hooks/core/useAuth'
   import type { ArtTableExpose } from '@/components/core/tables/art-table/index.vue'
   import { useUserStore } from '@/store/modules/user'
   import type { ColumnOption } from '@/types'
   import type {
+    DataSelectColumn,
     DataSelectFetchParams,
     DataSelectRecord
   } from '@/components/core/forms/art-data-select/types'
@@ -153,6 +186,7 @@
   } from '@mdm/api'
   import { formatBomMaterialDescription } from '../../modules/material-description'
   import {
+    assignBomComponentsToStep,
     mergeBomComponentSelection,
     removeBomComponentSelection
   } from './bom-component-selection'
@@ -172,6 +206,7 @@
   type BomComponentInput = BomInput['items'][number]
 
   const emit = defineEmits<{ success: [] }>()
+  const { hasAnyAuth } = useAuth()
   const userStore = useUserStore()
   const { getDictMap } = storeToRefs(userStore)
   const dialogRef = ref<ArtDialogExpose<BomDialogOpenData>>()
@@ -187,6 +222,11 @@
   const selectedParent = ref<MaterialArchive[]>([])
   const selectedComponents = ref<MaterialArchive[]>([])
   const selectedComponentIds = ref<Array<string | number>>([])
+  const selectedComponentRows = shallowRef<BomComponentInput[]>([])
+  const batchSelectedStepId = ref<string | number>()
+  const canMaintainBom = computed(() =>
+    hasAnyAuth(['MdmBomMaintenance:Add', 'MdmBomMaintenance:Edit', 'MdmBomMaintenance:Copy'])
+  )
   const initialForm = (): BomInput & { status: BomRecord['status'] } => ({
     id: undefined,
     tenantId: '',
@@ -216,6 +256,10 @@
   const assignedComponentCount = computed(
     () => form.items.filter((item) => Boolean(item.processRouteStepId)).length
   )
+  const batchSelectedSteps = computed<DataSelectRecord[]>(() => {
+    const step = processSteps.value.find((item) => item.id === batchSelectedStepId.value)
+    return step ? [step as DataSelectRecord] : []
+  })
   const materialColumns = [
     { prop: 'materialCode', label: '物料编码', minWidth: 150 },
     { prop: 'materialName', label: '物料名称', minWidth: 180 },
@@ -347,7 +391,8 @@
     userStore.ensureDictLoaded('mdmMaterialSource'),
     userStore.ensureDictLoaded('mdmMaterialIssueMethod'),
     userStore.ensureDictLoaded('mdmMaterialBackflushMethod'),
-    userStore.ensureDictLoaded('mdmMaterialOverIssueControl')
+    userStore.ensureDictLoaded('mdmMaterialOverIssueControl'),
+    userStore.ensureDictLoaded('mdmProcessRouteSequenceType')
   ])
   const fetchMaterials = (params: DataSelectFetchParams) =>
     fetchMaterialArchives({
@@ -357,10 +402,58 @@
       keyword: params.keyword,
       status: 'enabled'
     })
-  const processStepLabel = (step: BomProcessRouteStepOption): string => {
-    const sequence = step.sequence?.sequenceNo
-    return [sequence ? `序列 ${sequence}` : '', step.code, step.name].filter(Boolean).join(' · ')
+  const sequenceTypeLabel = (value?: string | null): string =>
+    getDictMap.value.mdmProcessRouteSequenceType?.find((item) => item.value === value)?.label ||
+    (value === 'main' ? '标准序列' : value || '—')
+  const workCenterLabel = (step?: BomProcessRouteStepOption | null): string =>
+    step?.workCenter?.name || (step?.workCenterIds?.length ? '已配置工作中心' : '未指定')
+  const processStepLabel = (step: BomProcessRouteStepOption): string =>
+    [
+      step.sequence?.sequenceNo ? `序列 ${step.sequence.sequenceNo}` : '',
+      sequenceTypeLabel(step.sequence?.sequenceType),
+      step.code,
+      step.name
+    ]
+      .filter(Boolean)
+      .join(' · ')
+  const batchStepLabel = (row: DataSelectRecord): string => {
+    const step = row as BomProcessRouteStepOption
+    return `${step.code} · ${step.name}`
   }
+  const batchStepDescription = (row: DataSelectRecord): string => {
+    const step = row as BomProcessRouteStepOption
+    return [
+      step.sequence?.sequenceNo ? `序列 ${step.sequence.sequenceNo}` : '',
+      sequenceTypeLabel(step.sequence?.sequenceType),
+      workCenterLabel(step)
+    ]
+      .filter(Boolean)
+      .join(' · ')
+  }
+  const batchStepColumns: DataSelectColumn[] = [
+    {
+      prop: 'sequenceNo',
+      label: '工序序列',
+      width: 100,
+      align: 'center',
+      formatter: (row) => (row as BomProcessRouteStepOption).sequence?.sequenceNo ?? '—'
+    },
+    {
+      prop: 'sequenceType',
+      label: '序列类型',
+      width: 120,
+      formatter: (row) =>
+        sequenceTypeLabel((row as BomProcessRouteStepOption).sequence?.sequenceType)
+    },
+    { prop: 'code', label: '工序号', width: 110 },
+    { prop: 'name', label: '工序名称', minWidth: 180 },
+    {
+      prop: 'workCenter',
+      label: '工作中心',
+      minWidth: 180,
+      formatter: (row) => workCenterLabel(row as BomProcessRouteStepOption)
+    }
+  ]
   const syncComponentAssignment = (
     row: BomComponentInput,
     stepId: string | null | undefined
@@ -428,6 +521,19 @@
     normalizeComponentAssignments(true)
     if (firstProcessStep.value) ElMessage.success(`已全部分配到${firstProcessStep.value.name}`)
   }
+  const handleComponentSelectionChange = (rows: BomComponentInput[]): void => {
+    selectedComponentRows.value = rows
+  }
+  const handleBatchStepConfirm = (_value: unknown, rows: DataSelectRecord[]): void => {
+    const step = rows[0] as BomProcessRouteStepOption | undefined
+    if (!step || !selectedComponentRows.value.length) return
+    const selectedIds = selectedComponentRows.value.map((item) => item.componentMaterialId)
+    form.items = assignBomComponentsToStep(form.items, selectedIds, step)
+    batchSelectedStepId.value = step.id
+    selectedComponentRows.value = []
+    componentTableRef.value?.elTableRef?.clearSelection()
+    ElMessage.success(`已将 ${selectedIds.length} 项组件分配到“${step.code} · ${step.name}”`)
+  }
   const materialById = (id: string) =>
     [...selectedParent.value, ...selectedComponents.value].find((item) => item.id === id)
   const componentRowLabel = (row: BomComponentInput, rowIndex: number): string => {
@@ -435,6 +541,7 @@
     return `第 ${rowIndex + 1} 行${materialName ? `“${materialName}”` : '组件'}`
   }
   const componentColumns = computed<ColumnOption<BomComponentInput>[]>(() => [
+    { type: 'selection', width: 48, fixed: 'left' },
     { type: 'index', label: '#', width: 48, align: 'center' },
     {
       prop: 'componentMaterialId',
@@ -634,6 +741,25 @@
       )
     },
     {
+      prop: 'processSequenceNo',
+      label: '工序序列',
+      width: 100,
+      align: 'center',
+      formatter: (row) =>
+        processSteps.value.find((step) => step.id === row.processRouteStepId)?.sequence
+          ?.sequenceNo ?? '—'
+    },
+    {
+      prop: 'processSequenceType',
+      label: '序列类型',
+      width: 120,
+      formatter: (row) =>
+        sequenceTypeLabel(
+          processSteps.value.find((step) => step.id === row.processRouteStepId)?.sequence
+            ?.sequenceType
+        )
+    },
+    {
       prop: 'processRouteStepId',
       label: '分配工序',
       width: 260,
@@ -709,6 +835,8 @@
     )
     form.items = result.items
     syncComponentSelection(result.materials)
+    selectedComponentRows.value = []
+    componentTableRef.value?.elTableRef?.clearSelection()
   }
   const handleRemoveComponent = (row: BomComponentInput) =>
     handleRemoveComponentById(row.componentMaterialId)
@@ -764,6 +892,8 @@
     selectedComponents.value = (data.row?.items.map((item) => item.component).filter(Boolean) ||
       []) as MaterialArchive[]
     selectedComponentIds.value = selectedComponents.value.map((item) => item.id)
+    selectedComponentRows.value = []
+    batchSelectedStepId.value = undefined
     if (data.row) Object.assign(form, cloneDeep(data.row))
     form.tenantId = data.row?.tenantId || data.tenantId
     form.effectiveFrom ||= dayjs().format('YYYY-MM-DD')
@@ -788,6 +918,7 @@
       onOpen: () => {
         formRef.value?.clearValidate()
         componentTableRef.value?.clearValidate()
+        componentTableRef.value?.elTableRef?.clearSelection()
       }
     })
   }
@@ -855,7 +986,16 @@
   }
 
   .bom-dialog__component-actions {
-    min-width: 112px;
+    display: flex;
+    flex: none;
+    flex-wrap: nowrap;
+    gap: 8px;
+    align-items: center;
+    width: max-content;
+
+    :deep(.el-button + .el-button) {
+      margin-left: 0;
+    }
   }
 
   :deep(.bom-dialog__material-cell) {
