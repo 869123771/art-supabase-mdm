@@ -188,14 +188,46 @@ export interface BomStructureNode {
   nodeId: string
   parentNodeId?: string | null
   bomId: string
+  bomCode: string
+  bomVersion: string
+  bomItemId?: string | null
   materialId: string
   materialCode: string
   materialName: string
   specificationModel?: string | null
+  materialSource?: string | null
+  specialPurchaseType?: BomMaterialReference['specialPurchaseType']
+  isVirtual: boolean
   quantity: number
+  componentQuantity?: number | null
+  unitId?: string | null
+  unitCode?: string | null
   unitName: string
   depth: number
   path: string[]
   hasChildren: boolean
+  sequenceNo?: number | null
+  scrapRate?: number | null
+  mrpEnabled?: boolean | null
+  defaultIssueWarehouseId?: string | null
+  defaultIssueWarehouseCode?: string | null
+  defaultIssueWarehouseName?: string | null
+  issueMethod?: string | null
+  backflushMethod?: string | null
+  overIssueControlMethod?: string | null
+  projectText?: string | null
+  positionNo?: string | null
+  processRouteStepId?: string | null
+  processSequenceNo?: number | null
+  processSequenceType?: string | null
+  processRouteStepCode?: string | null
+  processRouteStepName?: string | null
+  workCenterIds?: string[] | null
+  workCenterCode?: string | null
+  workCenterName?: string | null
+  operationName?: string | null
+  effectiveFrom?: string | null
+  effectiveTo?: string | null
+  remark?: string | null
   children?: BomStructureNode[]
 }

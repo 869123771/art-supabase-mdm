@@ -107,19 +107,33 @@
                     :expand-on-click-node="false"
                   >
                     <template #default="{ data }">
-                      <span class="bom-structure-page__tree-node"
-                        ><span class="bom-structure-page__tree-icon"
-                          ><ArtSvgIcon
-                            :icon="data.hasChildren ? 'ri:git-branch-line' : 'ri:box-3-line'"
-                        /></span>
-                        <span class="bom-structure-page__tree-identity"
-                          ><strong>{{ data.materialName }}</strong
-                          ><small
-                            >{{ data.materialCode }} ·
-                            {{ data.specificationModel || '无规格' }}</small
-                          ></span
-                        ></span
-                      >
+                      <span class="bom-structure-page__tree-node">
+                        <span class="bom-structure-page__tree-icon">
+                          <ArtSvgIcon
+                            :icon="
+                              data.isVirtual
+                                ? 'ri:layers-line'
+                                : data.hasChildren
+                                  ? 'ri:git-branch-line'
+                                  : 'ri:box-3-line'
+                            "
+                          />
+                        </span>
+                        <span class="bom-structure-page__tree-identity">
+                          <span class="bom-structure-page__tree-name">
+                            <strong>{{ data.materialName }}</strong>
+                            <ArtDictDisplay
+                              v-if="data.specialPurchaseType"
+                              dict-code="mdmMaterialSpecialPurchaseType"
+                              :value="data.specialPurchaseType"
+                              display="tag"
+                            />
+                          </span>
+                          <small>
+                            {{ data.materialCode }} · {{ data.specificationModel || '无规格' }}
+                          </small>
+                        </span>
+                      </span>
                     </template>
                   </ElTree>
                 </ArtAsyncState>
@@ -183,6 +197,7 @@
 
 <script setup lang="tsx">
   import type { TreeInstance } from 'element-plus'
+  import { createDateTimeFormatter } from '@/utils/ui/format'
   import ArtPermissionGuard from '@/components/core/feedback/art-permission-guard/index.vue'
   import ArtAsyncState from '@/components/core/feedback/art-async-state/index.vue'
   import ArtTableSingleSelect from '@/components/core/forms/art-data-select/table-single.vue'
@@ -244,19 +259,196 @@
     { prop: 'specificationModel', label: '规格型号', minWidth: 140 },
     { prop: 'drawingNo', label: '图号', minWidth: 120 }
   ]
+  const formatQuantity = (value: unknown, maximumFractionDigits = 6): string => {
+    if (value === null || value === undefined || value === '') return '—'
+    const amount = Number(value)
+    return Number.isFinite(amount) ? amount.toLocaleString('zh-CN', { maximumFractionDigits }) : '—'
+  }
+  const formatDate = createDateTimeFormatter({
+    format: 'YYYY-MM-DD',
+    emptyText: '—',
+    invalidText: '—'
+  })
+  const formatText = (value?: string | null): string => value?.trim() || '—'
+  const unitIdentity = (row: BomStructureNode): string =>
+    [row.unitName, row.unitCode].filter(Boolean).join(' · ') || '—'
+  const warehouseIdentity = (row: BomStructureNode): string =>
+    [row.defaultIssueWarehouseName, row.defaultIssueWarehouseCode].filter(Boolean).join(' · ') ||
+    '—'
+  const processStepIdentity = (row: BomStructureNode): string => {
+    const identity = [
+      row.processSequenceNo ? `序列 ${row.processSequenceNo}` : '',
+      row.processRouteStepCode,
+      row.processRouteStepName
+    ]
+      .filter(Boolean)
+      .join(' · ')
+    return identity || formatText(row.operationName)
+  }
+  const workCenterIdentity = (row: BomStructureNode): string =>
+    [row.workCenterName, row.workCenterCode].filter(Boolean).join(' · ') ||
+    (row.workCenterIds?.length ? '已配置工作中心' : '—')
+  const bomIdentity = (row: BomStructureNode): string =>
+    [row.bomCode, row.bomVersion].filter(Boolean).join(' · ') || '—'
+  const componentIdentity = (row: BomStructureNode) => {
+    const detail = [row.materialCode, row.specificationModel].filter(Boolean).join(' · ') || '—'
+    return (
+      <div class="bom-structure-page__material">
+        <span aria-hidden="true">
+          <ArtSvgIcon icon={row.isVirtual ? 'ri:layers-line' : 'ri:box-3-line'} />
+        </span>
+        <div>
+          <strong title={row.materialName}>{row.materialName}</strong>
+          <small title={detail}>{detail}</small>
+        </div>
+      </div>
+    )
+  }
   const columns: ColumnOption<BomStructureNode>[] = [
-    { type: 'index', label: '序号', width: 70 },
+    { type: 'index', label: '#', width: 48, align: 'center', fixed: 'left' },
     {
       prop: 'depth',
       label: '层级',
       width: 76,
+      fixed: 'left',
       formatter: (row) => (row.depth === 0 ? '根级' : `第 ${row.depth} 层`)
     },
-    { prop: 'materialCode', label: '物料编码', minWidth: 150 },
-    { prop: 'materialName', label: '物料名称', minWidth: 180 },
-    { prop: 'specificationModel', label: '规格型号', minWidth: 140 },
-    { prop: 'quantity', label: '需求数量', width: 110, align: 'right' },
-    { prop: 'unitName', label: '计量单位', width: 100 },
+    {
+      prop: 'materialName',
+      label: '组件物料',
+      width: 300,
+      fixed: 'left',
+      formatter: componentIdentity
+    },
+    { prop: 'sequenceNo', label: '行号', width: 84, align: 'center' },
+    {
+      prop: 'mrpEnabled',
+      label: 'MRP 运算',
+      width: 100,
+      align: 'center',
+      dict: {
+        code: 'commonBoolean',
+        display: 'text',
+        value: (row) => (row.mrpEnabled == null ? undefined : String(row.mrpEnabled))
+      }
+    },
+    { prop: 'materialCode', label: '物料编码', width: 180 },
+    { prop: 'specificationModel', label: '规格型号', width: 180 },
+    {
+      prop: 'materialSource',
+      label: '物料来源',
+      width: 120,
+      dict: { code: 'mdmMaterialSource' }
+    },
+    {
+      prop: 'specialPurchaseType',
+      label: '特殊采购类',
+      width: 130,
+      dict: { code: 'mdmMaterialSpecialPurchaseType', display: 'tag' }
+    },
+    {
+      prop: 'componentQuantity',
+      label: '单位用量',
+      width: 120,
+      align: 'right',
+      formatter: (row) => formatQuantity(row.componentQuantity)
+    },
+    {
+      prop: 'quantity',
+      label: '累计需求',
+      width: 120,
+      align: 'right',
+      formatter: (row) => formatQuantity(row.quantity)
+    },
+    { prop: 'unitId', label: '计量单位', width: 140, formatter: unitIdentity },
+    {
+      prop: 'defaultIssueWarehouseId',
+      label: '默认发料仓库',
+      width: 200,
+      formatter: warehouseIdentity
+    },
+    {
+      prop: 'issueMethod',
+      label: '领送料方式',
+      width: 160,
+      dict: { code: 'mdmMaterialIssueMethod' }
+    },
+    {
+      prop: 'backflushMethod',
+      label: '倒冲',
+      width: 140,
+      dict: { code: 'mdmMaterialBackflushMethod' }
+    },
+    {
+      prop: 'overIssueControlMethod',
+      label: '超发控制方式',
+      width: 180,
+      dict: { code: 'mdmMaterialOverIssueControl' }
+    },
+    {
+      prop: 'effectiveFrom',
+      label: '生效日期',
+      width: 150,
+      formatter: (row) => formatDate(row.effectiveFrom)
+    },
+    {
+      prop: 'effectiveTo',
+      label: '失效日期',
+      width: 150,
+      formatter: (row) => formatDate(row.effectiveTo)
+    },
+    {
+      prop: 'projectText',
+      label: '项目文本',
+      width: 220,
+      showOverflowTooltip: true,
+      formatter: (row) => formatText(row.projectText)
+    },
+    {
+      prop: 'scrapRate',
+      label: '损耗率 %',
+      width: 120,
+      align: 'right',
+      formatter: (row) => formatQuantity(row.scrapRate, 2)
+    },
+    { prop: 'processSequenceNo', label: '工序序列', width: 100, align: 'center' },
+    {
+      prop: 'processSequenceType',
+      label: '序列类型',
+      width: 120,
+      dict: { code: 'mdmProcessRouteSequenceType' }
+    },
+    {
+      prop: 'processRouteStepId',
+      label: '分配工序',
+      width: 240,
+      formatter: processStepIdentity
+    },
+    {
+      prop: 'workCenterName',
+      label: '工作中心',
+      width: 180,
+      formatter: workCenterIdentity
+    },
+    {
+      prop: 'positionNo',
+      label: '位号',
+      width: 140,
+      formatter: (row) => formatText(row.positionNo)
+    },
+    {
+      prop: 'bomId',
+      label: '来源 BOM',
+      width: 190,
+      formatter: bomIdentity
+    },
+    {
+      prop: 'remark',
+      label: '备注',
+      width: 220,
+      showOverflowTooltip: true,
+      formatter: (row) => formatText(row.remark)
+    },
     {
       prop: 'hasChildren',
       label: '结构状态',
@@ -498,6 +690,17 @@
       color: var(--el-text-color-primary);
     }
 
+    &__tree-name {
+      display: flex;
+      gap: var(--art-space-2);
+      align-items: center;
+      min-width: 0;
+
+      strong {
+        flex: 1;
+      }
+    }
+
     &__tree-identity small {
       margin-top: 1px;
       font-family: var(--art-font-family-mono, Consolas, monospace);
@@ -548,6 +751,49 @@
         font-size: var(--art-font-size-subtitle);
         color: var(--el-text-color-primary);
         white-space: nowrap;
+      }
+    }
+
+    :deep(.bom-structure-page__material) {
+      display: grid;
+      grid-template-columns: 32px minmax(0, 1fr);
+      gap: var(--art-space-2);
+      align-items: center;
+      min-width: 0;
+
+      > span {
+        display: grid;
+        place-items: center;
+        width: 32px;
+        height: 32px;
+        color: var(--theme-color);
+        background: color-mix(in srgb, var(--theme-color) 8%, var(--default-box-color));
+        border-radius: var(--el-border-radius-base);
+      }
+
+      > div,
+      strong,
+      small {
+        display: block;
+        min-width: 0;
+      }
+
+      strong,
+      small {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      strong {
+        font-weight: 650;
+        color: var(--el-text-color-primary);
+      }
+
+      small {
+        margin-top: 2px;
+        font-size: var(--art-font-size-caption);
+        color: var(--el-text-color-secondary);
       }
     }
 

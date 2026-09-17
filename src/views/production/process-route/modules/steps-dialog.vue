@@ -680,6 +680,7 @@
     deleteProcessStep,
     deleteProcessSteps,
     fetchOperationalMaster,
+    fetchProductionDepartmentTree,
     fetchProcessRouteReferences,
     fetchProcessSequences,
     fetchProcessSteps,
@@ -690,6 +691,7 @@
     type ProcessRoute,
     type ProcessRouteReference,
     type ProcessRouteReferences,
+    type ProductionDepartmentTreeNode,
     type ProcessSequence,
     type ProcessStepActivity,
     type ProcessStep,
@@ -701,6 +703,11 @@
 
   interface ActivityRow extends ProcessStepActivity {
     key: string
+  }
+
+  type DepartmentTreeOption = Omit<ProductionDepartmentTreeNode, 'children'> & {
+    displayLabel: string
+    children: DepartmentTreeOption[]
   }
 
   const user = useUserStore()
@@ -719,6 +726,7 @@
   const editorReadonly = ref(false)
   const search = reactive({ keyword: '' })
   const activeTab = ref('basic')
+  const departmentTree = ref<DepartmentTreeOption[]>([])
   const references = reactive<ProcessRouteReferences>({
     groups: [],
     operations: [],
@@ -1118,10 +1126,19 @@
     {
       key: 'departmentId',
       label: '车间',
-      type: 'select',
-      options: option(references.departments),
+      type: 'treeSelect',
       help: '选择该工序实际生产所属的车间。',
-      props: { clearable: true, filterable: true, onChange: applyDepartment }
+      props: {
+        data: departmentTree.value,
+        clearable: true,
+        filterable: true,
+        checkStrictly: true,
+        defaultExpandAll: true,
+        nodeKey: 'id',
+        props: { label: 'displayLabel', value: 'id', children: 'children' },
+        placeholder: '按层级选择生产车间',
+        onChange: applyDepartment
+      }
     },
     {
       key: 'workCenterIds',
@@ -1998,6 +2015,13 @@
     )
     await applyWorkCenters(validIds)
   }
+  function toDepartmentTreeOptions(rows: ProductionDepartmentTreeNode[]): DepartmentTreeOption[] {
+    return rows.map((row) => ({
+      ...row,
+      displayLabel: `${row.name} · ${row.code}`,
+      children: toDepartmentTreeOptions(row.children || [])
+    }))
+  }
   async function applyWorkCenters(value: string[]) {
     stepForm.workCenterIds = value
     stepForm.workCenterId = value[0] ?? null
@@ -2318,7 +2342,12 @@
       loading: true,
       onOpen: async (_data, api) => {
         try {
-          Object.assign(references, await fetchProcessRouteReferences(row.tenantId))
+          const [nextReferences, nextDepartmentTree] = await Promise.all([
+            fetchProcessRouteReferences(row.tenantId),
+            fetchProductionDepartmentTree(row.tenantId)
+          ])
+          Object.assign(references, nextReferences)
+          departmentTree.value = toDepartmentTreeOptions(nextDepartmentTree)
           await loadSequences()
           await nextTick()
           await tableRef.value?.getData()

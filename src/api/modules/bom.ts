@@ -175,7 +175,7 @@ export async function deleteBom(id: string): Promise<void> {
 
 export async function fetchBomStructure(id: string, maxDepth = 8): Promise<BomStructureNode[]> {
   const { data } = await responseHandle<BomStructureNode[]>(
-    () => supabase.rpc('mdm_bom_structure', { p_bom_id: id, p_max_depth: maxDepth }),
+    () => supabase.rpc('mdm_bom_structure_detail', { p_bom_id: id, p_max_depth: maxDepth }),
     readOptions
   )
   return data ?? []
