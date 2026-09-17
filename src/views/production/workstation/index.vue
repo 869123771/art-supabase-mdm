@@ -114,8 +114,8 @@
   import ProductionWorkspaceHeader from '../modules/production-workspace-header.vue'
   import { productionTree } from '../modules/production-model'
   import WorkCenterNavigator, {
-    type WorkstationWorkshopOption
-  } from './modules/work-center-navigator.vue'
+    type ProductionScopeWorkshopOption as WorkstationWorkshopOption
+  } from '@/components/business/production-work-center-navigator/index.vue'
   import WorkstationDialog from './modules/workstation-dialog.vue'
 
   defineOptions({ name: 'MdmWorkstation' })
