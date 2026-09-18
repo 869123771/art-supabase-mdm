@@ -31,7 +31,6 @@
           primary-min="320px"
           primary-max="520px"
           :breakpoint="980"
-          :primary-collapsed="navigatorCollapsed"
           stacked-primary-size="440px"
         >
           <template #primary>
@@ -158,15 +157,10 @@
                 display="tag"
               />
               <BusinessWorkspaceFocusToggle v-if="focusMode" v-model="focusMode" />
-              <ArtIconButton
-                :icon="navigatorCollapsed ? 'ri:sidebar-unfold-line' : 'ri:sidebar-fold-line'"
-                :label="navigatorCollapsed ? '展开树形 BOM 面板' : '收起树形 BOM 面板'"
-                @click="navigatorCollapsed = !navigatorCollapsed"
-              />
             </template>
             <div v-if="selectedBom" class="bom-structure-page__root">
               <span><ArtSvgIcon icon="ri:box-3-line" /></span>
-              <div
+              <div class="bom-structure-page__root-identity"
                 ><small
                   >{{ selectedBom.bomCode
                   }}{{ selectedBom.version ? ` · ${selectedBom.version}` : '' }}</small
@@ -176,17 +170,31 @@
                   {{ selectedBom.baseQuantity }}</p
                 ></div
               >
+              <div class="bom-structure-page__root-search">
+                <ElInput
+                  v-model="structureKeyword"
+                  clearable
+                  :disabled="!flatNodes.length"
+                  placeholder="层级 / 物料编码 / 物料名称 / 规格型号 / 图号"
+                  aria-label="综合查询 BOM 数据列表"
+                >
+                  <template #prefix><ArtSvgIcon icon="ri:search-line" /></template>
+                </ElInput>
+                <small aria-live="polite"
+                  >显示 {{ filteredNodes.length }} / {{ flatNodes.length }} 条</small
+                >
+              </div>
             </div>
             <ArtTable
               v-if="selectedBom"
-              :data="flatNodes"
+              :data="filteredNodes"
               :columns="columns"
               row-key="nodeId"
               table-layout="fixed"
               :pagination="false"
               scrollbar-always-on
-              empty-text="当前 BOM 暂无组件"
-              empty-description="当前父项尚未维护下级组件。"
+              :empty-text="tableEmptyText"
+              :empty-description="tableEmptyDescription"
             />
           </ArtSectionCard>
         </ArtWorkspaceSplitter>
@@ -204,7 +212,6 @@
   import ArtSvgIcon from '@/components/core/base/art-svg-icon/index.vue'
   import ArtDictDisplay from '@/components/core/base/art-dict-display/index.vue'
   import ArtSectionCard from '@/components/core/surfaces/art-section-card/index.vue'
-  import ArtIconButton from '@/components/core/widget/art-icon-button/index.vue'
   import ArtTreeExpandToggle from '@/components/core/widget/art-tree-expand-toggle/index.vue'
   import BusinessWorkspaceHeader, {
     type BusinessWorkspaceMetric
@@ -227,10 +234,14 @@
     type MaterialArchive
   } from '@mdm/api'
   import { formatBomMaterialDescription } from '../modules/material-description'
+  import {
+    filterSingleLayerBomNodes,
+    SINGLE_LAYER_FETCH_DEPTH
+  } from './modules/structure-visibility'
+  import { filterBomStructureNodes } from './modules/structure-search'
 
   defineOptions({ name: 'MdmBomStructure' })
   const { focusMode } = useWorkspaceFocus()
-  const navigatorCollapsed = ref(false)
   const treeRef = ref<TreeInstance>()
   const { effectiveTenantId } = storeToRefs(useTenantScopeStore())
   const tenantId = computed(() => effectiveTenantId.value ?? '')
@@ -246,6 +257,8 @@
   const loading = ref(false)
   const loadError = ref<Error | null>(null)
   const tree = ref<BomStructureNode[]>([])
+  const structureKeyword = ref('')
+  let structureRequestId = 0
   const treeUtils = new TreeUtils({
     idKey: 'nodeId',
     parentKey: 'parentNodeId',
@@ -253,6 +266,18 @@
     deepClone: false
   })
   const flatNodes = computed(() => treeUtils.treeToList(tree.value))
+  const filteredNodes = computed(() =>
+    filterBomStructureNodes(flatNodes.value, structureKeyword.value)
+  )
+  const hasStructureKeyword = computed(() => Boolean(structureKeyword.value.trim()))
+  const tableEmptyText = computed(() =>
+    hasStructureKeyword.value ? '未找到符合条件的结构节点' : '当前 BOM 暂无组件'
+  )
+  const tableEmptyDescription = computed(() =>
+    hasStructureKeyword.value
+      ? '请调整层级、物料编码、物料名称、规格型号或图号关键词。'
+      : '当前父项尚未维护下级组件。'
+  )
   const materialColumns = [
     { prop: 'materialCode', label: '物料编码', minWidth: 150 },
     { prop: 'materialName', label: '物料名称', minWidth: 180 },
@@ -334,6 +359,13 @@
     },
     { prop: 'materialCode', label: '物料编码', width: 180 },
     { prop: 'specificationModel', label: '规格型号', width: 180 },
+    {
+      prop: 'drawingNo',
+      label: '图号',
+      width: 160,
+      showOverflowTooltip: true,
+      formatter: (row) => formatText(row.drawingNo)
+    },
     {
       prop: 'materialSource',
       label: '物料来源',
@@ -495,6 +527,8 @@
     await locateBom()
   }
   const locateBom = async () => {
+    structureRequestId += 1
+    structureKeyword.value = ''
     tree.value = []
     selectedBom.value = undefined
     loadError.value = null
@@ -520,24 +554,31 @@
   }
   const loadStructure = async () => {
     if (!selectedBom.value) return
+    const requestId = ++structureRequestId
     const requestBomId = selectedBom.value.id
+    const requestMode = mode.value
     loading.value = true
     loadError.value = null
     try {
       const nodes = await fetchBomStructure(
         requestBomId,
-        mode.value === 'single' ? 1 : maxDepth.value
+        requestMode === 'single' ? SINGLE_LAYER_FETCH_DEPTH : maxDepth.value
       )
-      if (requestBomId === selectedBom.value?.id) {
-        tree.value = treeUtils.listToTree(nodes) as BomStructureNode[]
+      if (requestId === structureRequestId && requestBomId === selectedBom.value?.id) {
+        const visibleNodes = requestMode === 'single' ? filterSingleLayerBomNodes(nodes) : nodes
+        tree.value = treeUtils.listToTree(visibleNodes) as BomStructureNode[]
       }
     } catch (error) {
-      loadError.value = error instanceof Error ? error : new Error('BOM 结构加载失败')
+      if (requestId === structureRequestId) {
+        loadError.value = error instanceof Error ? error : new Error('BOM 结构加载失败')
+      }
     } finally {
-      loading.value = false
+      if (requestId === structureRequestId) loading.value = false
     }
   }
   watch(tenantId, () => {
+    structureRequestId += 1
+    structureKeyword.value = ''
     selectedMaterial.value = undefined
     selectedMaterialId.value = undefined
     selectedBom.value = undefined
@@ -712,7 +753,7 @@
     &__root {
       display: grid;
       flex: none;
-      grid-template-columns: 46px minmax(0, 1fr);
+      grid-template-columns: 46px minmax(220px, 1fr) minmax(300px, 460px);
       gap: var(--art-space-3);
       align-items: center;
       padding: var(--art-space-3);
@@ -731,14 +772,14 @@
         border-radius: var(--el-border-radius-base);
       }
 
-      small,
+      &-identity small,
       strong,
       p {
         display: block;
         margin: 0;
       }
 
-      small,
+      &-identity small,
       p {
         font-size: var(--art-font-size-caption);
         color: var(--el-text-color-secondary);
@@ -750,6 +791,23 @@
         text-overflow: ellipsis;
         font-size: var(--art-font-size-subtitle);
         color: var(--el-text-color-primary);
+        white-space: nowrap;
+      }
+    }
+
+    &__root-identity {
+      min-width: 0;
+    }
+
+    &__root-search {
+      display: grid;
+      gap: var(--art-space-1);
+      min-width: 0;
+
+      > small {
+        font-size: var(--art-font-size-caption);
+        color: var(--el-text-color-secondary);
+        text-align: right;
         white-space: nowrap;
       }
     }
@@ -811,6 +869,14 @@
 
       &__detail {
         min-height: 520px;
+      }
+
+      &__root {
+        grid-template-columns: 46px minmax(0, 1fr);
+      }
+
+      &__root-search {
+        grid-column: 1 / -1;
       }
     }
   }

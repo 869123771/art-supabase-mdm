@@ -1,5 +1,6 @@
 import { useSupabase } from '@/hooks'
 import { buildOrIlikeFilter } from '@/utils/supabase/search'
+import { keyBy, uniq } from 'lodash-es'
 import { buildBomWritePayload } from './bom-write-payload'
 import type {
   BomGroup,
@@ -178,5 +179,22 @@ export async function fetchBomStructure(id: string, maxDepth = 8): Promise<BomSt
     () => supabase.rpc('mdm_bom_structure_detail', { p_bom_id: id, p_max_depth: maxDepth }),
     readOptions
   )
-  return data ?? []
+  const nodes = data ?? []
+  const missingDrawingMaterialIds = uniq(
+    nodes.filter((node) => node.drawingNo === undefined).map((node) => node.materialId)
+  )
+  if (!missingDrawingMaterialIds.length) return nodes
+
+  const { data: materials } = await responseHandle<
+    Array<{ id: string; drawingNo?: string | null }>
+  >(
+    () => supabase.from('mdm_material').select('id,drawing_no').in('id', missingDrawingMaterialIds),
+    readOptions
+  )
+  const materialById = keyBy(materials ?? [], 'id')
+
+  return nodes.map((node) => ({
+    ...node,
+    drawingNo: node.drawingNo ?? materialById[node.materialId]?.drawingNo ?? null
+  }))
 }

@@ -1,1 +1,0 @@
-import{Dr as e,Hn as t,jn as n}from"./file-Beho2ES1.js";import{t as r}from"./center-CLSYio9f.js";var i=t({name:`MdmDataDistribution`,__name:`index`,setup(t){return(t,i)=>(e(),n(r,{"initial-view":`outbox`}))}});export{i as default};

@@ -199,14 +199,24 @@ export interface ProcessRouteInput {
   path: string
   remark: string
 }
+export interface ProcessRouteMaterialOption {
+  id: string
+  categoryId: string
+  materialCode: string
+  materialName: string
+  specificationModel?: string | null
+  drawingNo?: string | null
+  materialComposition?: string | null
+  brand?: string | null
+  materialType: string
+  materialSource: string
+  specialPurchaseType?: string | null
+  productionUnitId?: string | null
+  category: { id: string; categoryCode: string; categoryName: string } | null
+  materialTypeRef: { id: string; typeCode: string; typeName: string } | null
+}
 export interface ProcessRoute extends ProcessRouteInput, WorkspaceAudit {
-  material: {
-    id: string
-    materialCode: string
-    materialName: string
-    specificationModel: string
-    productionUnitId?: string | null
-  } | null
+  material: ProcessRouteMaterialOption | null
   group: { id: string; code: string; name: string } | null
   productionUnit: { id: string; unitCode: string; unitName: string; symbol: string } | null
   department: { id: string; code: string; name: string } | null

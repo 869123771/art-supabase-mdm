@@ -22,6 +22,7 @@ import type {
   CenterDeviceInput,
   ProcessRoute,
   ProcessRouteInput,
+  ProcessRouteMaterialOption,
   ProcessSequence,
   ProcessSequenceInput,
   ProcessStep,
@@ -569,11 +570,35 @@ export async function fetchProductionReferences(
   return { data: data?.records ?? [], total: data?.total ?? 0 }
 }
 
+export async function fetchProcessRouteMaterialOptions(params: {
+  tenantId?: string
+  keyword: string
+  categoryId?: string
+  current: number
+  size: number
+}) {
+  const { data } = await responseHandle<{
+    records: ProcessRouteMaterialOption[]
+    total: number
+  }>(
+    () =>
+      supabase.rpc('mdm_process_route_material_options', {
+        p_tenant_id: normalizeNullableText(params.tenantId),
+        p_keyword: params.keyword,
+        p_category_id: normalizeNullableText(params.categoryId),
+        p_from: (params.current - 1) * params.size,
+        p_to: params.current * params.size - 1
+      }),
+    read
+  )
+  return { data: data?.records ?? [], total: data?.total ?? 0 }
+}
+
 export async function fetchProcessRoutes(p: WorkspaceQuery, options?: { signal?: AbortSignal }) {
   let query = supabase
     .from('mdm_process_route')
     .select(
-      `*,material:mdm_material!mdm_process_route_material_tenant_fkey(id,material_code,material_name,specification_model,production_unit_id),group:mdm_master_group!mdm_process_route_group_fk(id,code,name),productionUnit:mdm_unit_of_measure!mdm_process_route_production_unit_fk(id,unit_code,unit_name,symbol),department:mdm_production_department!mdm_process_route_department_fk(id,code,name)`,
+      `*,material:mdm_material!mdm_process_route_material_tenant_fkey(id,category_id,material_code,material_name,specification_model,drawing_no,material_composition,brand,material_type,material_source,special_purchase_type,production_unit_id,category:mdm_material_category(id,category_code,category_name),materialTypeRef:mdm_material_type(id,type_code,type_name)),group:mdm_master_group!mdm_process_route_group_fk(id,code,name),productionUnit:mdm_unit_of_measure!mdm_process_route_production_unit_fk(id,unit_code,unit_name,symbol),department:mdm_production_department!mdm_process_route_department_fk(id,code,name)`,
       { count: 'exact' }
     )
     .order('is_default', { ascending: false })
@@ -589,6 +614,22 @@ export async function fetchProcessRoutes(p: WorkspaceQuery, options?: { signal?:
     read
   )
   return { data: data ?? [], total: total ?? 0, current: p.current, size: p.size }
+}
+
+export async function fetchProcessRoutePath(routeId: string, tenantId?: string) {
+  let query = supabase
+    .from('mdm_process_route_step')
+    .select('name')
+    .eq('route_id', routeId)
+    .order('sort')
+    .order('code')
+    .limit(1000)
+  if (tenantId) query = query.eq('tenant_id', tenantId)
+  const { data } = await responseHandle<Array<{ name: string }>>(() => query, read)
+  return (data ?? [])
+    .map((step) => step.name.trim())
+    .filter(Boolean)
+    .join('→')
 }
 
 export async function saveProcessRoute(input: ProcessRouteInput, id?: string) {

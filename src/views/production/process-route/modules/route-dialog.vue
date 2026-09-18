@@ -31,13 +31,14 @@
               :selected-data="selection"
               :api-fn="fetchMaterials"
               :columns="materialColumns"
+              :navigation="materialNavigation"
               label-key="materialName"
               description-key="materialCode"
-              title="批量选择产品物料"
-              subtitle="每个产品会创建一条独立路线，并继承各自的生产单位"
-              search-placeholder="搜索产品编码、名称或规格"
-              empty-text="暂无可选产品"
-              empty-description="请先维护产品物料后再创建工艺路线。"
+              title="数据来源物料编码"
+              subtitle="按物料分类筛选；每个物料会创建一条独立路线，并继承各自的生产单位"
+              search-placeholder="搜索物料编码、名称、规格或图号"
+              empty-text="暂无可选物料"
+              empty-description="请先维护物料编码后再创建工艺路线。"
               :show-selected-panel="true"
               @change="handleMaterialChange"
             />
@@ -47,13 +48,14 @@
               :selected-data="selection"
               :api-fn="fetchMaterials"
               :columns="materialColumns"
+              :navigation="materialNavigation"
               label-key="materialName"
               description-key="materialCode"
-              title="选择产品"
-              subtitle="从当前租户的产品物料中选择路线适用对象"
-              search-placeholder="搜索产品编码、名称或规格"
-              empty-text="暂无可选产品"
-              empty-description="请先维护产品物料后再创建工艺路线。"
+              title="数据来源物料编码"
+              subtitle="从当前租户物料编码中选择路线适用对象"
+              search-placeholder="搜索物料编码、名称、规格或图号"
+              empty-text="暂无可选物料"
+              empty-description="请先维护物料编码后再创建工艺路线。"
               @change="handleMaterialChange"
             />
             <p v-if="isCreating && selection.length" class="process-route-dialog__material-hint">
@@ -78,6 +80,7 @@
   import type { ArtDialogExpose } from '@/components/core/dialogs/art-dialog/types'
   import ArtEntitySummary from '@/components/core/surfaces/art-entity-summary/index.vue'
   import type {
+    DataSelectColumn,
     DataSelectFetchParams,
     DataSelectKey,
     DataSelectRecord
@@ -86,13 +89,17 @@
   import {
     saveProcessRoute,
     saveProcessRoutes,
-    fetchProductionReferences,
+    fetchMaterialCategories,
+    fetchProcessRoutePath,
+    fetchProcessRouteMaterialOptions,
     fetchProductionDepartmentTree,
     fetchProcessRouteReferences,
     type ProcessRoute,
     type ProcessRouteInput,
+    type ProcessRouteMaterialOption,
     type ProcessRouteReferences,
-    type ProductionDepartmentTreeNode
+    type ProductionDepartmentTreeNode,
+    type MaterialCategory
   } from '@mdm/api'
   import { buildProcessRoutePayload } from './process-route-payload'
 
@@ -101,15 +108,51 @@
   const { getDictMap } = storeToRefs(user)
   const dialogRef = ref<ArtDialogExpose>()
   const formRef = ref<InstanceType<typeof ArtForm>>()
-  const selection = ref<NonNullable<ProcessRoute['material']>[]>([])
+  const selection = ref<ProcessRouteMaterialOption[]>([])
   const materialIds = ref<DataSelectKey[]>([])
   const isCreating = ref(true)
   const productionUnitOverridden = ref(false)
   const departmentTree = ref<ProductionDepartmentTreeNode[]>([])
-  const materialColumns = [
-    { prop: 'materialCode', label: '产品编码', minWidth: 140 },
-    { prop: 'materialName', label: '产品名称', minWidth: 180 },
-    { prop: 'specificationModel', label: '规格型号', minWidth: 160 }
+  const materialCategories = ref<MaterialCategory[]>([])
+  const materialNavigation = computed(() => ({
+    data: materialCategories.value,
+    title: '物料分类',
+    rowKey: 'id',
+    parentKey: 'parentId',
+    labelKey: 'categoryName',
+    descriptionKey: 'categoryCode',
+    filterKey: 'categoryId',
+    allLabel: '全部分类',
+    allDescription: `${materialCategories.value.length} 个分类节点`,
+    searchPlaceholder: '搜索分类名称或编码',
+    emptyText: '暂无物料分类'
+  }))
+  const materialColumns: DataSelectColumn[] = [
+    { prop: 'materialCode', label: '物料编码', minWidth: 150 },
+    { prop: 'materialName', label: '物料名称', minWidth: 180 },
+    { prop: 'specificationModel', label: '规格型号', minWidth: 150 },
+    { prop: 'drawingNo', label: '图号', minWidth: 130 },
+    { prop: 'materialComposition', label: '材质', minWidth: 120 },
+    { prop: 'brand', label: '品牌', minWidth: 120 },
+    { prop: 'category.categoryName', label: '物料分类', minWidth: 140 },
+    {
+      prop: 'materialTypeRef.typeName',
+      label: '物料类型',
+      minWidth: 120,
+      formatter: (row) => row.materialTypeRef?.typeName || row.materialType || '—'
+    },
+    {
+      prop: 'materialSource',
+      label: '物料来源',
+      minWidth: 110,
+      dict: { code: 'mdmMaterialSource' }
+    },
+    {
+      prop: 'specialPurchaseType',
+      label: '特殊采购类',
+      minWidth: 120,
+      dict: { code: 'mdmMaterialSpecialPurchaseType', display: 'tag' }
+    }
   ]
   const references = ref<ProcessRouteReferences>({
     groups: [],
@@ -151,19 +194,21 @@
       value: item.value === 'true' || item.value === '1'
     }))
   )
-  const routeIdentityTitle = computed(() => form.name.trim() || '新工艺路线')
+  const routeIdentityTitle = computed(
+    () => form.name.trim() || selection.value[0]?.materialName || '新工艺路线'
+  )
   const routeIdentityDescription = computed(() => {
     if (form.code.trim()) return `路线编码：${form.code.trim()}`
     const materialName = selection.value[0]?.materialName
     return materialName
-      ? `适用产品：${materialName}`
+      ? `适用物料：${materialName}`
       : '定义产品版本、批量范围与生效规则；保存后可继续维护工序序列。'
   })
   const materialSelectionHint = computed(() => {
     const unitIds = uniq(selection.value.map((item) => item.productionUnitId).filter(Boolean))
     if (unitIds.length <= 1)
-      return `已选择 ${selection.value.length} 个产品，生产单位已自动带入；仍可手工统一修改。`
-    return `已选择 ${selection.value.length} 个产品，生产单位不一致；不修改时将分别继承各产品单位。`
+      return `已选择 ${selection.value.length} 个物料，生产单位已自动带入；仍可手工统一修改。`
+    return `已选择 ${selection.value.length} 个物料，生产单位不一致；不修改时将分别继承各物料单位。`
   })
   const option = (rows: Array<{ id: string; code: string; name: string }>) =>
     rows.map((row) => ({ label: `${row.name} · ${row.code}`, value: row.id }))
@@ -174,8 +219,12 @@
       label: '路线编码',
       props: { disabled: true, placeholder: '保存时自动生成 4 位流水码' }
     },
-    { key: 'name', label: '路线名称', props: { maxlength: 120 } },
-    { key: 'materialId', label: '产品物料', type: 'slot' },
+    {
+      key: 'name',
+      label: '路线名称',
+      props: { maxlength: 120, placeholder: '选填，用于区分同一物料的多条路线' }
+    },
+    { key: 'materialId', label: '数据来源物料编码', type: 'slot' },
     {
       key: 'groupId',
       label: '路线分组',
@@ -273,7 +322,14 @@
       type: 'segment',
       options: booleanOptions.value
     },
-    { key: 'path', label: '工艺路径', type: 'input', span: 24, props: { maxlength: 500 } },
+    {
+      key: 'path',
+      label: '工艺路径',
+      type: 'text',
+      span: 24,
+      description: '按工序顺序自动组合，只读展示；请在“工艺维护”中调整工序。',
+      props: { emptyText: '尚未配置工序' }
+    },
     {
       key: 'remark',
       label: '备注',
@@ -283,8 +339,7 @@
     }
   ])
   const rules = {
-    materialId: [{ required: true, message: '请选择产品', trigger: 'change' }],
-    name: [{ required: true, message: '请输入路线名称', trigger: 'blur' }],
+    materialId: [{ required: true, message: '请选择数据来源物料编码', trigger: 'change' }],
     batchTo: [
       {
         validator: (_rule: unknown, value: number, callback: (error?: Error) => void) =>
@@ -304,7 +359,13 @@
     ]
   }
   const fetchMaterials = (p: DataSelectFetchParams) =>
-    fetchProductionReferences('material', form.tenantId, p.keyword, p.page, p.pageSize)
+    fetchProcessRouteMaterialOptions({
+      tenantId: form.tenantId,
+      keyword: p.keyword,
+      categoryId: String(p.filters.categoryId || '') || undefined,
+      current: p.page,
+      size: p.pageSize
+    })
   const handleProductionUnitChange = () => {
     productionUnitOverridden.value = true
   }
@@ -312,7 +373,7 @@
     _value: DataSelectKey | DataSelectKey[] | undefined,
     rows: DataSelectRecord[]
   ) => {
-    selection.value = rows as NonNullable<ProcessRoute['material']>[]
+    selection.value = rows as ProcessRouteMaterialOption[]
     materialIds.value = selection.value.map((item) => item.id)
     form.materialId = selection.value[0]?.id || ''
     if (productionUnitOverridden.value) return
@@ -325,7 +386,13 @@
     isCreating.value = !row || copy
     productionUnitOverridden.value = false
     form.tenantId = row?.tenantId || tenantId || user.info.tenantId || ''
-    if (copy) Object.assign(form, { code: '', name: `${row?.name || ''} - 副本`, isDefault: false })
+    if (copy)
+      Object.assign(form, {
+        code: '',
+        name: row?.name ? `${row.name} - 副本` : '',
+        path: '',
+        isDefault: false
+      })
     selection.value = row?.material ? [row.material] : []
     materialIds.value = selection.value.map((item) => item.id)
     await Promise.all(
@@ -333,24 +400,33 @@
         'mdmProcessRouteType',
         'mdmProcessRouteAllocationMode',
         'mdmProcessRouteSource',
+        'mdmMaterialSource',
+        'mdmMaterialSpecialPurchaseType',
         'commonBoolean'
       ].map((code) => user.ensureDictLoaded(code))
     )
     await dialogRef.value?.handleOpen(undefined, {
       title: copy ? '复制工艺路线' : row ? '编辑工艺路线' : '新增工艺路线',
-      subtitle: row ? `${row.code} · ${row.name}` : '定义产品版本、批量范围与生效规则',
+      subtitle: row
+        ? `${row.code} · ${row.name || row.material?.materialName || '未命名路线'}`
+        : '定义产品版本、批量范围与生效规则',
       confirmText: copy || !row ? '创建路线' : '保存更改',
       contentMaxHeight: '72vh',
       loading: true,
       onOpen: async (_data, api) => {
         try {
           const targetTenantId = row?.tenantId || tenantId || form.tenantId
-          const [nextReferences, nextDepartmentTree] = await Promise.all([
-            fetchProcessRouteReferences(targetTenantId),
-            fetchProductionDepartmentTree(targetTenantId)
-          ])
+          const [nextReferences, nextDepartmentTree, nextMaterialCategories, currentPath] =
+            await Promise.all([
+              fetchProcessRouteReferences(targetTenantId),
+              fetchProductionDepartmentTree(targetTenantId),
+              fetchMaterialCategories(targetTenantId),
+              row && !copy ? fetchProcessRoutePath(row.id, targetTenantId) : Promise.resolve('')
+            ])
           references.value = nextReferences
           departmentTree.value = nextDepartmentTree
+          materialCategories.value = nextMaterialCategories
+          form.path = currentPath
           formRef.value?.clearValidate()
         } finally {
           api.setLoading(false)

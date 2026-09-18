@@ -409,7 +409,7 @@
       permission: 'MdmProcessRoute:Import',
       importColumns: [
         { key: 'materialId', title: '产品物料ID', required: true },
-        { key: 'name', title: '路线名称', required: true },
+        { key: 'name', title: '路线名称' },
         { key: 'version', title: '工艺版本' },
         { key: 'batchFrom', title: '批量从' },
         { key: 'batchTo', title: '批量至' },

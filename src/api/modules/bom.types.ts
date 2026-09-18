@@ -195,6 +195,7 @@ export interface BomStructureNode {
   materialCode: string
   materialName: string
   specificationModel?: string | null
+  drawingNo?: string | null
   materialSource?: string | null
   specialPurchaseType?: BomMaterialReference['specialPurchaseType']
   isVirtual: boolean
