@@ -25,16 +25,14 @@
         root-class="bom-dialog__form"
       >
         <template #materialId>
-          <ArtTableSingleSelect
+          <ArtMaterialSelect
             v-model="form.materialId"
             :selected-data="selectedParent"
             :api-fn="fetchMaterials"
-            :columns="materialColumns"
-            :label-key="(row) => formatBomMaterialDescription(row as MaterialArchive)"
-            description-key="materialCode"
-            title="选择 BOM 父项物料"
-            subtitle="父项物料决定 BOM 的基本计量口径"
-            show-pagination
+            :categories="materialCategories"
+            subtitle="按物料分类筛选；父项物料决定 BOM 的基本计量口径"
+            placeholder="请选择父项物料"
+            empty-description="请先维护物料编码后再建立 BOM。"
             @change="handleParentChange"
           />
         </template>
@@ -92,17 +90,14 @@
                 </ElButton>
               </template>
             </ArtTableSingleSelect>
-            <ArtTableMultipleSelect
-              v-model="selectedComponentIds"
+            <ArtMaterialSelect
+              v-model:model-values="selectedComponentIds"
+              multiple
               :selected-data="selectedComponents"
               :api-fn="fetchMaterials"
-              :columns="materialColumns"
-              :label-key="(row) => formatBomMaterialDescription(row as MaterialArchive)"
-              description-key="materialCode"
+              :categories="materialCategories"
               title="批量添加组件物料"
               subtitle="父项物料不可作为自身组件；已存在组件不会重复加入"
-              show-pagination
-              :show-selected-panel="true"
               :disabled-key="isComponentMaterialDisabled"
               @confirm="handleComponentsConfirm"
             >
@@ -111,7 +106,7 @@
                   ><ArtSvgIcon icon="ri:add-line" />添加组件</ElButton
                 >
               </template>
-            </ArtTableMultipleSelect>
+            </ArtMaterialSelect>
           </div>
         </header>
         <ArtTable
@@ -157,7 +152,7 @@
   import type { ArtDialogExpose } from '@/components/core/dialogs/art-dialog/types'
   import ArtForm, { type FormItem } from '@/components/core/forms/art-form/index.vue'
   import ArtTableSingleSelect from '@/components/core/forms/art-data-select/table-single.vue'
-  import ArtTableMultipleSelect from '@/components/core/forms/art-data-select/table-multiple.vue'
+  import ArtMaterialSelect from '@/components/business/art-material-select/index.vue'
   import ArtIconButton from '@/components/core/widget/art-icon-button/index.vue'
   import ArtDictDisplay from '@/components/core/base/art-dict-display/index.vue'
   import ArtSvgIcon from '@/components/core/base/art-svg-icon/index.vue'
@@ -175,6 +170,7 @@
     fetchBomProcessRoutes,
     fetchBomProcessRouteSteps,
     fetchMaterialArchives,
+    fetchMaterialCategories,
     saveBom,
     type BomGroup,
     type BomInput,
@@ -182,6 +178,7 @@
     type BomProcessRouteStepOption,
     type BomRecord,
     type MaterialArchive,
+    type MaterialCategory,
     type UnitOfMeasure
   } from '@mdm/api'
   import { formatBomMaterialDescription } from '../../modules/material-description'
@@ -221,7 +218,8 @@
   const stepLoading = ref(false)
   const selectedParent = ref<MaterialArchive[]>([])
   const selectedComponents = ref<MaterialArchive[]>([])
-  const selectedComponentIds = ref<Array<string | number>>([])
+  const selectedComponentIds = ref<string[]>([])
+  const materialCategories = ref<MaterialCategory[]>([])
   const selectedComponentRows = shallowRef<BomComponentInput[]>([])
   const batchSelectedStepId = ref<string | number>()
   const canMaintainBom = computed(() =>
@@ -260,12 +258,6 @@
     const step = processSteps.value.find((item) => item.id === batchSelectedStepId.value)
     return step ? [step as DataSelectRecord] : []
   })
-  const materialColumns = [
-    { prop: 'materialCode', label: '物料编码', minWidth: 150 },
-    { prop: 'materialName', label: '物料名称', minWidth: 180 },
-    { prop: 'specificationModel', label: '规格型号', minWidth: 150 },
-    { prop: 'drawingNo', label: '图号', minWidth: 130 }
-  ]
   const formItems = computed<FormItem[]>(() => [
     {
       key: 'tenantId',
@@ -400,8 +392,19 @@
       size: params.pageSize,
       tenantId: tenantId.value,
       keyword: params.keyword,
+      categoryId: String(params.filters.categoryId || '') || undefined,
       status: 'enabled'
     })
+  let materialCategoryRequestVersion = 0
+  const loadMaterialCategories = async (): Promise<void> => {
+    const requestVersion = ++materialCategoryRequestVersion
+    if (!form.tenantId) {
+      materialCategories.value = []
+      return
+    }
+    const categories = await fetchMaterialCategories(form.tenantId)
+    if (requestVersion === materialCategoryRequestVersion) materialCategories.value = categories
+  }
   const sequenceTypeLabel = (value?: string | null): string =>
     getDictMap.value.mdmProcessRouteSequenceType?.find((item) => item.value === value)?.label ||
     (value === 'main' ? '标准序列' : value || '—')
@@ -902,7 +905,6 @@
       item.effectiveFrom ||= form.effectiveFrom
       item.effectiveTo ||= form.effectiveTo
     })
-    await loadProcessRoutes(form.materialId, data.row?.processRouteId)
     if (data.copy) {
       form.id = undefined
       form.bomCode = ''
@@ -914,11 +916,20 @@
       subtitle: '版本化维护父项与组件的工程关系',
       confirmText: '保存 BOM',
       contentMaxHeight: '76vh',
+      loading: true,
       onConfirm: handleSubmit,
-      onOpen: () => {
-        formRef.value?.clearValidate()
-        componentTableRef.value?.clearValidate()
-        componentTableRef.value?.elTableRef?.clearSelection()
+      onOpen: async (_openData, api) => {
+        try {
+          await Promise.all([
+            loadProcessRoutes(form.materialId, data.row?.processRouteId),
+            loadMaterialCategories()
+          ])
+          formRef.value?.clearValidate()
+          componentTableRef.value?.clearValidate()
+          componentTableRef.value?.elTableRef?.clearSelection()
+        } finally {
+          api.setLoading(false)
+        }
       }
     })
   }
@@ -935,6 +946,7 @@
       selectedParent.value = []
       selectedComponents.value = []
       selectedComponentIds.value = []
+      void loadMaterialCategories()
     }
   )
   defineExpose({ handleOpen })

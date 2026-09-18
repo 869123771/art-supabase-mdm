@@ -25,36 +25,24 @@
           :show-submit="false"
         >
           <template #materialId>
-            <ArtTableMultipleSelect
+            <ArtMaterialSelect
               v-if="isCreating"
-              v-model="materialIds"
+              v-model:model-values="materialIds"
+              multiple
               :selected-data="selection"
               :api-fn="fetchMaterials"
-              :columns="materialColumns"
-              :navigation="materialNavigation"
-              label-key="materialName"
-              description-key="materialCode"
-              title="数据来源物料编码"
+              :categories="materialCategories"
               subtitle="按物料分类筛选；每个物料会创建一条独立路线，并继承各自的生产单位"
-              search-placeholder="搜索物料编码、名称、规格或图号"
-              empty-text="暂无可选物料"
               empty-description="请先维护物料编码后再创建工艺路线。"
-              :show-selected-panel="true"
               @change="handleMaterialChange"
             />
-            <ArtTableSingleSelect
+            <ArtMaterialSelect
               v-else
               v-model="form.materialId"
               :selected-data="selection"
               :api-fn="fetchMaterials"
-              :columns="materialColumns"
-              :navigation="materialNavigation"
-              label-key="materialName"
-              description-key="materialCode"
-              title="数据来源物料编码"
+              :categories="materialCategories"
               subtitle="从当前租户物料编码中选择路线适用对象"
-              search-placeholder="搜索物料编码、名称、规格或图号"
-              empty-text="暂无可选物料"
               empty-description="请先维护物料编码后再创建工艺路线。"
               @change="handleMaterialChange"
             />
@@ -73,14 +61,12 @@
   import dayjs from 'dayjs'
   import { cloneDeep, uniq } from 'lodash-es'
   import ArtDictDisplay from '@/components/core/base/art-dict-display/index.vue'
-  import ArtTableSingleSelect from '@/components/core/forms/art-data-select/table-single.vue'
-  import ArtTableMultipleSelect from '@/components/core/forms/art-data-select/table-multiple.vue'
+  import ArtMaterialSelect from '@/components/business/art-material-select/index.vue'
   import ArtForm, { type FormItem } from '@/components/core/forms/art-form/index.vue'
   import ArtSvgIcon from '@/components/core/base/art-svg-icon/index.vue'
   import type { ArtDialogExpose } from '@/components/core/dialogs/art-dialog/types'
   import ArtEntitySummary from '@/components/core/surfaces/art-entity-summary/index.vue'
   import type {
-    DataSelectColumn,
     DataSelectFetchParams,
     DataSelectKey,
     DataSelectRecord
@@ -109,51 +95,11 @@
   const dialogRef = ref<ArtDialogExpose>()
   const formRef = ref<InstanceType<typeof ArtForm>>()
   const selection = ref<ProcessRouteMaterialOption[]>([])
-  const materialIds = ref<DataSelectKey[]>([])
+  const materialIds = ref<string[]>([])
   const isCreating = ref(true)
   const productionUnitOverridden = ref(false)
   const departmentTree = ref<ProductionDepartmentTreeNode[]>([])
   const materialCategories = ref<MaterialCategory[]>([])
-  const materialNavigation = computed(() => ({
-    data: materialCategories.value,
-    title: '物料分类',
-    rowKey: 'id',
-    parentKey: 'parentId',
-    labelKey: 'categoryName',
-    descriptionKey: 'categoryCode',
-    filterKey: 'categoryId',
-    allLabel: '全部分类',
-    allDescription: `${materialCategories.value.length} 个分类节点`,
-    searchPlaceholder: '搜索分类名称或编码',
-    emptyText: '暂无物料分类'
-  }))
-  const materialColumns: DataSelectColumn[] = [
-    { prop: 'materialCode', label: '物料编码', minWidth: 150 },
-    { prop: 'materialName', label: '物料名称', minWidth: 180 },
-    { prop: 'specificationModel', label: '规格型号', minWidth: 150 },
-    { prop: 'drawingNo', label: '图号', minWidth: 130 },
-    { prop: 'materialComposition', label: '材质', minWidth: 120 },
-    { prop: 'brand', label: '品牌', minWidth: 120 },
-    { prop: 'category.categoryName', label: '物料分类', minWidth: 140 },
-    {
-      prop: 'materialTypeRef.typeName',
-      label: '物料类型',
-      minWidth: 120,
-      formatter: (row) => row.materialTypeRef?.typeName || row.materialType || '—'
-    },
-    {
-      prop: 'materialSource',
-      label: '物料来源',
-      minWidth: 110,
-      dict: { code: 'mdmMaterialSource' }
-    },
-    {
-      prop: 'specialPurchaseType',
-      label: '特殊采购类',
-      minWidth: 120,
-      dict: { code: 'mdmMaterialSpecialPurchaseType', display: 'tag' }
-    }
-  ]
   const references = ref<ProcessRouteReferences>({
     groups: [],
     operations: [],
