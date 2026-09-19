@@ -111,6 +111,7 @@
     ArtTableQueryHeaderAction,
     ArtTableQueryProps
   } from '@/components/core/tables/art-table-query/index.vue'
+  import BusinessTableRowActions from '@/components/business/business-table-row-actions/index.vue'
   import ArtButtonTable from '@/components/core/forms/art-button-table/index.vue'
   import ArtButtonMore, {
     type ButtonMoreItem
@@ -491,7 +492,7 @@
       width: 164,
       fixed: 'right',
       formatter: (row) => (
-        <div class="production-workspace__row-actions">
+        <BusinessTableRowActions>
           <ArtButtonTable
             type="view"
             permission={props.departmentPermissions.view}
@@ -506,7 +507,7 @@
             list={departmentMoreActions(row)}
             onClick={(item) => handleDepartmentMore(item.key, row)}
           />
-        </div>
+        </BusinessTableRowActions>
       )
     }
   ]
@@ -589,7 +590,7 @@
       width: 164,
       fixed: 'right',
       formatter: (row) => (
-        <div class="production-workspace__row-actions">
+        <BusinessTableRowActions>
           <ArtButtonTable
             type="view"
             permission="MdmProductionPersonnel:View"
@@ -622,7 +623,7 @@
               item.key === 'toggle' ? void togglePerson(row) : void removePerson(row)
             }
           />
-        </div>
+        </BusinessTableRowActions>
       )
     }
   ]

@@ -54,7 +54,7 @@ export function buildProcessStepPayload(input: ProcessStepInput): ProcessStepInp
     departmentId: normalizeNullableText(input.departmentId),
     runOutputQuantity: input.runOutputQuantity,
     runProcessingMinutes: input.runProcessingMinutes,
-    runGreenMinutes: input.runGreenMinutes,
+    runGreenMinutes: input.runGreenMinutes ?? 0,
     setupMinutes: input.setupMinutes,
     operatorCount: input.operatorCount,
     machineCount: input.machineCount,

@@ -1,6 +1,6 @@
 <template>
   <div class="formula-detail">
-    <section class="formula-detail__section art-card-xs">
+    <ArtSectionCard class="formula-detail__section" preserve-content-structure>
       <ArtSectionTitle title="公式概览" description="核对公式的业务范围、活动口径和当前状态。" />
       <ArtDescriptions
         :data="record"
@@ -11,7 +11,7 @@
         direction="vertical"
         empty-text="—"
       />
-    </section>
+    </ArtSectionCard>
 
     <section class="formula-detail__workspace">
       <aside class="formula-detail__section formula-detail__parameters art-card-xs">
@@ -119,6 +119,7 @@
   import ArtDescriptions from '@/components/core/base/art-descriptions/index.vue'
   import type { ArtDescriptionItem } from '@/components/core/base/art-descriptions/types'
   import ArtSvgIcon from '@/components/core/base/art-svg-icon/index.vue'
+  import ArtSectionCard from '@/components/core/surfaces/art-section-card/index.vue'
   import ArtSectionTitle from '@/components/core/surfaces/art-section-title/index.vue'
   import { useUserStore } from '@/store/modules/user'
   import type { ActivityFormulaParameter, OperationalMasterRecord } from '@mdm/api'

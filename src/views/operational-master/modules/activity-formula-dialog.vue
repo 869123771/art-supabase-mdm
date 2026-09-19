@@ -27,7 +27,7 @@
       />
 
       <ElForm v-else ref="formRef" :model="model" :rules="rules" label-position="top">
-        <section class="formula-dialog__basic art-card-xs">
+        <ArtSectionCard class="formula-dialog__basic" preserve-content-structure>
           <header class="formula-dialog__section-header">
             <div>
               <span class="formula-dialog__eyebrow">基本信息</span>
@@ -132,7 +132,7 @@
               />
             </ElFormItem>
           </div>
-        </section>
+        </ArtSectionCard>
 
         <section class="formula-dialog__workspace">
           <aside class="parameter-panel art-card-xs">
@@ -476,6 +476,7 @@
   import ArtDialog from '@/components/core/dialogs/art-dialog/index.vue'
   import type { ArtDialogExpose } from '@/components/core/dialogs/art-dialog/types'
   import ArtEntitySummary from '@/components/core/surfaces/art-entity-summary/index.vue'
+  import ArtSectionCard from '@/components/core/surfaces/art-section-card/index.vue'
   import ArtSvgIcon from '@/components/core/base/art-svg-icon/index.vue'
   import ArtIconButton from '@/components/core/widget/art-icon-button/index.vue'
   import { useArtFeedback } from '@/hooks/core/useArtFeedback'

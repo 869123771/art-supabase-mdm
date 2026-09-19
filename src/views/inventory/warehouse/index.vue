@@ -74,7 +74,7 @@
   import { useArtFeedback } from '@/hooks/core/useArtFeedback'
   import { useTenantScopeStore } from '@/store/modules/tenantScope'
   import ArtButtonTable from '@/components/core/forms/art-button-table/index.vue'
-  import ArtSvgIcon from '@/components/core/base/art-svg-icon/index.vue'
+  import BusinessTableIdentityCell from '@/components/business/business-table-identity-cell/index.vue'
   import ArtPermissionGuard from '@/components/core/feedback/art-permission-guard/index.vue'
   import ArtWorkspaceSplitter from '@/components/core/layouts/art-workspace-splitter/index.vue'
   import BusinessTableRowActions from '@/components/business/business-table-row-actions/index.vue'
@@ -266,15 +266,11 @@
     }
   ]
   const identity = (row: WarehouseRecord) => (
-    <div class="warehouse-page__identity">
-      <span aria-hidden="true">
-        <ArtSvgIcon icon="ri:store-2-line" />
-      </span>
-      <span>
-        <strong title={row.warehouseName}>{row.warehouseName}</strong>
-        <small title={row.warehouseCode}>{row.warehouseCode}</small>
-      </span>
-    </div>
+    <BusinessTableIdentityCell
+      primary={row.warehouseName}
+      secondary={row.warehouseCode}
+      icon="ri:store-2-line"
+    />
   )
   const columnsFactory = (): ColumnOption<WarehouseRecord>[] => [
     { type: 'selection', width: 48 },
@@ -405,48 +401,6 @@
       flex: 1;
       min-width: 0;
       min-height: 0;
-    }
-
-    &__identity {
-      display: grid;
-      grid-template-columns: 36px minmax(0, 1fr);
-      gap: 10px;
-      align-items: center;
-      min-width: 0;
-
-      > span:first-child {
-        display: grid;
-        place-items: center;
-        width: 36px;
-        height: 36px;
-        color: var(--theme-color);
-        background: color-mix(in srgb, var(--theme-color) 8%, var(--default-box-color));
-        border-radius: var(--el-border-radius-base);
-      }
-
-      > span:last-child,
-      strong,
-      small {
-        min-width: 0;
-      }
-
-      > span:last-child,
-      &__person {
-        display: grid;
-      }
-
-      strong,
-      small {
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-      }
-
-      small {
-        margin-top: 2px;
-        font-size: 11px;
-        color: var(--el-text-color-secondary);
-      }
     }
 
     :deep(.warehouse-page__person) {

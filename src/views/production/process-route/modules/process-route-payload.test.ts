@@ -153,6 +153,7 @@ test('normalizes optional UUIDs and strips extra fields from sequence and step w
   assert.equal(stepPayload.workCenterId, null)
   assert.deepEqual(stepPayload.workCenterIds, [])
   assert.equal(stepPayload.departmentId, null)
+  assert.equal(stepPayload.runGreenMinutes, 0)
   assert.equal(stepPayload.name, '装配')
   assert.equal(Object.hasOwn(stepPayload, 'operation'), false)
   assert.equal(Object.hasOwn(stepPayload, 'department'), false)

@@ -15,6 +15,7 @@
     <template #actions>
       <div class="master-group-panel__actions">
         <ArtTreeExpandToggle
+          v-if="showTreeToggle"
           :tree="treeRef"
           :data="treeData"
           label="分组树"
@@ -103,14 +104,18 @@
   import ArtSvgIcon from '@/components/core/base/art-svg-icon/index.vue'
   import type { MasterGroup } from '@mdm/api'
 
-  const props = defineProps<{
-    title: string
-    groups: MasterGroup[]
-    selectedId: string
-    loading: boolean
-    error: string
-    managePermission: string
-  }>()
+  const props = withDefaults(
+    defineProps<{
+      title: string
+      groups: MasterGroup[]
+      selectedId: string
+      loading: boolean
+      error: string
+      managePermission: string
+      showTreeToggle?: boolean
+    }>(),
+    { showTreeToggle: true }
+  )
   defineEmits<{
     select: [id: string]
     refresh: []
@@ -146,6 +151,24 @@
     flex-direction: column;
     height: 100%;
     min-height: 0;
+
+    :deep(.art-section-card__header) {
+      display: grid;
+      flex-wrap: nowrap;
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: center;
+    }
+
+    :deep(.art-section-card__identity) {
+      min-width: 0;
+    }
+
+    :deep(.art-section-card__identity p),
+    :deep(.art-section-title) {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
 
     :deep(.master-group-panel__body) {
       display: flex;

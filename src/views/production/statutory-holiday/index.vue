@@ -1,163 +1,165 @@
 <template>
   <ArtPermissionGuard permission="MdmStatutoryHoliday:View" resource-name="法定节假日">
-  <div class="holiday-page business-workspace-page art-full-height">
-    <BusinessWorkspaceHeader
-      eyebrow="STATUTORY HOLIDAY CALENDAR"
-      title="法定节假日"
-      description="统一维护生产组织法定假期与调休区间，配置结果会自动标识到工厂日历。"
-      icon="ri:calendar-event-line"
-      :tags="[
-        { label: '组织假期日历', type: 'primary', effect: 'plain' },
-        { label: '系统组织联动', type: 'success', effect: 'light' }
-      ]"
-      :metrics="workspaceMetrics"
-    >
-      <template #actions>
-        <BusinessTableWorkspaceActions
-          :table="tableQueryRef"
-          :show-display-controls="viewMode === 'list'"
-        />
-      </template>
-    </BusinessWorkspaceHeader>
-
-    <div class="holiday-page__viewbar">
-      <div>
-        <strong>{{ viewMode === 'calendar' ? '月历配置' : '明细管理' }}</strong>
-        <span>{{
-          viewMode === 'calendar' ? '点击日期即可新增安排' : '支持筛选、批量删除与导入导出'
-        }}</span>
-      </div>
-      <ElSegmented v-model="viewMode" :options="viewOptions" />
-    </div>
-
-    <ArtSectionCard
-      v-show="viewMode === 'calendar'"
-      class="holiday-page__calendar-card"
-      title="假期日历"
-      subtitle="区间内每一天都会显示对应假期；点击标签可直接编辑。"
-      :loading="calendarLoading"
-      :error="calendarError"
-      :min-height="520"
-      @retry="loadCalendarRows"
-    >
-      <template #actions>
-        <ElButton @click="resetCalendarFilters"><ArtSvgIcon icon="ri:restart-line" />重置</ElButton>
-        <ElButton type="primary" @click="loadCalendarRows"
-          ><ArtSvgIcon icon="ri:search-line" />查询</ElButton
-        >
-      </template>
-
-      <div class="holiday-page__calendar-filters">
-        <ElTreeSelect
-          v-model="calendarFilters.organizationId"
-          :data="organizationTree"
-          :props="organizationTreeProps"
-          node-key="id"
-          value-key="id"
-          check-strictly
-          filterable
-          clearable
-          default-expand-all
-          placeholder="全部公司/组织"
-        />
-        <ElSelect v-model="calendarFilters.holidayType" clearable placeholder="全部假期类型">
-          <ElOption
-            v-for="item in holidayTypeOptions"
-            :key="item.value"
-            :label="item.label"
-            :value="item.value"
+    <div class="holiday-page business-workspace-page art-full-height">
+      <BusinessWorkspaceHeader
+        eyebrow="STATUTORY HOLIDAY CALENDAR"
+        title="法定节假日"
+        description="统一维护生产组织法定假期与调休区间，配置结果会自动标识到工厂日历。"
+        icon="ri:calendar-event-line"
+        :tags="[
+          { label: '组织假期日历', type: 'primary', effect: 'plain' },
+          { label: '系统组织联动', type: 'success', effect: 'light' }
+        ]"
+        :metrics="workspaceMetrics"
+      >
+        <template #actions>
+          <BusinessTableWorkspaceActions
+            :table="tableQueryRef"
+            :show-display-controls="viewMode === 'list'"
           />
-        </ElSelect>
-        <ElDatePicker
-          v-model="calendarFilters.year"
-          type="year"
-          value-format="YYYY"
-          format="YYYY 年"
-          :clearable="false"
-        />
+        </template>
+      </BusinessWorkspaceHeader>
+
+      <div class="holiday-page__viewbar">
+        <div>
+          <strong>{{ viewMode === 'calendar' ? '月历配置' : '明细管理' }}</strong>
+          <span>{{
+            viewMode === 'calendar' ? '点击日期即可新增安排' : '支持筛选、批量删除与导入导出'
+          }}</span>
+        </div>
+        <ElSegmented v-model="viewMode" :options="viewOptions" />
       </div>
 
-      <ElScrollbar class="holiday-page__calendar-scrollbar">
-        <ElCalendar v-model="calendarDate" class="holiday-page__calendar">
-          <template #header="{ date }">
-            <div class="holiday-page__calendar-header">
-              <ElButton text aria-label="上个月" @click="shiftMonth(-1)"
-                ><ArtSvgIcon icon="ri:arrow-left-s-line"
-              /></ElButton>
-              <strong>{{ date }}</strong>
-              <ElButton text aria-label="下个月" @click="shiftMonth(1)"
-                ><ArtSvgIcon icon="ri:arrow-right-s-line"
-              /></ElButton>
-            </div>
-          </template>
-          <template #date-cell="{ data }">
-            <div
-              class="holiday-page__day"
-              :class="{ 'is-other-month': data.type !== 'current-month' }"
-            >
-              <span class="holiday-page__day-heading">
-                <span>{{ dayjs(data.day).date() }}</span>
-                <button
-                  type="button"
-                  :aria-label="`${data.day}，新增节假日安排`"
-                  title="新增当天安排"
-                  v-if="hasAuth('MdmStatutoryHoliday:Add')"
-                  @click="openDialog(undefined, data.day)"
-                  ><ArtSvgIcon icon="ri:add-line"
-                /></button>
-              </span>
-              <span class="holiday-page__events">
-                <button
-                  v-for="holiday in getDayHolidays(data.day).slice(0, 3)"
-                  :key="holiday.id"
-                  type="button"
-                  class="holiday-page__event"
-                  :disabled="!hasAuth('MdmStatutoryHoliday:Edit')"
-                  :class="{
-                    'is-work': holiday.holidayType === 'makeup_work',
-                    'is-rest': holiday.holidayType === 'compensatory_leave'
-                  }"
-                  :title="`${resolveHolidayType(holiday.holidayType)} · ${holiday.organization.organizationName}`"
-                  @click.stop="openDialog(holiday)"
-                  >{{
-                    holiday.holidayType === 'makeup_work'
-                      ? '班 · 补班'
-                      : holiday.holidayType === 'compensatory_leave'
-                        ? '休 · 调休'
-                        : resolveHolidayType(holiday.holidayType)
-                  }}</button
-                >
-                <small v-if="getDayHolidays(data.day).length > 3"
-                  >+{{ getDayHolidays(data.day).length - 3 }}</small
-                >
-              </span>
-            </div>
-          </template>
-        </ElCalendar>
-      </ElScrollbar>
-    </ArtSectionCard>
+      <ArtSectionCard
+        v-show="viewMode === 'calendar'"
+        class="holiday-page__calendar-card"
+        title="假期日历"
+        subtitle="区间内每一天都会显示对应假期；点击标签可直接编辑。"
+        :loading="calendarLoading"
+        :error="calendarError"
+        :min-height="520"
+        @retry="loadCalendarRows"
+      >
+        <template #actions>
+          <ElButton @click="resetCalendarFilters"
+            ><ArtSvgIcon icon="ri:restart-line" />重置</ElButton
+          >
+          <ElButton type="primary" @click="loadCalendarRows"
+            ><ArtSvgIcon icon="ri:search-line" />查询</ElButton
+          >
+        </template>
 
-    <ArtTableQuery
-      v-show="viewMode === 'list'"
-      ref="tableQueryRef"
-      v-model="searchQuery"
-      :api-fn="fetchTableData"
-      :search-items="searchItems"
-      :columns-factory="columnsFactory"
-      :header-actions="headerActions"
-      header-actions-placement="workspace"
-      :search-bar-props="{ span: 8, labelWidth: 88, showExpand: false }"
-      :table-props="{
-        rowKey: 'id',
-        tableLayout: 'fixed',
-        emptyText: '暂无节假日安排',
-        emptyDescription: '可点击“新增”或在月历中选择日期配置。'
-      }"
-      focusable
-    />
+        <div class="holiday-page__calendar-filters">
+          <ElTreeSelect
+            v-model="calendarFilters.organizationId"
+            :data="organizationTree"
+            :props="organizationTreeProps"
+            node-key="id"
+            value-key="id"
+            check-strictly
+            filterable
+            clearable
+            default-expand-all
+            placeholder="全部公司/组织"
+          />
+          <ElSelect v-model="calendarFilters.holidayType" clearable placeholder="全部假期类型">
+            <ElOption
+              v-for="item in holidayTypeOptions"
+              :key="item.value"
+              :label="item.label"
+              :value="item.value"
+            />
+          </ElSelect>
+          <ElDatePicker
+            v-model="calendarFilters.year"
+            type="year"
+            value-format="YYYY"
+            format="YYYY 年"
+            :clearable="false"
+          />
+        </div>
 
-    <StatutoryHolidayDialog ref="dialogRef" @success="handleSaveSuccess" />
-  </div>
+        <ElScrollbar class="holiday-page__calendar-scrollbar">
+          <ElCalendar v-model="calendarDate" class="holiday-page__calendar">
+            <template #header="{ date }">
+              <div class="holiday-page__calendar-header">
+                <ElButton text aria-label="上个月" @click="shiftMonth(-1)"
+                  ><ArtSvgIcon icon="ri:arrow-left-s-line"
+                /></ElButton>
+                <strong>{{ date }}</strong>
+                <ElButton text aria-label="下个月" @click="shiftMonth(1)"
+                  ><ArtSvgIcon icon="ri:arrow-right-s-line"
+                /></ElButton>
+              </div>
+            </template>
+            <template #date-cell="{ data }">
+              <div
+                class="holiday-page__day"
+                :class="{ 'is-other-month': data.type !== 'current-month' }"
+              >
+                <span class="holiday-page__day-heading">
+                  <span>{{ dayjs(data.day).date() }}</span>
+                  <button
+                    type="button"
+                    :aria-label="`${data.day}，新增节假日安排`"
+                    title="新增当天安排"
+                    v-if="hasAuth('MdmStatutoryHoliday:Add')"
+                    @click="openDialog(undefined, data.day)"
+                    ><ArtSvgIcon icon="ri:add-line"
+                  /></button>
+                </span>
+                <span class="holiday-page__events">
+                  <button
+                    v-for="holiday in getDayHolidays(data.day).slice(0, 3)"
+                    :key="holiday.id"
+                    type="button"
+                    class="holiday-page__event"
+                    :disabled="!hasAuth('MdmStatutoryHoliday:Edit')"
+                    :class="{
+                      'is-work': holiday.holidayType === 'makeup_work',
+                      'is-rest': holiday.holidayType === 'compensatory_leave'
+                    }"
+                    :title="`${resolveHolidayType(holiday.holidayType)} · ${holiday.organization.organizationName}`"
+                    @click.stop="openDialog(holiday)"
+                    >{{
+                      holiday.holidayType === 'makeup_work'
+                        ? '班 · 补班'
+                        : holiday.holidayType === 'compensatory_leave'
+                          ? '休 · 调休'
+                          : resolveHolidayType(holiday.holidayType)
+                    }}</button
+                  >
+                  <small v-if="getDayHolidays(data.day).length > 3"
+                    >+{{ getDayHolidays(data.day).length - 3 }}</small
+                  >
+                </span>
+              </div>
+            </template>
+          </ElCalendar>
+        </ElScrollbar>
+      </ArtSectionCard>
+
+      <ArtTableQuery
+        v-show="viewMode === 'list'"
+        ref="tableQueryRef"
+        v-model="searchQuery"
+        :api-fn="fetchTableData"
+        :search-items="searchItems"
+        :columns-factory="columnsFactory"
+        :header-actions="headerActions"
+        header-actions-placement="workspace"
+        :search-bar-props="{ span: 8, labelWidth: 88, showExpand: false }"
+        :table-props="{
+          rowKey: 'id',
+          tableLayout: 'fixed',
+          emptyText: '暂无节假日安排',
+          emptyDescription: '可点击“新增”或在月历中选择日期配置。'
+        }"
+        focusable
+      />
+
+      <StatutoryHolidayDialog ref="dialogRef" @success="handleSaveSuccess" />
+    </div>
   </ArtPermissionGuard>
 </template>
 

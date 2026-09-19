@@ -96,7 +96,7 @@
   import ArtDictDisplay from '@/components/core/base/art-dict-display/index.vue'
   import ArtEntitySummary from '@/components/core/surfaces/art-entity-summary/index.vue'
   import ArtPermissionGuard from '@/components/core/feedback/art-permission-guard/index.vue'
-  import ArtSvgIcon from '@/components/core/base/art-svg-icon/index.vue'
+  import BusinessTableIdentityCell from '@/components/business/business-table-identity-cell/index.vue'
   import BusinessTableRowActions from '@/components/business/business-table-row-actions/index.vue'
   import { useArtFeedback } from '@/hooks/core/useArtFeedback'
   import { useTenantScopeStore } from '@/store/modules/tenantScope'
@@ -277,15 +277,11 @@
       minWidth: 210,
       fixed: 'left',
       formatter: (row) => (
-        <div class="workstation-page__identity">
-          <span aria-hidden="true">
-            <ArtSvgIcon icon="ri:layout-grid-line" />
-          </span>
-          <span>
-            <strong title={row.workstationName}>{row.workstationName}</strong>
-            <small title={row.workstationCode}>{row.workstationCode}</small>
-          </span>
-        </div>
+        <BusinessTableIdentityCell
+          primary={row.workstationName}
+          secondary={row.workstationCode}
+          icon="ri:layout-grid-line"
+        />
       )
     },
     {
@@ -539,45 +535,6 @@
       > .art-table-query {
         flex: 1;
         min-height: 0;
-      }
-    }
-
-    :deep(.workstation-page__identity) {
-      display: grid;
-      grid-template-columns: 36px minmax(0, 1fr);
-      gap: 10px;
-      align-items: center;
-      min-width: 0;
-
-      > span:first-child {
-        display: grid;
-        place-items: center;
-        width: 36px;
-        height: 36px;
-        color: var(--theme-color);
-        background: color-mix(in srgb, var(--theme-color) 9%, var(--el-bg-color));
-        border-radius: var(--el-border-radius-base);
-      }
-
-      > span:last-child,
-      strong,
-      small {
-        display: block;
-        min-width: 0;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-      }
-
-      strong {
-        color: var(--el-text-color-primary);
-      }
-
-      small {
-        margin-top: 2px;
-        font-family: var(--art-font-family-mono, Consolas, monospace);
-        font-size: 11px;
-        color: var(--el-text-color-secondary);
       }
     }
 

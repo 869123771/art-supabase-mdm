@@ -73,6 +73,7 @@
     ArtTableQueryProps
   } from '@/components/core/tables/art-table-query/index.vue'
   import type { BusinessWorkspaceMetric } from '@/components/business/business-workspace-header/index.vue'
+  import BusinessTableRowActions from '@/components/business/business-table-row-actions/index.vue'
   import ArtButtonTable from '@/components/core/forms/art-button-table/index.vue'
   import ArtPermissionGuard from '@/components/core/feedback/art-permission-guard/index.vue'
   import ArtSvgIcon from '@/components/core/base/art-svg-icon/index.vue'
@@ -343,7 +344,7 @@
       width: 164,
       fixed: 'right',
       formatter: (row) => (
-        <div class="production-workspace__row-actions">
+        <BusinessTableRowActions>
           <ArtButtonTable
             type="add"
             permission={
@@ -368,7 +369,7 @@
             label="删除常用工作中心配置"
             onClick={() => void removeConfiguration(row)}
           />
-        </div>
+        </BusinessTableRowActions>
       )
     }
   ]

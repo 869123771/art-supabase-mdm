@@ -145,7 +145,7 @@
       },
       formatter: (row) =>
         props.readonly ? (
-          <span class="activity-editor__number">{Number(row.baseQuantity).toFixed(2)}</span>
+          <span class="tabular-nums">{Number(row.baseQuantity).toFixed(2)}</span>
         ) : (
           <ElInputNumber
             v-model={row.baseQuantity}
@@ -287,10 +287,6 @@
         color: var(--el-text-color-secondary);
         text-align: right;
       }
-    }
-
-    &__number {
-      font-variant-numeric: tabular-nums;
     }
 
     :deep(.art-table) {

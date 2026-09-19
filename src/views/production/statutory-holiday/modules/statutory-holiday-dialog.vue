@@ -1,13 +1,11 @@
 <template>
   <ArtDialog ref="dialogRef" size="md">
     <div class="holiday-dialog">
-      <div class="holiday-dialog__context" role="note">
-        <span aria-hidden="true"><ArtSvgIcon icon="ri:calendar-event-line" /></span>
-        <div>
-          <strong>组织假期日历</strong>
-          <p>同一安排会同步显示在月历与明细列表中，日期区间包含开始日和结束日。</p>
-        </div>
-      </div>
+      <ArtEntitySummary spaced>
+        <template #icon><ArtSvgIcon icon="ri:calendar-event-line" /></template>
+        <strong>组织假期日历</strong>
+        <p>同一安排会同步显示在月历与明细列表中，日期区间包含开始日和结束日。</p>
+      </ArtEntitySummary>
 
       <ArtForm
         ref="formRef"
@@ -245,38 +243,6 @@
 
 <style scoped lang="scss">
   .holiday-dialog {
-    &__context {
-      display: grid;
-      grid-template-columns: 38px minmax(0, 1fr);
-      gap: 12px;
-      align-items: center;
-      padding: 11px 13px;
-      margin-bottom: 18px;
-      background: color-mix(in srgb, var(--theme-color) 7%, var(--default-box-color));
-      border-left: 3px solid var(--theme-color);
-      border-radius: var(--el-border-radius-base);
-
-      > span {
-        display: grid;
-        place-items: center;
-        width: 38px;
-        height: 38px;
-        color: var(--theme-color);
-        background: var(--default-box-color);
-        border-radius: var(--el-border-radius-base);
-      }
-
-      strong {
-        color: var(--el-text-color-primary);
-      }
-
-      p {
-        margin: 3px 0 0;
-        font-size: 12px;
-        color: var(--el-text-color-secondary);
-      }
-    }
-
     &__full-control {
       width: 100%;
     }

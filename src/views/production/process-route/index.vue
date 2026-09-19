@@ -9,59 +9,82 @@
       ><template #actions
         ><BusinessTableWorkspaceActions :table="tableRef" /></template></ProductionWorkspaceHeader
     ><div class="process-route-page__workspace">
-      <MasterGroupPanel
-        title="路线分组"
-        :groups="groupState.rows"
-        :selected-id="groupState.selectedId"
-        :loading="groupState.loading"
-        :error="groupState.error"
-        manage-permission="MdmProcessRoute:ManageGroup"
-        @select="selectGroup"
-        @refresh="loadGroups"
-        @add="openGroupAdd"
-        @edit="openGroupEdit"
-        @remove="removeGroup"
-      />
-      <ArtTableQuery
-        ref="tableRef"
-        v-model="search"
-        :api-fn="fetchRows"
-        :columns-factory="columns"
-        :header-actions="actions"
-        header-actions-placement="workspace"
-        :search-bar-props="{ span: 8, labelWidth: 82, showExpand: false }"
-        :on-success="handleTableSuccess"
-        :search-items="[
-          {
-            key: 'keyword',
-            label: '路线信息',
-            type: 'input',
-            props: { clearable: true, placeholder: '编码 / 名称 / 版本 / 路径' }
-          },
-          {
-            key: 'enabled',
-            label: '启用状态',
-            type: 'select',
-            props: {
-              clearable: true,
-              options: booleanOptions
-            }
-          }
-        ]"
-        :enable-cache="false"
-        focusable
-        focus-scope-selector=".process-route-page__workspace"
-        :table-props="{
-          rowKey: 'id',
-          tableLayout: 'fixed',
-          emptyText: '暂无工艺路线',
-          emptyDescription: '先创建产品路线，再维护工序序列与工艺配置。'
-        }"
-      />
+      <ArtWorkspaceSplitter
+        primary-size="300px"
+        primary-min="256px"
+        primary-max="400px"
+        :breakpoint="900"
+        stacked-primary-size="360px"
+      >
+        <template #primary>
+          <MasterGroupPanel
+            title="路线分组"
+            :groups="groupState.rows"
+            :selected-id="groupState.selectedId"
+            :loading="groupState.loading"
+            :error="groupState.error"
+            manage-permission="MdmProcessRoute:ManageGroup"
+            :show-tree-toggle="false"
+            @select="selectGroup"
+            @refresh="loadGroups"
+            @add="openGroupAdd"
+            @edit="openGroupEdit"
+            @remove="removeGroup"
+          />
+        </template>
+        <div class="process-route-page__main">
+          <ArtTableQuery
+            ref="tableRef"
+            v-model="search"
+            :api-fn="fetchRows"
+            :columns-factory="columns"
+            :header-actions="actions"
+            header-actions-placement="workspace"
+            :search-bar-props="{ span: 8, labelWidth: 82, showExpand: false }"
+            :on-success="handleTableSuccess"
+            :search-items="[
+              {
+                key: 'keyword',
+                label: '路线信息',
+                type: 'input',
+                props: { clearable: true, placeholder: '编码 / 名称 / 版本 / 路径' }
+              },
+              {
+                key: 'enabled',
+                label: '启用状态',
+                type: 'select',
+                props: {
+                  clearable: true,
+                  options: booleanOptions
+                }
+              }
+            ]"
+            :enable-cache="false"
+            focusable
+            focus-scope-selector=".process-route-page__workspace"
+            :table-props="{
+              rowKey: 'id',
+              tableLayout: 'fixed',
+              emptyText: '暂无工艺路线',
+              emptyDescription: '先创建产品路线，再维护工序序列与工艺配置。'
+            }"
+          />
+        </div>
+      </ArtWorkspaceSplitter>
     </div>
-    <RouteDialog ref="routeDialog" @success="refresh" />
-    <StepsDialog ref="stepsDialog" />
-    <GroupDialog ref="groupDialog" @success="handleGroupSaved" />
+    <component
+      :is="routeDialogComponent"
+      v-if="routeDialogComponent"
+      ref="routeDialog"
+      @success="refresh"
+    />
+    <component :is="stepsDialogComponent" v-if="stepsDialogComponent" ref="stepsDialog" />
+    <component
+      :is="groupDialogComponent"
+      v-if="groupDialogComponent"
+      ref="groupDialog"
+      @success="handleGroupSaved"
+    />
   </div>
 </template>
 <script setup lang="tsx">
@@ -77,10 +100,12 @@
   } from '@/components/core/tables/art-table-query/index.vue'
   import ArtButtonTable from '@/components/core/forms/art-button-table/index.vue'
   import ArtButtonMore from '@/components/core/forms/art-button-more/index.vue'
-  import ArtSvgIcon from '@/components/core/base/art-svg-icon/index.vue'
+  import ArtWorkspaceSplitter from '@/components/core/layouts/art-workspace-splitter/index.vue'
+  import BusinessTableIdentityCell from '@/components/business/business-table-identity-cell/index.vue'
   import BusinessTableRowActions from '@/components/business/business-table-row-actions/index.vue'
   import type { BusinessWorkspaceMetric } from '@/components/business/business-workspace-header/index.vue'
   import { useArtFeedback } from '@/hooks/core/useArtFeedback'
+  import { useLazyComponent } from '@/hooks/core/useLazyComponent'
   import { useTenantScopeStore } from '@/store/modules/tenantScope'
   import { useUserStore } from '@/store/modules/user'
   import { exportExcel } from '@/utils/file'
@@ -97,12 +122,8 @@
     type ProcessRouteInput,
     type WorkspaceQuery
   } from '@mdm/api'
-  import RouteDialog from './modules/route-dialog.vue'
-  import StepsDialog from './modules/steps-dialog.vue'
   import MasterGroupPanel from '../../operational-master/modules/master-group-panel.vue'
-  import GroupDialog, {
-    type GroupDialogOpenData
-  } from '../../operational-master/modules/group-dialog.vue'
+  import type { GroupDialogOpenData } from '../../operational-master/modules/group-dialog.vue'
   import ProductionWorkspaceHeader from '../modules/production-workspace-header.vue'
   defineOptions({ name: 'MdmProcessRoute' })
   const declaredPermissions = [
@@ -121,9 +142,24 @@
   const userStore = useUserStore()
   const { getDictMap } = storeToRefs(userStore)
   const { effectiveTenantId, tenantOptions } = storeToRefs(tenantScopeStore)
+  interface RouteDialogExpose {
+    handleOpen: (row?: ProcessRoute, tenantId?: string) => Promise<void>
+  }
+  interface StepsDialogExpose {
+    handleOpen: (row: ProcessRoute, viewOnly?: boolean) => Promise<void>
+  }
+  const { component: routeDialogComponent, load: loadRouteDialog } = useLazyComponent(
+    () => import('./modules/route-dialog.vue')
+  )
+  const { component: stepsDialogComponent, load: loadStepsDialog } = useLazyComponent(
+    () => import('./modules/steps-dialog.vue')
+  )
+  const { component: groupDialogComponent, load: loadGroupDialog } = useLazyComponent(
+    () => import('../../operational-master/modules/group-dialog.vue')
+  )
   const tableRef = ref<ArtTableQueryExpose>()
-  const routeDialog = ref<InstanceType<typeof RouteDialog>>()
-  const stepsDialog = ref<InstanceType<typeof StepsDialog>>()
+  const routeDialog = ref<RouteDialogExpose>()
+  const stepsDialog = ref<StepsDialogExpose>()
   const groupDialog = ref<{ handleOpen: (data: GroupDialogOpenData) => Promise<void> }>()
   const search = reactive({ keyword: '', enabled: undefined as boolean | undefined })
   const overview = reactive({ total: 0, rows: [] as ProcessRoute[] })
@@ -162,6 +198,14 @@
       value: item.value === 'true' || item.value === '1'
     }))
   )
+  async function openRouteDialog(row?: ProcessRoute, tenantId?: string): Promise<void> {
+    await loadRouteDialog()
+    await routeDialog.value?.handleOpen(row, tenantId)
+  }
+  async function openStepsDialog(row: ProcessRoute, viewOnly = false): Promise<void> {
+    await loadStepsDialog()
+    await stepsDialog.value?.handleOpen(row, viewOnly)
+  }
   const fetchRows = (p: WorkspaceQuery, o?: { signal?: AbortSignal }) =>
     fetchProcessRoutes(
       {
@@ -185,21 +229,15 @@
       minWidth: 280,
       fixed: 'left',
       formatter: (r) => (
-        <div class="process-route-page__identity">
-          <span aria-hidden="true">
-            <ArtSvgIcon icon="ri:box-3-line" />
-          </span>
-          <span>
-            <strong title={r.material?.materialName || ''}>
-              {r.material?.materialName || '产品待关联'}
-            </strong>
-            <small>
-              {[r.material?.materialCode, r.material?.specificationModel]
-                .filter(Boolean)
-                .join(' · ') || '—'}
-            </small>
-          </span>
-        </div>
+        <BusinessTableIdentityCell
+          primary={r.material?.materialName || '产品待关联'}
+          secondary={
+            [r.material?.materialCode, r.material?.specificationModel]
+              .filter(Boolean)
+              .join(' · ') || '—'
+          }
+          icon="ri:box-3-line"
+        />
       )
     },
     {
@@ -307,12 +345,12 @@
           <ArtButtonTable
             type="view"
             permission="MdmProcessRoute:View"
-            onClick={() => void stepsDialog.value?.handleOpen(r, true)}
+            onClick={() => void openStepsDialog(r, true)}
           />
           <ArtButtonTable
             type="edit"
             permission="MdmProcessRoute:Edit"
-            onClick={() => void routeDialog.value?.handleOpen(r, r.tenantId)}
+            onClick={() => void openRouteDialog(r, r.tenantId)}
           />
           <ArtButtonMore
             list={[
@@ -368,7 +406,7 @@
   }
   function handleMore(row: ProcessRoute, key: string) {
     if (key === 'copy') void copyRoute(row)
-    else if (key === 'steps') void stepsDialog.value?.handleOpen(row)
+    else if (key === 'steps') void openStepsDialog(row)
     else void remove(row)
   }
   async function exportRows() {
@@ -400,8 +438,7 @@
       type: 'add',
       label: '新增路线',
       permission: 'MdmProcessRoute:Add',
-      onClick: () =>
-        void routeDialog.value?.handleOpen(undefined, effectiveTenantId.value || undefined)
+      onClick: () => void openRouteDialog(undefined, effectiveTenantId.value || undefined)
     },
     {
       type: 'import',
@@ -465,8 +502,9 @@
     groupState.selectedId = id
     void tableRef.value?.getData()
   }
-  function openGroupAdd(parent?: MasterGroup) {
-    void groupDialog.value?.handleOpen({
+  async function openGroupAdd(parent?: MasterGroup): Promise<void> {
+    await loadGroupDialog()
+    await groupDialog.value?.handleOpen({
       domain: 'process-route',
       tenantId: parent?.tenantId || effectiveTenantId.value || '',
       tenantOptions: tenantChoices(),
@@ -474,8 +512,9 @@
       parent
     })
   }
-  function openGroupEdit(row: MasterGroup) {
-    void groupDialog.value?.handleOpen({
+  async function openGroupEdit(row: MasterGroup): Promise<void> {
+    await loadGroupDialog()
+    await groupDialog.value?.handleOpen({
       domain: 'process-route',
       tenantId: row.tenantId,
       tenantOptions: tenantChoices(),
@@ -522,46 +561,17 @@
     min-width: 0;
 
     &__workspace {
-      display: grid;
       flex: 1;
-      grid-template-columns: minmax(250px, 0.28fr) minmax(0, 1fr);
-      gap: 14px;
+      min-width: 0;
       min-height: 0;
     }
 
-    :deep(.process-route-page__identity) {
-      display: grid;
-      grid-template-columns: 36px minmax(0, 1fr);
-      gap: 10px;
-      align-items: center;
+    &__main {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
       min-width: 0;
-
-      > span:first-child {
-        display: grid;
-        place-items: center;
-        width: 36px;
-        height: 36px;
-        color: var(--theme-color);
-        background: color-mix(in srgb, var(--theme-color) 9%, var(--el-bg-color));
-        border-radius: var(--el-border-radius-base);
-      }
-
-      > span:last-child,
-      strong,
-      small {
-        display: block;
-        min-width: 0;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-      }
-
-      small {
-        margin-top: 2px;
-        font-family: var(--art-font-family-mono, Consolas, monospace);
-        font-size: 11px;
-        color: var(--el-text-color-secondary);
-      }
+      min-height: 0;
     }
 
     :deep(.process-route-page__route-name) {
@@ -606,24 +616,6 @@
 
     :deep(.process-route-page__muted) {
       color: var(--el-text-color-placeholder);
-    }
-  }
-
-  @media (width <= 1180px) {
-    .process-route-page__workspace {
-      grid-template-columns: minmax(220px, 0.34fr) minmax(0, 1fr);
-    }
-  }
-
-  @media (width <= 900px) {
-    .process-route-page {
-      overflow: auto;
-
-      &__workspace {
-        flex: none;
-        grid-template-rows: 300px minmax(520px, 1fr);
-        grid-template-columns: minmax(0, 1fr);
-      }
     }
   }
 </style>

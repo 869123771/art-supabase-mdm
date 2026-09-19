@@ -73,6 +73,7 @@
     ArtTableQueryProps
   } from '@/components/core/tables/art-table-query/index.vue'
   import type { BusinessWorkspaceMetric } from '@/components/business/business-workspace-header/index.vue'
+  import BusinessTableRowActions from '@/components/business/business-table-row-actions/index.vue'
   import ArtButtonTable from '@/components/core/forms/art-button-table/index.vue'
   import ArtButtonMore from '@/components/core/forms/art-button-more/index.vue'
   import ArtSvgIcon from '@/components/core/base/art-svg-icon/index.vue'
@@ -318,7 +319,7 @@
       width: 164,
       fixed: 'right',
       formatter: (r) => (
-        <div class="production-workspace__row-actions">
+        <BusinessTableRowActions>
           <ArtButtonTable
             type="view"
             permission="MdmWorkCenter:View"
@@ -364,7 +365,7 @@
               else void updateProcesses(r)
             }}
           />
-        </div>
+        </BusinessTableRowActions>
       )
     }
   ]

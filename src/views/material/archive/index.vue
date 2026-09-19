@@ -45,7 +45,12 @@
           />
         </div>
       </div>
-      <ArchiveDialog ref="dialogRef" @success="refresh" />
+      <component
+        :is="archiveDialogComponent"
+        v-if="archiveDialogComponent"
+        ref="dialogRef"
+        @success="refresh"
+      />
       <ArtDrawer
         ref="detailDrawerRef"
         title="物料编码"
@@ -234,6 +239,7 @@
 
   import { ElImage, ElTag } from 'element-plus'
   import { useArtFeedback } from '@/hooks/core/useArtFeedback'
+  import { useLazyComponent } from '@/hooks/core/useLazyComponent'
   import { useUserStore } from '@/store/modules/user'
   import { useTenantScopeStore } from '@/store/modules/tenantScope'
   import ArtPermissionGuard from '@/components/core/feedback/art-permission-guard/index.vue'
@@ -276,7 +282,7 @@
     type MaterialType,
     type UnitOfMeasure
   } from '@mdm/api'
-  import ArchiveDialog, { type ArchiveDialogOpenData } from './modules/archive-dialog.vue'
+  import type { ArchiveDialogOpenData } from './modules/archive-dialog.vue'
   import CategoryTreePanel from '../category/modules/category-tree-panel.vue'
 
   defineOptions({ name: 'MdmMaterialArchive' })
@@ -289,6 +295,9 @@
   const { getDictMap } = storeToRefs(userStore)
   const { effectiveTenantId, tenantOptions } = storeToRefs(useTenantScopeStore())
   const tenantId = computed(() => effectiveTenantId.value ?? '')
+  const { component: archiveDialogComponent, load: loadArchiveDialog } = useLazyComponent(
+    () => import('./modules/archive-dialog.vue')
+  )
   const tableRef = ref<ArtTableQueryExpose>()
   const dialogRef = ref<DialogExpose>()
   const detailDrawerRef = ref<ArtDrawerExpose<MaterialArchive>>()
@@ -387,8 +396,10 @@
     outboundRuleOptions: outboundRuleOptions.value,
     supplyRuleOptions: supplyRuleOptions.value
   })
-  const openDialog = (row?: MaterialArchive, copy = false): void =>
-    void dialogRef.value?.handleOpen(dialogData(row, copy))
+  const openDialog = async (row?: MaterialArchive, copy = false): Promise<void> => {
+    await loadArchiveDialog()
+    await dialogRef.value?.handleOpen(dialogData(row, copy))
+  }
   const isMaterialArchiveRecord = (
     value: Record<string, unknown> | undefined
   ): value is Record<string, unknown> & MaterialArchive =>
@@ -403,7 +414,7 @@
       permission: 'MdmMaterialArchive:Add',
       type: 'add',
       label: '新增物料',
-      onClick: () => openDialog()
+      onClick: () => void openDialog()
     },
     { permission: 'MdmMaterialArchive:Export', type: 'export', label: '导出' },
     {
@@ -414,7 +425,7 @@
       disabled: ({ selectedCount }: ArtTableQueryHeaderActionContext) => selectedCount !== 1,
       onClick: ({ selectedRows }: ArtTableQueryHeaderActionContext) => {
         const selectedRecord = selectedRows[0]
-        if (isMaterialArchiveRecord(selectedRecord)) openDialog(selectedRecord, true)
+        if (isMaterialArchiveRecord(selectedRecord)) void openDialog(selectedRecord, true)
       }
     },
     {
@@ -759,7 +770,7 @@
           <ArtButtonTable
             permission="MdmMaterialArchive:Edit"
             type="edit"
-            onClick={() => openDialog(row)}
+            onClick={() => void openDialog(row)}
           />
           <ArtButtonMore
             list={[
@@ -778,7 +789,7 @@
               }
             ]}
             onClick={(item) =>
-              item.key === 'copy' ? openDialog(row, true) : void removeMaterial(row)
+              item.key === 'copy' ? void openDialog(row, true) : void removeMaterial(row)
             }
           />
         </div>

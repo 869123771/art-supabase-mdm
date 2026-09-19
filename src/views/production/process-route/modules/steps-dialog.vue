@@ -773,7 +773,7 @@
     departmentId: null,
     runOutputQuantity: 1,
     runProcessingMinutes: 1,
-    runGreenMinutes: null,
+    runGreenMinutes: 0,
     setupMinutes: 0,
     operatorCount: 1,
     machineCount: 1,
@@ -1176,8 +1176,8 @@
       key: 'runGreenMinutes',
       label: '单趟绿灯时长（分钟）',
       type: 'number',
-      help: '剔除上下料时长；留空时按单趟加工时长核算理论生产进度。',
-      props: { precision: 6, class: '!w-full', clearable: true }
+      help: '默认为 0；后续用于设备采集加工运行时间，0 表示尚未配置。',
+      props: { min: 0, precision: 6, class: '!w-full' }
     },
     {
       key: 'setupMinutes',
@@ -1434,10 +1434,7 @@
     {
       key: 'runGreenMinutes',
       label: '单趟绿灯时长',
-      value: () =>
-        stepForm.runGreenMinutes == null
-          ? `跟随加工时长（${formatQuantity(stepForm.runProcessingMinutes)} 分钟）`
-          : `${formatQuantity(stepForm.runGreenMinutes)} 分钟`
+      value: () => `${formatQuantity(stepForm.runGreenMinutes ?? 0)} 分钟`
     },
     {
       key: 'setupMinutes',
@@ -2204,6 +2201,7 @@
                 : [])
           ]
         : []
+    stepForm.runGreenMinutes ??= 0
     stepForm.workCenterId = stepForm.workCenterIds[0] ?? null
     Object.assign(unitForm, {
       productionFactor: 1,
@@ -2255,9 +2253,9 @@
           await formRef.value?.validate()
           if (
             stepForm.runGreenMinutes !== null &&
-            (!Number.isFinite(stepForm.runGreenMinutes) || stepForm.runGreenMinutes <= 0)
+            (!Number.isFinite(stepForm.runGreenMinutes) || stepForm.runGreenMinutes < 0)
           ) {
-            ElMessage.warning('单趟绿灯时长需大于 0，留空则自动采用单趟加工时长')
+            ElMessage.warning('单趟绿灯时长不能小于 0')
             activeTab.value = 'basic'
             return false
           }

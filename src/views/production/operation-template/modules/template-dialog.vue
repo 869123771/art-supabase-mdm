@@ -229,17 +229,7 @@
             formatter: (row: OperationTask) => {
               const index = taskIndex(row)
               return (
-                <div
-                  class="template-editor__actions"
-                  style={{
-                    display: 'flex',
-                    flexWrap: 'nowrap',
-                    gap: '8px',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    whiteSpace: 'nowrap'
-                  }}
-                >
+                <div class="flex flex-nowrap items-center justify-center gap-2 whitespace-nowrap">
                   <ArtIconButton
                     icon="ri:file-copy-line"
                     label={`复制任务项 ${index + 1}`}
@@ -248,7 +238,7 @@
                   <ArtIconButton
                     icon="ri:delete-bin-6-line"
                     label={`删除任务项 ${index + 1}`}
-                    class="template-editor__delete"
+                    class="text-[var(--el-color-danger)]!"
                     onClick={() => form.model.items.splice(index, 1)}
                   />
                 </div>
@@ -320,17 +310,11 @@
     gap: 16px;
     min-width: 0;
 
-    &__actions,
     &__summary {
       display: flex;
       gap: 8px;
       align-items: center;
       justify-content: space-between;
-    }
-
-    &__actions {
-      justify-content: center;
-      white-space: nowrap;
     }
 
     &__summary {
@@ -361,10 +345,6 @@
         line-height: 1;
         color: var(--theme-color);
       }
-    }
-
-    &__delete {
-      color: var(--el-color-danger);
     }
 
     :deep(.el-input-number) {
