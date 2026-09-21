@@ -241,8 +241,6 @@
 
 <script setup lang="tsx">
   import { createDateTimeFormatter } from '@/utils/ui/format'
-
-  import dayjs from 'dayjs'
   import { ElImage, ElTag } from 'element-plus'
   import TreeUtils from '@/utils/tree'
   import { useArtFeedback } from '@/hooks/core/useArtFeedback'
@@ -677,8 +675,7 @@
   ]
 
   const formatDate = createDateTimeFormatter({ format: 'YYYY-MM-DD', emptyText: '—' })
-  const formatTime = (value?: string | null) =>
-    value ? dayjs(value).format('YYYY-MM-DD HH:mm') : '—'
+  const formatTime = createDateTimeFormatter({ format: 'YYYY-MM-DD HH:mm', emptyText: '—' })
   const identityDetails = computed(() =>
     detailRow.value
       ? [

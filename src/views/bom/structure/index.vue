@@ -347,6 +347,12 @@
     },
     { prop: 'sequenceNo', label: '行号', width: 84, align: 'center' },
     {
+      prop: 'componentTypeName',
+      label: '组件类型',
+      width: 130,
+      formatter: (row) => row.componentTypeName || '—'
+    },
+    {
       prop: 'mrpEnabled',
       label: 'MRP 运算',
       width: 100,

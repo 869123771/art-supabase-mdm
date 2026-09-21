@@ -14,6 +14,8 @@
 
 排班管理复用部门/产线树，并以月历和班表两种视图呈现排班。排班引用工厂日历的轮班模式与班次快照，支持单日、长期、期间三种生效范围；班组人员只可从当前部门及其下级部门的生产人员配置中选择。同一人员或同一班次在重叠日期范围内不得重复排班，新增、编辑、删除均通过安全 RPC 原子执行并保留软删除审计记录。
 
+“我的排班”仅返回当前登录账号关联的生产人员与班次。`mdm_get_my_shift_schedule_secure` 的 `holidayDates` 复用 `app_private.mdm_non_working_statutory_holiday_dates`，沿生产部门与组织层级取适用的非工作法定假日，排除补班日；`includeStatutoryHolidays = false` 的班次在这些日期不显示。月历即使展示相邻月份的日期格，也标识已返回的法定假日。2026-09-21 直接更新该只读 RPC 前保存并校验原函数定义（MD5 `92aca6f0a37a685b3586ce6891acc8e2`），事务内替换、断言并回滚验证后应用；新定义 MD5 为 `abfdcc4b2f08c673793c12911f888d13`。后验确认 `authenticated` 可执行、`anon` 不可执行，示例生产组织的 2026-10-01 至 2026-10-07 均被识别为非工作假日。
+
 参考轮班模式要求同时具有 `MdmFactoryCalendar:View` 和 `MdmFactoryCalendar:ReferencePattern`，只允许受控复制当前租户已有模式；不能凭参考权限直接插入自定义模式。直接新增仍要求独立的 `MdmFactoryCalendar:AddPattern`。私有复制函数校验身份、权限和源/目标租户，并锁定目标部门；公开 RPC 保持原有参数。`supabase/tests/mdm_calendar_reference_permissions_test.sql` 覆盖复制、新增边界、非空目标、跨租户及不完整授权，所有测试写入回滚。
 
 日历提醒目前提供页面内覆盖缺口提示及提前天数设置，尚未连接微信公众号发送通道。

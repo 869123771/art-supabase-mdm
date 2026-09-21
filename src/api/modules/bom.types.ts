@@ -15,6 +15,9 @@ export type BomMaterialReference = Pick<
   | 'materialSource'
   | 'specialPurchaseType'
   | 'baseUnitId'
+  | 'auxiliaryUnitId'
+  | 'auxiliaryUnit2Id'
+  | 'unitConversions'
   | 'productionUnitId'
   | 'defaultWarehouseId'
   | 'materialIssueMethod'
@@ -53,6 +56,14 @@ export interface BomItem {
   tenantId: string
   bomId: string
   componentMaterialId: string
+  componentTypeId?: string | null
+  componentType?: {
+    id: string
+    componentTypeCode: string
+    componentTypeName: string
+    tagStyle: string
+    textColor: string
+  } | null
   component?: BomMaterialReference | null
   sequenceNo: number
   quantity: number
@@ -132,6 +143,7 @@ export interface BomInput {
     Pick<
       BomItem,
       | 'componentMaterialId'
+      | 'componentTypeId'
       | 'sequenceNo'
       | 'quantity'
       | 'unitId'
@@ -191,6 +203,8 @@ export interface BomStructureNode {
   bomCode: string
   bomVersion: string
   bomItemId?: string | null
+  componentTypeId?: string | null
+  componentTypeName?: string | null
   materialId: string
   materialCode: string
   materialName: string

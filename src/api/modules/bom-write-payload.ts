@@ -24,6 +24,7 @@ export const buildBomWritePayload = (payload: BomInput): BomWritePayload => ({
   },
   items: payload.items.map((item) => ({
     componentMaterialId: item.componentMaterialId,
+    componentTypeId: item.componentTypeId,
     sequenceNo: item.sequenceNo,
     quantity: item.quantity,
     unitId: item.unitId,

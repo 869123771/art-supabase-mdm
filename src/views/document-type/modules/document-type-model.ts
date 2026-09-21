@@ -22,6 +22,7 @@ export const createDocumentTypeFormModel = (
   textColor: '',
   tagStyle: 'primary',
   enabled: true,
+  extensionFields: [],
   ...patch
 })
 
@@ -37,7 +38,8 @@ export const createDocumentTypeCopyModel = (source: DocumentTypeRecord): Documen
     sortOrder: source.sortOrder + 10,
     textColor: source.textColor,
     tagStyle: source.tagStyle,
-    enabled: source.enabled
+    enabled: source.enabled,
+    extensionFields: source.extensionFields.map((field) => ({ ...field }))
   })
 
 export const buildDocumentTypeInput = (
@@ -54,7 +56,8 @@ export const buildDocumentTypeInput = (
     'sortOrder',
     'textColor',
     'tagStyle',
-    'enabled'
+    'enabled',
+    'extensionFields'
   ]) as DocumentTypeWriteInput
 
   payload.documentTypeCode = normalizeNonNullableText(payload.documentTypeCode).toUpperCase()
@@ -64,6 +67,13 @@ export const buildDocumentTypeInput = (
   payload.tagStyle = normalizeNonNullableText(
     payload.tagStyle
   ) as DocumentTypeWriteInput['tagStyle']
+  payload.extensionFields = payload.extensionFields.map((field) => ({
+    key: field.key.trim(),
+    label: field.label.trim(),
+    valueType: field.valueType,
+    sourceComponentTypeId:
+      field.valueType === 'material' ? field.sourceComponentTypeId || null : null
+  }))
   if (!includeTenant) delete payload.tenantId
   return payload
 }

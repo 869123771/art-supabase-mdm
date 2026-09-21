@@ -43,6 +43,64 @@
             <span>{{ form.data.textColor || '跟随标签默认颜色' }}</span>
           </div>
         </template>
+        <template #extensionFields>
+          <div class="document-type-dialog__extension-editor">
+            <div class="document-type-dialog__extension-help">
+              <span>工单类型切换时，专用字段组随之切换；物料字段可按 BOM 组件类型自动带入。</span>
+              <ElButton type="primary" plain @click="addExtensionField">新增字段</ElButton>
+            </div>
+            <div
+              v-if="!form.data.extensionFields.length"
+              class="document-type-dialog__extension-empty"
+            >
+              暂无专用字段，生产工单沿用通用表单。
+            </div>
+            <div
+              v-for="(field, index) in form.data.extensionFields"
+              :key="index"
+              class="document-type-dialog__extension-row"
+            >
+              <ElInput
+                v-model="field.key"
+                :aria-label="`第 ${index + 1} 个字段编码`"
+                placeholder="字段编码，如 outerPanel"
+              />
+              <ElInput
+                v-model="field.label"
+                :aria-label="`第 ${index + 1} 个字段名称`"
+                placeholder="显示名称，如 外板"
+              />
+              <ElSelect v-model="field.valueType" :aria-label="`第 ${index + 1} 个字段类型`">
+                <ElOption label="文本" value="text" />
+                <ElOption label="数字" value="number" />
+                <ElOption label="物料" value="material" />
+              </ElSelect>
+              <ElSelect
+                v-model="field.sourceComponentTypeId"
+                :aria-label="`第 ${index + 1} 个 BOM 来源`"
+                :disabled="field.valueType !== 'material'"
+                clearable
+                filterable
+                placeholder="手动填写 / BOM 类型"
+              >
+                <ElOption
+                  v-for="componentType in componentTypeOptions"
+                  :key="componentType.id"
+                  :label="componentType.componentTypeName"
+                  :value="componentType.id"
+                  :disabled="!componentType.enabled"
+                />
+              </ElSelect>
+              <ElButton
+                text
+                type="danger"
+                :aria-label="`删除第 ${index + 1} 个专用字段`"
+                @click="form.data.extensionFields.splice(index, 1)"
+                >删除</ElButton
+              >
+            </div>
+          </div>
+        </template>
       </ArtForm>
     </div>
   </ArtDialog>
@@ -51,6 +109,7 @@
 <script setup lang="ts">
   import type { CSSProperties, ComputedRef, UnwrapNestedRefs } from 'vue'
   import { ElMessage, type FormRules } from 'element-plus'
+  import { uniq } from 'lodash-es'
   import ArtDialog from '@/components/core/dialogs/art-dialog/index.vue'
   import type { ArtDialogExpose } from '@/components/core/dialogs/art-dialog/types'
   import ArtForm, { type FormItem } from '@/components/core/forms/art-form/index.vue'
@@ -58,12 +117,13 @@
   import { useTenantScopeFormPolicy } from '@/hooks/core/useTenantScopeFormPolicy'
   import { useUserStore } from '@/store/modules/user'
   import TreeUtils from '@/utils/tree'
-  import type { DocumentTypeMenuNode, DocumentTypeRecord } from '@mdm/api'
+  import type { ComponentTypeRecord, DocumentTypeMenuNode, DocumentTypeRecord } from '@mdm/api'
   import {
     copyDocumentType,
     createDocumentType,
     fetchNextDocumentTypeSort,
-    updateDocumentType
+    updateDocumentType,
+    fetchComponentTypeOptions
   } from '@mdm/api'
   import {
     buildDocumentTypeInput,
@@ -111,6 +171,21 @@
   const { getDictMap } = storeToRefs(userStore)
   const { shouldExposeTenantField } = useTenantScopeFormPolicy()
   const presetColors = ['#409EFF', '#67C23A', '#E6A23C', '#F56C6C', '#909399']
+  const componentTypeOptions = ref<ComponentTypeRecord[]>([])
+  const isProductionType = computed(() =>
+    Boolean(
+      form.data.menuId &&
+      treeUtils.findNode(form.menuTree, form.data.menuId)?.name === 'MesWorkOrder'
+    )
+  )
+  const addExtensionField = () => {
+    form.data.extensionFields.push({
+      key: '',
+      label: '',
+      valueType: 'text',
+      sourceComponentTypeId: null
+    })
+  }
 
   const booleanOptions = computed(() =>
     (getDictMap.value.commonBoolean ?? []).map((item) => ({
@@ -236,6 +311,17 @@
           props: { clearable: true, placeholder: '请选择标签样式' }
         },
         { label: '文字颜色', key: 'textColor', type: 'input', span: 12 },
+        ...(isProductionType.value
+          ? [
+              {
+                label: '生产工单专用字段',
+                key: 'extensionSection',
+                type: 'divider',
+                span: 24
+              } as FormItem,
+              { label: '扩展字段配置', key: 'extensionFields', type: 'slot', span: 24 } as FormItem
+            ]
+          : []),
         { label: '补充说明', key: 'remarkSection', type: 'divider', span: 24 },
         {
           label: '备注',
@@ -352,6 +438,28 @@
       return false
     }
 
+    if (isProductionType.value) {
+      const fields = form.data.extensionFields
+      if (
+        fields.some(
+          (field) => !/^[a-z][A-Za-z0-9]{0,39}$/.test(field.key.trim()) || !field.label.trim()
+        )
+      ) {
+        ElMessage.warning('请填写专用字段名称；字段编码须以小写字母开头，且仅含字母和数字')
+        return false
+      }
+      if (uniq(fields.map((field) => field.key)).length !== fields.length) {
+        ElMessage.warning('专用字段编码不能重复')
+        return false
+      }
+      if (fields.some((field) => field.sourceComponentTypeId && field.valueType !== 'material')) {
+        ElMessage.warning('只有物料字段可以从 BOM 组件类型自动带入')
+        return false
+      }
+    } else {
+      form.data.extensionFields = []
+    }
+
     try {
       if (form.mode === 'edit' && form.data.id) {
         await updateDocumentType(form.data.id, buildDocumentTypeUpdateInput(form.data))
@@ -395,6 +503,9 @@
       onOpen: async (_openData, api) => {
         try {
           await refreshSuggestedSort()
+          componentTypeOptions.value = form.data.tenantId
+            ? await fetchComponentTypeOptions(form.data.tenantId)
+            : []
           await nextTick()
           formRef.value?.clearValidate()
         } finally {
@@ -406,6 +517,13 @@
   }
 
   defineExpose({ handleOpen })
+  watch(
+    () => form.data.tenantId,
+    async (tenantId, previous) => {
+      if (!tenantId || tenantId === previous) return
+      componentTypeOptions.value = await fetchComponentTypeOptions(tenantId)
+    }
+  )
 </script>
 
 <style scoped lang="scss">
@@ -429,6 +547,36 @@
         font-family: var(--art-font-family-mono, Consolas, monospace);
         color: var(--el-text-color-secondary);
         white-space: nowrap;
+      }
+    }
+
+    &__extension-editor {
+      display: grid;
+      gap: var(--art-space-3);
+    }
+    &__extension-help {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: var(--art-space-3);
+      color: var(--el-text-color-secondary);
+      font-size: 12px;
+    }
+    &__extension-empty {
+      padding: var(--art-space-4);
+      color: var(--el-text-color-secondary);
+      background: var(--art-gray-100);
+      border-radius: var(--el-border-radius-base);
+    }
+    &__extension-row {
+      display: grid;
+      grid-template-columns: minmax(120px, 1fr) minmax(120px, 1fr) 100px minmax(160px, 1fr) auto;
+      gap: var(--art-space-2);
+      align-items: center;
+    }
+    @media (max-width: 760px) {
+      &__extension-row {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
       }
     }
   }

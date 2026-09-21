@@ -38,6 +38,22 @@
         </ArtDescriptions>
       </ArtSectionCard>
 
+      <ArtSectionCard
+        v-if="detail.record.extensionFields?.length"
+        title="生产工单专用字段"
+        subtitle="按当前单据类型显示，并可从 BOM 组件类型取值。"
+      >
+        <div class="document-type-detail__fields">
+          <div v-for="field in detail.record.extensionFields" :key="field.key">
+            <strong>{{ field.label }}</strong>
+            <small
+              >{{ field.key }} ·
+              {{ field.sourceComponentTypeId ? 'BOM 自动带入' : '手动填写' }}</small
+            >
+          </div>
+        </div>
+      </ArtSectionCard>
+
       <ArtSectionCard title="显示与审计" subtitle="列表展示风格以及最近一次维护信息。">
         <ArtDescriptions :data="detail" :items="auditItems" :columns="2">
           <template #item-tagStyle>
@@ -91,7 +107,8 @@
       sortOrder: 10,
       textColor: '',
       tagStyle: 'primary',
-      enabled: true
+      enabled: true,
+      extensionFields: []
     },
     menuPath: ''
   })
@@ -165,6 +182,20 @@
         border: 1px solid var(--art-card-border);
         border-radius: 50%;
       }
+    }
+    &__fields {
+      display: grid;
+      gap: var(--art-space-2);
+    }
+    &__fields > div {
+      display: flex;
+      justify-content: space-between;
+      gap: var(--art-space-2);
+      padding: var(--art-space-2);
+      border-bottom: 1px solid var(--el-border-color-lighter);
+    }
+    &__fields small {
+      color: var(--el-text-color-secondary);
     }
   }
 </style>

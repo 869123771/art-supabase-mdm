@@ -169,6 +169,7 @@
   import {
     fetchBomProcessRoutes,
     fetchBomProcessRouteSteps,
+    fetchComponentTypeOptions,
     fetchMaterialArchives,
     fetchMaterialCategories,
     saveBom,
@@ -177,6 +178,7 @@
     type BomProcessRouteOption,
     type BomProcessRouteStepOption,
     type BomRecord,
+    type ComponentTypeRecord,
     type MaterialArchive,
     type MaterialCategory,
     type UnitOfMeasure
@@ -187,6 +189,7 @@
     mergeBomComponentSelection,
     removeBomComponentSelection
   } from './bom-component-selection'
+  import { convertBomComponentQuantity } from './bom-unit-conversion'
 
   export interface BomDialogOpenData {
     row?: BomRecord
@@ -214,6 +217,7 @@
   const groups = ref<BomGroup[]>([])
   const processRoutes = ref<BomProcessRouteOption[]>([])
   const processSteps = ref<BomProcessRouteStepOption[]>([])
+  const componentTypes = ref<ComponentTypeRecord[]>([])
   const routeLoading = ref(false)
   const stepLoading = ref(false)
   const selectedParent = ref<MaterialArchive[]>([])
@@ -598,6 +602,31 @@
       formatter: (row) => materialById(row.componentMaterialId)?.materialCode || '—'
     },
     {
+      prop: 'componentTypeId',
+      label: '组件类型',
+      width: 160,
+      formatter: (row) => (
+        <ElSelect
+          v-model={row.componentTypeId}
+          clearable
+          filterable
+          placeholder="选择组件类型"
+          class="w-full!"
+        >
+          {componentTypes.value
+            .filter((item) => item.tenantId === form.tenantId)
+            .map((item) => (
+              <ElOption
+                key={item.id}
+                label={item.componentTypeName}
+                value={item.id}
+                disabled={!item.enabled}
+              />
+            ))}
+        </ElSelect>
+      )
+    },
+    {
       prop: 'specificationModel',
       label: '规格型号',
       width: 180,
@@ -656,7 +685,14 @@
       requiredMessage: ({ row, rowIndex }) => `${componentRowLabel(row, rowIndex)}未选择单位`,
       width: 160,
       formatter: (row) => (
-        <ElSelect v-model={row.unitId} filterable clearable aria-label="组件单位" class="w-full!">
+        <ElSelect
+          modelValue={row.unitId}
+          filterable
+          clearable
+          aria-label="组件单位"
+          class="w-full!"
+          onUpdate:modelValue={(unitId: string) => handleComponentUnitChange(row, unitId)}
+        >
           {scopedUnits.value.map((unit) => (
             <ElOption key={unit.id} label={unit.unitName} value={unit.id} />
           ))}
@@ -855,6 +891,22 @@
     form.items = result.items
     syncComponentSelection(result.materials)
   }
+  const handleComponentUnitChange = (row: BomComponentInput, unitId: string) => {
+    const material = materialById(row.componentMaterialId)
+    if (!material || !unitId) {
+      row.unitId = unitId
+      return
+    }
+    const previousUnitId = row.unitId
+    row.unitId = unitId
+    if (!previousUnitId || previousUnitId === unitId) return
+    const converted = convertBomComponentQuantity(row.quantity, previousUnitId, unitId, material)
+    if (converted === null) {
+      ElMessage.warning('该物料未维护所选单位的换算关系，请手动填写用量')
+      return
+    }
+    row.quantity = converted
+  }
   const validateComponents = async (): Promise<boolean> => {
     if (!form.items.length) {
       ElMessage.warning('请至少添加一项 BOM 组件')
@@ -922,7 +974,10 @@
         try {
           await Promise.all([
             loadProcessRoutes(form.materialId, data.row?.processRouteId),
-            loadMaterialCategories()
+            loadMaterialCategories(),
+            fetchComponentTypeOptions(form.tenantId).then((rows) => {
+              componentTypes.value = rows
+            })
           ])
           formRef.value?.clearValidate()
           componentTableRef.value?.clearValidate()
@@ -941,6 +996,7 @@
       form.processRouteId = null
       form.baseUnitId = ''
       form.items = []
+      componentTypes.value = []
       processRoutes.value = []
       processSteps.value = []
       selectedParent.value = []

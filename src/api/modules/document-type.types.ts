@@ -1,4 +1,5 @@
 import type { AppRouteRecord } from '@/types/router'
+import type { WorkOrderExtensionField } from '@/types/business/work-order-extension'
 
 export type DocumentTypeTagStyle = '' | 'primary' | 'success' | 'info' | 'warning' | 'danger'
 
@@ -19,6 +20,7 @@ export interface DocumentTypeRecord {
   textColor: string
   tagStyle: DocumentTypeTagStyle
   enabled: boolean
+  extensionFields: WorkOrderExtensionField[]
   createBy?: string | null
   createTime?: string
   updateBy?: string | null
@@ -37,6 +39,7 @@ export interface DocumentTypeWriteInput {
   textColor: string
   tagStyle: DocumentTypeTagStyle
   enabled: boolean
+  extensionFields: WorkOrderExtensionField[]
 }
 
 export type DocumentTypeUpdateInput = Omit<DocumentTypeWriteInput, 'tenantId'>

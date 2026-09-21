@@ -51,7 +51,7 @@ export async function fetchBoms(params: BomQuery, options?: { signal?: AbortSign
   let query = supabase
     .from('mdm_bom')
     .select(
-      '*,group:mdm_master_group!mdm_bom_group_fkey(id,code,name),material:mdm_material!mdm_bom_material_fkey(id,tenant_id,material_code,material_name,specification_model,drawing_no,description,material_source,special_purchase_type,base_unit_id,production_unit_id,default_warehouse_id,material_issue_method,backflush_method,over_issue_control_method,baseUnit:mdm_unit_of_measure!mdm_material_base_unit_fkey(id,unit_code,unit_name,symbol),productionUnit:mdm_unit_of_measure!mdm_material_production_unit_id_fkey(id,unit_code,unit_name,symbol),defaultWarehouse:mdm_warehouse!mdm_material_default_warehouse_fkey(id,warehouse_code,warehouse_name)),processRoute:mdm_process_route!mdm_bom_process_route_fkey(id,tenant_id,material_id,code,name,version,is_default,enabled),baseUnit:mdm_unit_of_measure!mdm_bom_unit_fkey(id,unit_code,unit_name,symbol),items:mdm_bom_item(id,tenant_id,bom_id,component_material_id,sequence_no,quantity,unit_id,scrap_rate,mrp_enabled,default_issue_warehouse_id,issue_method,backflush_method,over_issue_control_method,project_text,position_no,process_route_step_id,operation_name,effective_from,effective_to,remark,component:mdm_material!mdm_bom_item_material_fkey(id,tenant_id,material_code,material_name,specification_model,drawing_no,description,material_source,special_purchase_type,base_unit_id,production_unit_id,default_warehouse_id,material_issue_method,backflush_method,over_issue_control_method,baseUnit:mdm_unit_of_measure!mdm_material_base_unit_fkey(id,unit_code,unit_name,symbol),productionUnit:mdm_unit_of_measure!mdm_material_production_unit_id_fkey(id,unit_code,unit_name,symbol),defaultWarehouse:mdm_warehouse!mdm_material_default_warehouse_fkey(id,warehouse_code,warehouse_name)),processRouteStep:mdm_process_route_step!mdm_bom_item_process_route_step_fkey(id,tenant_id,route_id,code,name,sort,work_center_id,work_center_ids,workCenter:mdm_work_center!mdm_process_route_step_tenant_id_work_center_id_fkey(id,code,name),sequence:mdm_process_route_sequence!mdm_process_route_step_sequence_fk(id,sequence_no,sequence_type)),unit:mdm_unit_of_measure!mdm_bom_item_unit_fkey(id,unit_code,unit_name,symbol),defaultIssueWarehouse:mdm_warehouse!mdm_bom_item_default_issue_warehouse_fkey(id,warehouse_code,warehouse_name))',
+      '*,group:mdm_master_group!mdm_bom_group_fkey(id,code,name),material:mdm_material!mdm_bom_material_fkey(id,tenant_id,material_code,material_name,specification_model,drawing_no,description,material_source,special_purchase_type,base_unit_id,production_unit_id,default_warehouse_id,material_issue_method,backflush_method,over_issue_control_method,baseUnit:mdm_unit_of_measure!mdm_material_base_unit_fkey(id,unit_code,unit_name,symbol),productionUnit:mdm_unit_of_measure!mdm_material_production_unit_id_fkey(id,unit_code,unit_name,symbol),defaultWarehouse:mdm_warehouse!mdm_material_default_warehouse_fkey(id,warehouse_code,warehouse_name)),processRoute:mdm_process_route!mdm_bom_process_route_fkey(id,tenant_id,material_id,code,name,version,is_default,enabled),baseUnit:mdm_unit_of_measure!mdm_bom_unit_fkey(id,unit_code,unit_name,symbol),items:mdm_bom_item(id,tenant_id,bom_id,component_material_id,component_type_id,sequence_no,quantity,unit_id,scrap_rate,mrp_enabled,default_issue_warehouse_id,issue_method,backflush_method,over_issue_control_method,project_text,position_no,process_route_step_id,operation_name,effective_from,effective_to,remark,componentType:mdm_component_type!mdm_bom_item_component_type_fk(id,component_type_code,component_type_name,tag_style,text_color),component:mdm_material!mdm_bom_item_material_fkey(id,tenant_id,material_code,material_name,specification_model,drawing_no,description,material_source,special_purchase_type,base_unit_id,auxiliary_unit_id,auxiliary_unit_2_id,unit_conversions,production_unit_id,default_warehouse_id,material_issue_method,backflush_method,over_issue_control_method,baseUnit:mdm_unit_of_measure!mdm_material_base_unit_fkey(id,unit_code,unit_name,symbol),productionUnit:mdm_unit_of_measure!mdm_material_production_unit_id_fkey(id,unit_code,unit_name,symbol),defaultWarehouse:mdm_warehouse!mdm_material_default_warehouse_fkey(id,warehouse_code,warehouse_name)),processRouteStep:mdm_process_route_step!mdm_bom_item_process_route_step_fkey(id,tenant_id,route_id,code,name,sort,work_center_id,work_center_ids,workCenter:mdm_work_center!mdm_process_route_step_tenant_id_work_center_id_fkey(id,code,name),sequence:mdm_process_route_sequence!mdm_process_route_step_sequence_fk(id,sequence_no,sequence_type)),unit:mdm_unit_of_measure!mdm_bom_item_unit_fkey(id,unit_code,unit_name,symbol),defaultIssueWarehouse:mdm_warehouse!mdm_bom_item_default_issue_warehouse_fkey(id,warehouse_code,warehouse_name))',
       { count: 'exact' }
     )
     .order('sort')
@@ -183,18 +183,48 @@ export async function fetchBomStructure(id: string, maxDepth = 8): Promise<BomSt
   const missingDrawingMaterialIds = uniq(
     nodes.filter((node) => node.drawingNo === undefined).map((node) => node.materialId)
   )
-  if (!missingDrawingMaterialIds.length) return nodes
-
-  const { data: materials } = await responseHandle<
-    Array<{ id: string; drawingNo?: string | null }>
-  >(
-    () => supabase.from('mdm_material').select('id,drawing_no').in('id', missingDrawingMaterialIds),
-    readOptions
+  const itemIds = uniq(
+    nodes.map((node) => node.bomItemId).filter((id): id is string => Boolean(id))
   )
+  const [{ data: materials }, { data: items }] = await Promise.all([
+    missingDrawingMaterialIds.length
+      ? responseHandle<Array<{ id: string; drawingNo?: string | null }>>(
+          () =>
+            supabase
+              .from('mdm_material')
+              .select('id,drawing_no')
+              .in('id', missingDrawingMaterialIds),
+          readOptions
+        )
+      : Promise.resolve({ data: [] }),
+    itemIds.length
+      ? responseHandle<
+          Array<{
+            id: string
+            componentTypeId?: string | null
+            componentType?: { componentTypeName: string } | null
+          }>
+        >(
+          () =>
+            supabase
+              .from('mdm_bom_item')
+              .select(
+                'id,component_type_id,componentType:mdm_component_type!mdm_bom_item_component_type_fk(component_type_name)'
+              )
+              .in('id', itemIds),
+          readOptions
+        )
+      : Promise.resolve({ data: [] })
+  ])
   const materialById = keyBy(materials ?? [], 'id')
+  const itemById = keyBy(items ?? [], 'id')
 
   return nodes.map((node) => ({
     ...node,
-    drawingNo: node.drawingNo ?? materialById[node.materialId]?.drawingNo ?? null
+    drawingNo: node.drawingNo ?? materialById[node.materialId]?.drawingNo ?? null,
+    componentTypeId: node.bomItemId ? itemById[node.bomItemId]?.componentTypeId : null,
+    componentTypeName: node.bomItemId
+      ? itemById[node.bomItemId]?.componentType?.componentTypeName
+      : null
   }))
 }

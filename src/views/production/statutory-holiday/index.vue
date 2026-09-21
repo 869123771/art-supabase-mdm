@@ -182,7 +182,7 @@
   import TreeUtils from '@/utils/tree'
   import { useArtFeedback } from '@/hooks/core/useArtFeedback'
   import { useUserStore } from '@/store/modules/user'
-  import { fetchGetOrganizationTree } from '@/api/system-manage'
+  import { fetchGetOrganizationOptionsTree } from '@/api/system-manage'
   import ArtButtonTable from '@/components/core/forms/art-button-table/index.vue'
   import ArtDictDisplay from '@/components/core/base/art-dict-display/index.vue'
   import ArtSectionCard from '@/components/core/surfaces/art-section-card/index.vue'
@@ -463,7 +463,7 @@
     })
   }
   const loadOrganizations = async (): Promise<void> => {
-    const response = await fetchGetOrganizationTree({ status: '1' })
+    const response = await fetchGetOrganizationOptionsTree({ status: '1' })
     organizationTree.value = response.data ?? []
   }
   const loadCalendarRows = async (): Promise<void> => {

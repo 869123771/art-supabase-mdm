@@ -80,6 +80,7 @@
                     'is-outside': data.type !== 'current-month',
                     'is-today': data.day === today,
                     'is-selected': data.day === schedule.selectedDate,
+                    'is-holiday': holidayDateSet.has(data.day),
                     'has-shift': schedulesForDate(data.day).length
                   }"
                   :aria-label="dayAriaLabel(data.day)"
@@ -88,6 +89,9 @@
                   <span class="my-shift-schedule__day-number">
                     <strong>{{ Number(data.day.slice(-2)) }}</strong>
                     <small v-if="data.day === today">今天</small>
+                    <small v-if="holidayDateSet.has(data.day)" class="my-shift-schedule__holiday">
+                      法定假日
+                    </small>
                   </span>
                   <span
                     v-for="row in schedulesForDate(data.day)"
@@ -158,7 +162,13 @@
               <div v-else class="my-shift-schedule__rest-detail">
                 <span aria-hidden="true"><ArtSvgIcon icon="ri:moon-clear-line" /></span>
                 <strong>当天没有排班</strong>
-                <p>可选择月历中的其他日期继续查看。</p>
+                <p>
+                  {{
+                    holidayDateSet.has(schedule.selectedDate)
+                      ? '法定假日未安排班次，可选择其他日期继续查看。'
+                      : '可选择月历中的其他日期继续查看。'
+                  }}
+                </p>
               </div>
             </aside>
           </div>
@@ -243,7 +253,9 @@
     },
     {
       label: schedule.selectedDate === today ? '今日安排' : '选中日期',
-      value: selectedSchedules.value.map((row) => row.shiftName).join('、') || '休息',
+      value:
+        selectedSchedules.value.map((row) => row.shiftName).join('、') ||
+        (holidayDateSet.value.has(schedule.selectedDate) ? '法定假日' : '休息'),
       description: selectedSchedules.value.length
         ? selectedSchedules.value
             .map((row) => `${row.shiftStartTime}—${row.shiftEndTime}`)
@@ -302,9 +314,10 @@
 
   function dayAriaLabel(date: string): string {
     const shifts = schedulesForDate(date)
+    const holiday = holidayDateSet.value.has(date) ? '，法定假日' : ''
     return shifts.length
-      ? `${dayjs(date).format('M月D日')}，${shifts.map((row) => `${row.shiftName} ${row.shiftStartTime}至${row.shiftEndTime}`).join('，')}`
-      : `${dayjs(date).format('M月D日')}，休息`
+      ? `${dayjs(date).format('M月D日')}${holiday}，${shifts.map((row) => `${row.shiftName} ${row.shiftStartTime}至${row.shiftEndTime}`).join('，')}`
+      : `${dayjs(date).format('M月D日')}${holiday}，休息`
   }
 
   function selectDate(date: string): void {
@@ -474,6 +487,10 @@
         opacity: 0.42;
       }
 
+      &.is-outside.is-holiday {
+        opacity: 0.8;
+      }
+
       &.is-today .my-shift-schedule__day-number strong {
         color: var(--theme-color);
       }
@@ -492,6 +509,13 @@
       small {
         font-size: 10px;
         color: var(--theme-color);
+      }
+
+      .my-shift-schedule__holiday {
+        padding: 1px 4px;
+        color: var(--el-color-warning-dark-2);
+        background: var(--el-color-warning-light-9);
+        border-radius: var(--el-border-radius-small);
       }
     }
 

@@ -40,6 +40,11 @@ const documentTypeSelect = `
   tenant:sys_tenant!mdm_document_type_tenant_id_fkey(tenant_code, tenant_name)
 `
 
+function toDocumentTypeRow(input: DocumentTypeWriteInput | DocumentTypeUpdateInput) {
+  const { extensionFields, ...header } = input
+  return { ...keysToSnakeDeep(header), extension_fields: extensionFields }
+}
+
 export async function fetchDocumentTypeList(
   params: DocumentTypeQuery,
   options?: { signal?: AbortSignal }
@@ -144,7 +149,7 @@ export async function createDocumentType(input: DocumentTypeWriteInput) {
     () =>
       supabase
         .from('mdm_document_type')
-        .insert(keysToSnakeDeep(input), { count: 'exact' })
+        .insert(toDocumentTypeRow(input), { count: 'exact' })
         .select('id'),
     { ...writeOptions, message: '单据类型已创建' }
   )
@@ -155,7 +160,7 @@ export async function updateDocumentType(id: string, input: DocumentTypeUpdateIn
     () =>
       supabase
         .from('mdm_document_type')
-        .update(keysToSnakeDeep(input), { count: 'exact' })
+        .update(toDocumentTypeRow(input), { count: 'exact' })
         .eq('id', id)
         .select('id'),
     { ...writeOptions, message: '单据类型已更新' }
@@ -175,7 +180,8 @@ export async function copyDocumentType(sourceId: string, input: DocumentTypeUpda
         p_sort_order: input.sortOrder,
         p_text_color: input.textColor,
         p_tag_style: input.tagStyle,
-        p_enabled: input.enabled
+        p_enabled: input.enabled,
+        p_extension_fields: input.extensionFields
       }),
     { ...writeOptions, message: '单据类型副本已创建' }
   )

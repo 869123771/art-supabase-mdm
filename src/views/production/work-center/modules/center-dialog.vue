@@ -132,7 +132,6 @@
   import ArtEmployeeSelect from '@/components/business/art-employee-select/index.vue'
   import ArtTableSingleSelect from '@/components/core/forms/art-data-select/table-single.vue'
   import { ref, reactive, computed, watch } from 'vue'
-  import { ElMessage } from 'element-plus'
   import { cloneDeep, pick } from 'lodash-es'
   import ArtForm, { type FormItem } from '@/components/core/forms/art-form/index.vue'
   import type { ArtDialogExpose } from '@/components/core/dialogs/art-dialog/types'
@@ -472,7 +471,6 @@
           const activityValidation = await activityEditorRef.value?.validate()
           if (activityValidation?.valid === false) {
             form.tab = '活动信息'
-            ElMessage.warning(activityValidation.firstError?.message || '请完整填写活动信息')
             return false
           }
           const payload: WorkCenterInput = {

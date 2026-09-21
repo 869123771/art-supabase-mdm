@@ -18,7 +18,8 @@ const source: DocumentTypeRecord = {
   sortOrder: 20,
   textColor: '#409eff',
   tagStyle: 'primary',
-  enabled: true
+  enabled: true,
+  extensionFields: []
 }
 
 test('copy model keeps presentation but clears the unique code and default state', () => {
