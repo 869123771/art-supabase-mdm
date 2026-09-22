@@ -93,7 +93,7 @@
             <ArtMaterialSelect
               v-model:model-values="selectedComponentIds"
               multiple
-              :selected-data="selectedComponents"
+              v-model:selected-data="pickerSelectedComponents"
               :api-fn="fetchMaterials"
               :categories="materialCategories"
               title="批量添加组件物料"
@@ -103,7 +103,7 @@
             >
               <template #trigger="{ open }">
                 <ElButton v-if="canMaintainBom" type="primary" plain @click="open"
-                  ><ArtSvgIcon icon="ri:add-line" />添加组件</ElButton
+                  ><ArtSvgIcon icon="ri:add-line" />参选物料</ElButton
                 >
               </template>
             </ArtMaterialSelect>
@@ -118,10 +118,9 @@
           :pagination="false"
           table-layout="fixed"
           scrollbar-always-on
-          height="auto"
-          max-height="360"
+          :max-height="360"
           empty-text="暂无 BOM 组件"
-          empty-description="点击“添加组件”建立父项与子项的装配关系。"
+          empty-description="点击“参选物料”建立父项与子项的装配关系。"
           @selection-change="handleComponentSelectionChange"
         />
         <footer
@@ -222,6 +221,7 @@
   const stepLoading = ref(false)
   const selectedParent = ref<MaterialArchive[]>([])
   const selectedComponents = ref<MaterialArchive[]>([])
+  const pickerSelectedComponents = ref<MaterialArchive[]>([])
   const selectedComponentIds = ref<string[]>([])
   const materialCategories = ref<MaterialCategory[]>([])
   const selectedComponentRows = shallowRef<BomComponentInput[]>([])
@@ -544,8 +544,8 @@
   const materialById = (id: string) =>
     [...selectedParent.value, ...selectedComponents.value].find((item) => item.id === id)
   const componentRowLabel = (row: BomComponentInput, rowIndex: number): string => {
-    const materialName = formatBomMaterialDescription(materialById(row.componentMaterialId))
-    return `第 ${rowIndex + 1} 行${materialName ? `“${materialName}”` : '组件'}`
+    const description = materialById(row.componentMaterialId)?.description?.trim()
+    return `第 ${rowIndex + 1} 行${description ? `“${description}”` : '组件'}`
   }
   const componentColumns = computed<ColumnOption<BomComponentInput>[]>(() => [
     { type: 'selection', width: 48, fixed: 'left' },
@@ -556,7 +556,7 @@
       width: 300,
       formatter: (row) => {
         const material = materialById(row.componentMaterialId)
-        const materialName = formatBomMaterialDescription(material) || '未识别物料'
+        const materialDescription = material?.description?.trim() || '未维护物料描述'
         const materialDetail =
           [material?.materialCode, material?.specificationModel].filter(Boolean).join(' · ') || '—'
         return (
@@ -565,7 +565,7 @@
               <ArtSvgIcon icon="ri:box-3-line" />
             </span>
             <div class="bom-dialog__material-copy">
-              <strong title={materialName}>{materialName}</strong>
+              <strong title={materialDescription}>{materialDescription}</strong>
               <small title={materialDetail}>{materialDetail}</small>
             </div>
           </div>
@@ -861,10 +861,10 @@
     handleRemoveComponentById(row.id)
     ElMessage.info('父项物料不能同时作为组件，已从组件明细中移除')
   }
-  const isComponentMaterialDisabled = (row: DataSelectRecord) => row.id === form.materialId
+  const isComponentMaterialDisabled = (row: DataSelectRecord) =>
+    row.id === form.materialId || form.items.some((item) => item.componentMaterialId === row.id)
   const syncComponentSelection = (materials: MaterialArchive[]) => {
     selectedComponents.value = materials
-    selectedComponentIds.value = materials.map((item) => item.id)
   }
   const handleRemoveComponentById = (componentMaterialId: string) => {
     const result = removeBomComponentSelection(
@@ -874,6 +874,8 @@
     )
     form.items = result.items
     syncComponentSelection(result.materials)
+    selectedComponentIds.value = []
+    pickerSelectedComponents.value = []
     selectedComponentRows.value = []
     componentTableRef.value?.elTableRef?.clearSelection()
   }
@@ -890,6 +892,8 @@
     )
     form.items = result.items
     syncComponentSelection(result.materials)
+    selectedComponentIds.value = []
+    pickerSelectedComponents.value = []
   }
   const handleComponentUnitChange = (row: BomComponentInput, unitId: string) => {
     const material = materialById(row.componentMaterialId)
@@ -946,7 +950,8 @@
     selectedParent.value = data.row?.material ? [data.row.material as MaterialArchive] : []
     selectedComponents.value = (data.row?.items.map((item) => item.component).filter(Boolean) ||
       []) as MaterialArchive[]
-    selectedComponentIds.value = selectedComponents.value.map((item) => item.id)
+    selectedComponentIds.value = []
+    pickerSelectedComponents.value = []
     selectedComponentRows.value = []
     batchSelectedStepId.value = undefined
     if (data.row) Object.assign(form, cloneDeep(data.row))
@@ -1002,6 +1007,7 @@
       selectedParent.value = []
       selectedComponents.value = []
       selectedComponentIds.value = []
+      pickerSelectedComponents.value = []
       void loadMaterialCategories()
     }
   )

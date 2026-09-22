@@ -61,8 +61,7 @@
           :pagination="false"
           table-layout="fixed"
           scrollbar-always-on
-          height="auto"
-          max-height="360"
+          :max-height="360"
           empty-text="暂无 BOM 组件"
           empty-description="当前 BOM 尚未维护组件明细。"
         />
@@ -188,7 +187,7 @@
   ]
 
   const componentIdentity = (row: BomItem) => {
-    const name = row.component?.materialName || '未识别物料'
+    const description = row.component?.description?.trim() || '未维护物料描述'
     const detail =
       [row.component?.materialCode, row.component?.specificationModel]
         .filter(Boolean)
@@ -199,7 +198,7 @@
           <ArtSvgIcon icon="ri:box-3-line" />
         </span>
         <div>
-          <strong title={name}>{name}</strong>
+          <strong title={description}>{description}</strong>
           <small title={detail}>{detail}</small>
         </div>
       </div>
